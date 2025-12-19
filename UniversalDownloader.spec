@@ -23,6 +23,7 @@ a = Analysis(
         'yt_dlp',
         'yt_dlp_helper',
         'auto_install_dependencies',
+        'path_helper',
         'requests',
         'beautifulsoup4',
         'selenium',
