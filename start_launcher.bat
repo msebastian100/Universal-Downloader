@@ -45,18 +45,70 @@ if exist "%PROGRAMFILES%\Python3*\pythonw.exe" (
     if defined PYTHON_EXE goto :found_python
 )
 
-REM Python nicht gefunden - zeige Fehler
+REM Python nicht gefunden - versuche Installation
 echo.
 echo ========================================
 echo FEHLER: Python nicht gefunden!
 echo ========================================
 echo.
-echo Bitte installieren Sie Python 3.8 oder hoeher.
-echo Download: https://www.python.org/downloads/
+echo Moechten Sie Python 3.11 automatisch herunterladen und installieren?
 echo.
-echo Oder starten Sie die Anwendung mit:
-echo   python start.py
+choice /C YN /M "Python installieren (J/N)"
+if errorlevel 2 goto :no_install
+if errorlevel 1 goto :install_python
+
+:install_python
 echo.
+echo Lade Python-Installer herunter...
+set INSTALLER_PATH=%TEMP%\python-installer.exe
+set INSTALLER_URL=https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe
+
+REM Lade Installer herunter mit PowerShell
+powershell -Command "& {[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '%INSTALLER_URL%' -OutFile '%INSTALLER_PATH%'}"
+
+if not exist "%INSTALLER_PATH%" (
+    echo.
+    echo FEHLER: Konnte Python-Installer nicht herunterladen.
+    echo Bitte installieren Sie Python manuell von: https://www.python.org/downloads/
+    timeout /t 5 >nul 2>&1
+    exit /b 1
+)
+
+echo.
+echo Installiere Python (dies erfordert Administrator-Rechte)...
+echo Bitte bestaetigen Sie die UAC-Abfrage.
+
+REM Installiere Python im Silent-Modus mit Administrator-Rechten
+powershell -Command "Start-Process -FilePath '%INSTALLER_PATH%' -ArgumentList '/quiet InstallAllUsers=1 PrependPath=1 Include_test=0' -Verb RunAs -Wait"
+
+REM Warte kurz
+timeout /t 3 >nul 2>&1
+
+REM Prüfe ob Python jetzt verfügbar ist
+where python.exe >nul 2>&1
+if %errorlevel% == 0 (
+    set PYTHON_EXE=python.exe
+    echo.
+    echo Python wurde erfolgreich installiert!
+    echo.
+    REM Lösche Installer
+    del "%INSTALLER_PATH%" >nul 2>&1
+    goto :found_python
+) else (
+    echo.
+    echo FEHLER: Python-Installation fehlgeschlagen oder noch nicht abgeschlossen.
+    echo Bitte installieren Sie Python manuell von: https://www.python.org/downloads/
+    echo WICHTIG: Aktivieren Sie "Add Python to PATH" waehrend der Installation!
+    REM Lösche Installer
+    del "%INSTALLER_PATH%" >nul 2>&1
+    timeout /t 5 >nul 2>&1
+    exit /b 1
+)
+
+:no_install
+echo.
+echo Python ist erforderlich, um die Anwendung zu starten.
+echo Bitte installieren Sie Python 3.8 oder hoeher von: https://www.python.org/downloads/
 timeout /t 5 >nul 2>&1
 exit /b 1
 
