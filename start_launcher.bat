@@ -248,9 +248,15 @@ if not exist "%PYTHON_EXE%" (
     REM Nur Befehl - finde vollstaendigen Pfad
     where "%PYTHON_EXE%" >nul 2>&1
     if %errorlevel% == 0 (
-        for /f "delims=" %%P in ('where "%PYTHON_EXE%"') do set "FULL_PYTHON_PATH=%%P"
+        for /f "delims=" %%P in ('where "%PYTHON_EXE%" 2^>nul') do (
+            set "FULL_PYTHON_PATH=%%P"
+            goto :found_full_path
+        )
     )
 )
+:found_full_path
+REM Stelle sicher, dass FULL_PYTHON_PATH gesetzt ist
+if "!FULL_PYTHON_PATH!"=="" set "FULL_PYTHON_PATH=%PYTHON_EXE%"
 
 (
     echo [%date% %time%] [INFO] Starte Anwendung mit: !FULL_PYTHON_PATH! start.py
@@ -260,18 +266,9 @@ if not exist "%PYTHON_EXE%" (
 
 REM Starte Python-Skript (versteckt) mit explizitem Arbeitsverzeichnis
 cd /d "%~dp0"
-REM Verwende start mit /B (ohne neues Fenster) und /MIN (minimiert)
-REM Wichtig: Verwende pythonw.exe wenn moeglich, sonst python.exe
-if /i "!FULL_PYTHON_PATH!"=="pythonw.exe" (
-    REM Wenn nur pythonw.exe, versuche vollstaendigen Pfad zu finden
-    for /f "delims=" %%P in ('where pythonw.exe 2^>nul') do (
-        set "FULL_PYTHON_PATH=%%P"
-        goto :start_python
-    )
-)
-:start_python
 REM Starte mit start-Befehl, aber ohne neues Fenster
-start "" /B /MIN "!FULL_PYTHON_PATH!" "start.py"
+REM Verwende CALL um sicherzustellen, dass die Variable richtig aufgelöst wird
+call start "" /B /MIN "!FULL_PYTHON_PATH!" "start.py"
 set START_RESULT=%errorlevel%
 
 REM Warte kurz und pruefe ob Prozess laeuft
