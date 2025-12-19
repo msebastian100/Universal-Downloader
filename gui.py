@@ -4742,9 +4742,23 @@ Historie-Einträge: {len(self.video_download_history)}
                 # Zeige Installations-Dialog
                 self.root.after(0, self._show_dependency_installation_dialog)
                 
-                # Installiere Abhängigkeiten
-                from auto_install_dependencies import ensure_dependencies
-                ytdlp_ok, ffmpeg_ok, messages = ensure_dependencies()
+                # Installiere Abhängigkeiten mit Progress-Callback
+                from auto_install_dependencies import ensure_dependencies, install_ffmpeg_windows
+                
+                # Setze Progress-Callback für ffmpeg-Installation
+                def update_progress(message):
+                    if hasattr(self, '_dep_status_text') and self._dep_status_text.winfo_exists():
+                        self.root.after(0, lambda: self._add_status_message(message))
+                
+                # Temporärer Callback für ffmpeg-Installation
+                install_ffmpeg_windows._gui_callback = update_progress
+                
+                try:
+                    ytdlp_ok, ffmpeg_ok, messages = ensure_dependencies()
+                finally:
+                    # Entferne Callback
+                    if hasattr(install_ffmpeg_windows, '_gui_callback'):
+                        delattr(install_ffmpeg_windows, '_gui_callback')
                 
                 self._write_to_log_file(f"[DEBUG] Abhängigkeits-Installation abgeschlossen: yt-dlp={ytdlp_ok}, ffmpeg={ffmpeg_ok}", "DEBUG")
                 
@@ -4824,6 +4838,14 @@ Historie-Einträge: {len(self.video_download_history)}
         self._dep_status_text.insert(tk.END, "[INFO] Prüfe Abhängigkeiten...\n")
         self._dep_status_text.config(state=tk.DISABLED)
         self._dep_status_text.see(tk.END)
+    
+    def _add_status_message(self, message):
+        """Fügt eine Status-Nachricht zum Installations-Dialog hinzu"""
+        if hasattr(self, '_dep_status_text') and self._dep_status_text.winfo_exists():
+            self._dep_status_text.config(state=tk.NORMAL)
+            self._dep_status_text.insert(tk.END, message + "\n")
+            self._dep_status_text.config(state=tk.DISABLED)
+            self._dep_status_text.see(tk.END)
     
     def _update_dependency_dialog(self, ytdlp_ok, ffmpeg_ok, messages):
         """Aktualisiert den Installations-Dialog mit Ergebnissen"""

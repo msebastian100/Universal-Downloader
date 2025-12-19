@@ -384,6 +384,23 @@ if __name__ == "__main__":
     
     try:
         debug_log("Importiere gui...")
+        
+        # Verstecke Terminal-Fenster auf Windows (nur wenn nicht frozen)
+        if sys.platform == "win32" and not getattr(sys, 'frozen', False):
+            try:
+                import ctypes
+                # SW_HIDE = 0
+                kernel32 = ctypes.windll.kernel32
+                user32 = ctypes.windll.user32
+                # Finde das Konsolen-Fenster
+                hwnd = kernel32.GetConsoleWindow()
+                if hwnd:
+                    # Verstecke das Konsolen-Fenster
+                    user32.ShowWindow(hwnd, 0)  # SW_HIDE
+                    debug_log("Terminal-Fenster versteckt")
+            except Exception as e:
+                debug_log(f"Konnte Terminal-Fenster nicht verstecken: {e}", "WARNING")
+        
         from gui import main
         
         debug_log("Starte GUI...")

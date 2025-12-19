@@ -239,7 +239,14 @@ def install_ffmpeg_windows():
                             percent = (downloaded * 100) // total_size
                             downloaded_mb = downloaded // (1024*1024)
                             total_mb = total_size // (1024*1024)
-                            print(f"\r[INFO] Download Fortschritt: {percent}% ({downloaded_mb}MB / {total_mb}MB)", end='', flush=True)
+                            progress_msg = f"[INFO] Download Fortschritt: {percent}% ({downloaded_mb}MB / {total_mb}MB)"
+                            print(f"\r{progress_msg}", end='', flush=True)
+                            # Aktualisiere auch GUI-Dialog falls vorhanden
+                            if hasattr(install_ffmpeg_windows, '_gui_callback'):
+                                try:
+                                    install_ffmpeg_windows._gui_callback(progress_msg)
+                                except:
+                                    pass
                 print()  # Neue Zeile nach Progress
         except ImportError:
             # Fallback: Verwende urllib mit besserem Schreiben
