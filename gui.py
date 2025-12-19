@@ -4785,10 +4785,22 @@ Historie-Einträge: {len(self.video_download_history)}
         self._dep_dialog.title("Abhängigkeiten installieren")
         self._dep_dialog.geometry("500x300")
         self._dep_dialog.transient(self.root)
-        self._dep_dialog.grab_set()
+        # NICHT grab_set() verwenden, damit die Hauptanwendung weiterhin schließbar ist
+        # self._dep_dialog.grab_set()
         
-        # Verhindere Schließen während Installation
-        self._dep_dialog.protocol("WM_DELETE_WINDOW", lambda: None)
+        # Erlaube Schließen des Dialogs (aber warne wenn Installation läuft)
+        self._dep_installation_running = True
+        def on_dialog_close():
+            if self._dep_installation_running:
+                if messagebox.askyesno(
+                    "Installation läuft",
+                    "Die Installation läuft noch. Möchten Sie den Dialog wirklich schließen?\n\n"
+                    "Die Installation wird im Hintergrund fortgesetzt."
+                ):
+                    self._dep_dialog.destroy()
+            else:
+                self._dep_dialog.destroy()
+        self._dep_dialog.protocol("WM_DELETE_WINDOW", on_dialog_close)
         
         frame = ttk.Frame(self._dep_dialog, padding="20")
         frame.pack(fill=tk.BOTH, expand=True)
@@ -4854,6 +4866,9 @@ Historie-Einträge: {len(self.video_download_history)}
         if not hasattr(self, '_dep_dialog') or not self._dep_dialog.winfo_exists():
             return
         
+        # Markiere Installation als beendet
+        self._dep_installation_running = False
+        
         # Stoppe Progress Bar
         self._dep_progress.stop()
         
@@ -4867,7 +4882,7 @@ Historie-Einträge: {len(self.video_download_history)}
         # Aktiviere Schließen-Button
         self._dep_close_button.config(state=tk.NORMAL)
         
-        # Erlaube Schließen
+        # Erlaube Schließen ohne Warnung
         self._dep_dialog.protocol("WM_DELETE_WINDOW", self._dep_dialog.destroy)
         
         # Zeige Erfolgsmeldung und frage nach Neustart
