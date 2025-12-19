@@ -22,6 +22,7 @@ a = Analysis(
         'deezer',
         'yt_dlp',
         'yt_dlp_helper',
+        'auto_install_dependencies',
         'requests',
         'beautifulsoup4',
         'selenium',

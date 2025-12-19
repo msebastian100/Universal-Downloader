@@ -7,9 +7,21 @@ Startet die GUI-Anwendung
 
 import sys
 import os
+from pathlib import Path
 
 # Füge das aktuelle Verzeichnis zum Python-Pfad hinzu
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+def check_ffmpeg():
+    """Prüft ob ffmpeg verfügbar ist"""
+    import subprocess
+    try:
+        result = subprocess.run(['ffmpeg', '-version'], capture_output=True, timeout=2, check=True)
+        if result.returncode == 0:
+            return True, result.stdout.decode('utf-8', errors='ignore').split('\n')[0]
+    except Exception:
+        pass
+    return False, None
 
 def check_dependencies_quick():
     """Schnelle Prüfung der wichtigsten Abhängigkeiten"""
@@ -26,23 +38,9 @@ def check_dependencies_quick():
     except ImportError:
         missing.append("yt-dlp")
     
-    # Prüfe yt-dlp (System oder Modul)
-    try:
-        from yt_dlp_helper import get_ytdlp_version
-        version = get_ytdlp_version()
-        if not version:
-            missing.append("yt-dlp")
-    except ImportError:
-        # Fallback: Alte Methode
-        import subprocess
-        try:
-            subprocess.run(['yt-dlp', '--version'], capture_output=True, timeout=2, check=True)
-        except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError):
-            missing.append("yt-dlp")
-    
-    try:
-        subprocess.run(['ffmpeg', '-version'], capture_output=True, timeout=2, check=True)
-    except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError):
+    # Prüfe ffmpeg
+    ffmpeg_ok, _ = check_ffmpeg()
+    if not ffmpeg_ok:
         missing.append("ffmpeg")
     
     return missing
@@ -97,24 +95,40 @@ def install_ffmpeg_if_missing():
     return False
 
 if __name__ == "__main__":
-    # Schnelle Abhängigkeitsprüfung
-    missing = check_dependencies_quick()
-    
-    # Versuche ffmpeg automatisch zu installieren falls es fehlt
-    if "ffmpeg" in missing:
-        install_ffmpeg_if_missing()
-        # Prüfe nochmal
+    # Automatische Installation von Abhängigkeiten
+    try:
+        from auto_install_dependencies import ensure_dependencies
+        
+        print("[INFO] Prüfe Abhängigkeiten...")
+        ytdlp_ok, ffmpeg_ok, messages = ensure_dependencies()
+        
+        # Zeige nur wichtige Meldungen
+        for msg in messages:
+            if "[ERROR]" in msg or "[WARNING]" in msg or "[OK]" in msg:
+                print(msg)
+        
+        # Füge ffmpeg zum PATH hinzu (falls lokal installiert)
+        if not ffmpeg_ok:
+            from pathlib import Path
+            app_dir = Path(__file__).parent if not getattr(sys, 'frozen', False) else Path(sys.executable).parent
+            ffmpeg_bin = app_dir / "ffmpeg" / "bin"
+            if ffmpeg_bin.exists():
+                os.environ['PATH'] = str(ffmpeg_bin) + os.pathsep + os.environ.get('PATH', '')
+                # Prüfe nochmal
+                ffmpeg_ok, _ = check_ffmpeg()
+        
+    except ImportError:
+        # Fallback: Alte Methode
         missing = check_dependencies_quick()
-    
-    if missing:
-        print("⚠ Warnung: Einige Abhängigkeiten fehlen:")
-        for dep in missing:
-            print(f"  - {dep}")
-        print("\nFühren Sie aus für detaillierte Prüfung:")
-        print("  python check_dependencies.py")
-        print("\nOder installieren Sie fehlende Pakete:")
-        print("  pip install -r requirements.txt")
-        print("\nVersuche trotzdem zu starten...\n")
+        if "ffmpeg" in missing:
+            install_ffmpeg_if_missing()
+            missing = check_dependencies_quick()
+        
+        if missing:
+            print("⚠ Warnung: Einige Abhängigkeiten fehlen:")
+            for dep in missing:
+                print(f"  - {dep}")
+            print("\nVersuche trotzdem zu starten...\n")
     
     try:
         from gui import main
