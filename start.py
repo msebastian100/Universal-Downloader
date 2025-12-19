@@ -97,6 +97,109 @@ def install_ffmpeg_if_missing():
 if __name__ == "__main__":
     import tempfile
     from datetime import datetime
+    import fcntl  # Für Unix
+    import msvcrt  # Für Windows
+    
+    # Single-Instance-Mechanismus: Verhindere mehrere gleichzeitige Instanzen
+    lock_file = Path(tempfile.gettempdir()) / "universal_downloader.lock"
+    lock_file_handle = None
+    
+    def acquire_lock():
+        """Erwirbt eine Lock-Datei, um sicherzustellen, dass nur eine Instanz läuft"""
+        global lock_file_handle
+        try:
+            if sys.platform == "win32":
+                # Windows: Verwende msvcrt
+                lock_file_handle = open(lock_file, 'w')
+                try:
+                    msvcrt.locking(lock_file_handle.fileno(), msvcrt.LK_NBLCK, 1)
+                    # Schreibe PID in Lock-Datei
+                    lock_file_handle.write(str(os.getpid()))
+                    lock_file_handle.flush()
+                    return True
+                except IOError:
+                    # Lock bereits vorhanden - andere Instanz läuft
+                    lock_file_handle.close()
+                    return False
+            else:
+                # Unix/Linux/macOS: Verwende fcntl
+                lock_file_handle = open(lock_file, 'w')
+                try:
+                    fcntl.flock(lock_file_handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    # Schreibe PID in Lock-Datei
+                    lock_file_handle.write(str(os.getpid()))
+                    lock_file_handle.flush()
+                    return True
+                except IOError:
+                    # Lock bereits vorhanden - andere Instanz läuft
+                    lock_file_handle.close()
+                    return False
+        except Exception as e:
+            # Bei Fehler: Versuche trotzdem zu starten
+            print(f"[WARNING] Konnte Lock nicht setzen: {e}")
+            return True  # Erlaube Start trotzdem
+    
+    def release_lock():
+        """Gibt die Lock-Datei frei"""
+        global lock_file_handle
+        try:
+            if lock_file_handle:
+                if sys.platform == "win32":
+                    msvcrt.locking(lock_file_handle.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    fcntl.flock(lock_file_handle.fileno(), fcntl.LOCK_UN)
+                lock_file_handle.close()
+                lock_file_handle = None
+            if lock_file.exists():
+                lock_file.unlink(missing_ok=True)
+        except Exception:
+            pass
+    
+    # Prüfe ob bereits eine Instanz läuft
+    if not acquire_lock():
+        # Prüfe ob die andere Instanz noch läuft
+        try:
+            if lock_file.exists():
+                with open(lock_file, 'r') as f:
+                    old_pid = int(f.read().strip())
+                # Prüfe ob Prozess noch läuft
+                if sys.platform == "win32":
+                    import subprocess
+                    try:
+                        result = subprocess.run(['tasklist', '/FI', f'PID eq {old_pid}'], 
+                                              capture_output=True, text=True, timeout=2)
+                        if str(old_pid) in result.stdout:
+                            # Prozess läuft noch - beende diese Instanz
+                            print(f"[INFO] Eine andere Instanz läuft bereits (PID: {old_pid})")
+                            print("[INFO] Diese Instanz wird beendet...")
+                            sys.exit(0)
+                    except:
+                        pass
+                else:
+                    # Unix: Prüfe mit kill -0
+                    try:
+                        os.kill(old_pid, 0)  # Signal 0 prüft nur ob Prozess existiert
+                        # Prozess läuft noch - beende diese Instanz
+                        print(f"[INFO] Eine andere Instanz läuft bereits (PID: {old_pid})")
+                        print("[INFO] Diese Instanz wird beendet...")
+                        sys.exit(0)
+                    except ProcessLookupError:
+                        # Prozess existiert nicht mehr - lösche alte Lock-Datei
+                        lock_file.unlink(missing_ok=True)
+                        # Versuche Lock erneut zu erwerben
+                        if not acquire_lock():
+                            print("[WARNING] Konnte Lock nicht erwerben - beende...")
+                            sys.exit(0)
+        except Exception:
+            # Bei Fehler: Lösche alte Lock-Datei und versuche erneut
+            lock_file.unlink(missing_ok=True)
+            if not acquire_lock():
+                print("[WARNING] Konnte Lock nicht erwerben - beende...")
+                sys.exit(0)
+    
+    # Cleanup beim Beenden
+    import atexit
+    atexit.register(release_lock)
     
     # Debug-Logging Setup
     def debug_log(message: str, level: str = "INFO"):
@@ -121,6 +224,8 @@ if __name__ == "__main__":
     debug_log(f"Plattform: {sys.platform}")
     debug_log(f"Executable: {sys.executable}")
     debug_log(f"Frozen: {getattr(sys, 'frozen', False)}")
+    debug_log(f"PID: {os.getpid()}")
+    debug_log(f"Log-Datei: {Path.home() / 'Downloads' / 'Universal Downloader' / 'Logs' / f'start_debug_{datetime.now().strftime(\"%Y-%m-%d\")}.log'}")
     
     # Prüfe auf Restart-Flag
     restart_flag_file = Path(tempfile.gettempdir()) / "universal_downloader_restarting.flag"

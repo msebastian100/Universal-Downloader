@@ -5051,24 +5051,40 @@ Historie-Einträge: {len(self.video_download_history)}
             update_file: Pfad zur neuen .exe (optional, wird nicht mehr benötigt, da bereits installiert)
         """
         try:
+            self._write_to_log_file("[DEBUG] Neustart wird vorbereitet...", "DEBUG")
+            
             # Setze Flag, um zu verhindern, dass nach Neustart sofort wieder geprüft wird
             restart_flag_file = Path(tempfile.gettempdir()) / "universal_downloader_restarting.flag"
             restart_flag_file.touch()
+            self._write_to_log_file(f"[DEBUG] Restart-Flag gesetzt: {restart_flag_file}", "DEBUG")
             
             if sys.platform == "win32":
                 # Windows: Starte die neue .exe
                 current_exe = Path(sys.executable)
+                self._write_to_log_file(f"[DEBUG] Starte neue Instanz: {current_exe}", "DEBUG")
                 
                 # Warte kurz, damit die Installation abgeschlossen ist
                 import time
-                time.sleep(1)
+                time.sleep(2)  # Längere Wartezeit für Windows
                 
-                # Starte neue Version
-                subprocess.Popen([str(current_exe)], shell=True)
+                # Starte neue Version (ohne shell=True, um Probleme zu vermeiden)
+                try:
+                    # Verwende CREATE_NEW_CONSOLE um sicherzustellen, dass es ein separater Prozess ist
+                    subprocess.Popen(
+                        [str(current_exe)],
+                        creationflags=subprocess.CREATE_NEW_CONSOLE,
+                        close_fds=True
+                    )
+                    self._write_to_log_file("[DEBUG] Neue Instanz gestartet", "DEBUG")
+                except Exception as e:
+                    self._write_to_log_file(f"[ERROR] Fehler beim Starten der neuen Instanz: {e}", "ERROR")
+                    # Fallback: Versuche mit shell=True
+                    subprocess.Popen([str(current_exe)], shell=True)
                 
-                # Warte kurz, damit die neue Instanz starten kann
-                time.sleep(2)
+                # Warte länger, damit die neue Instanz sicher starten kann
+                time.sleep(3)
                 
+                self._write_to_log_file("[DEBUG] Schließe aktuelle Instanz...", "DEBUG")
                 # Schließe aktuelle Instanz
                 self.root.quit()
                 self.root.destroy()
