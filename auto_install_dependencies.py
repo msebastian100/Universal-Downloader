@@ -152,6 +152,7 @@ def install_ytdlp():
 
 def check_ffmpeg():
     """Prüft ob ffmpeg verfügbar ist"""
+    # Prüfe zuerst ob ffmpeg im PATH ist
     try:
         result = subprocess.run(
             ['ffmpeg', '-version'],
@@ -164,6 +165,30 @@ def check_ffmpeg():
             return True, version_line
     except Exception:
         pass
+    
+    # Prüfe lokale Installation (Windows)
+    if sys.platform == "win32":
+        try:
+            app_dir = get_app_dir()
+            ffmpeg_exe = app_dir / "ffmpeg" / "bin" / "ffmpeg.exe"
+            if ffmpeg_exe.exists():
+                # Prüfe ob es funktioniert
+                result = subprocess.run(
+                    [str(ffmpeg_exe), '-version'],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                if result.returncode == 0:
+                    version_line = result.stdout.split('\n')[0]
+                    # Füge zum PATH hinzu für diese Session
+                    ffmpeg_bin = app_dir / "ffmpeg" / "bin"
+                    if str(ffmpeg_bin) not in os.environ.get('PATH', ''):
+                        os.environ['PATH'] = str(ffmpeg_bin) + os.pathsep + os.environ.get('PATH', '')
+                    return True, version_line
+        except Exception:
+            pass
+    
     return False, None
 
 

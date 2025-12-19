@@ -263,6 +263,9 @@ if __name__ == "__main__":
                         log_dir = Path.home() / ".universal-downloader" / "Logs"
                     log_dir.mkdir(parents=True, exist_ok=True)
             
+            # WICHTIG: Stelle sicher, dass der Ordner existiert, bevor wir die Datei öffnen
+            log_dir.mkdir(parents=True, exist_ok=True)
+            
             log_file = log_dir / f"start_debug_{datetime.now().strftime('%Y-%m-%d')}.log"
             with open(log_file, 'a', encoding='utf-8') as f:
                 f.write(f"{level_tag} [{timestamp}] {message}\n")

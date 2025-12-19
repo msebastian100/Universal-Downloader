@@ -245,11 +245,46 @@ class DeezerDownloaderGUI:
                                     self._safe_log(f"[ICON] Fehler beim Laden von {icon_path.name}: {e}")
                                     continue
                         else:
-                            # Für Windows: iconbitmap verwenden
-                            self.root.iconbitmap(str(icon_path))
-                            icon_set = True
-                            self._safe_log(f"[ICON] Icon geladen: {icon_path.name}")
-                            break
+                            # Für Windows: Verwende iconphoto für PNG, iconbitmap für ICO
+                            if icon_path.suffix.lower() == '.ico':
+                                # ICO-Datei: Verwende iconbitmap
+                                try:
+                                    self.root.iconbitmap(str(icon_path))
+                                    icon_set = True
+                                    self._safe_log(f"[ICON] Icon geladen (ICO): {icon_path.name}")
+                                    break
+                                except Exception as e:
+                                    self._safe_log(f"[ICON] Fehler beim Laden von ICO: {e}")
+                                    continue
+                            else:
+                                # PNG-Datei: Konvertiere zu PhotoImage und verwende iconphoto
+                                try:
+                                    from PIL import Image, ImageTk
+                                    img = Image.open(icon_path)
+                                    # Windows bevorzugt 32x32 oder 16x16 Icons für die Taskleiste
+                                    img = img.resize((32, 32), Image.Resampling.LANCZOS)
+                                    photo = ImageTk.PhotoImage(img)
+                                    self.root.iconphoto(True, photo)
+                                    # Speichere Referenz, damit das Icon nicht gelöscht wird
+                                    self.root.icon_image = photo
+                                    icon_set = True
+                                    self._safe_log(f"[ICON] Icon geladen (PNG->PhotoImage): {icon_path.name}")
+                                    break
+                                except ImportError:
+                                    # PIL nicht verfügbar, versuche mit tkinter PhotoImage
+                                    try:
+                                        photo = tk.PhotoImage(file=str(icon_path))
+                                        self.root.iconphoto(True, photo)
+                                        self.root.icon_image = photo
+                                        icon_set = True
+                                        self._safe_log(f"[ICON] Icon geladen (tkinter PhotoImage): {icon_path.name}")
+                                        break
+                                    except Exception as e:
+                                        self._safe_log(f"[ICON] Fehler beim Laden von PNG: {e}")
+                                        continue
+                                except Exception as e:
+                                    self._safe_log(f"[ICON] Fehler beim Laden von PNG: {e}")
+                                    continue
                     except Exception as e:
                         self._safe_log(f"[ICON] Fehler beim Laden von {icon_path.name}: {e}")
                         continue
@@ -4811,8 +4846,8 @@ Historie-Einträge: {len(self.video_download_history)}
         
         if result:
             self._dep_dialog.destroy()
-            # Starte Anwendung neu
-            self._restart_application(Path())
+            # Warte kurz, damit der Dialog geschlossen wird
+            self.root.after(100, lambda: self._restart_application(Path()))
     
     def _check_updates_on_start(self):
         """Prüft im Hintergrund auf Updates beim Start"""
