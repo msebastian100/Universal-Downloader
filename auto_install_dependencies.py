@@ -77,13 +77,20 @@ def update_ytdlp():
 
 
 def check_and_update_ytdlp():
-    """Prüft ob yt-dlp aktualisiert werden muss und aktualisiert es falls nötig"""
+    """Prüft ob yt-dlp aktualisiert werden muss und aktualisiert es falls nötig
+    
+    Returns:
+        tuple: (success: bool, was_updated: bool, message: str)
+    """
     ytdlp_available, current_version = check_ytdlp()
     
     if not ytdlp_available:
-        return install_ytdlp()
+        result = install_ytdlp()
+        return result, result, "Installiert" if result else "Installation fehlgeschlagen"
     
     # Prüfe auf Updates (nur alle X Tage, um nicht bei jedem Start zu prüfen)
+    was_updated = False
+    update_message = None
     try:
         from pathlib import Path
         import json
@@ -111,14 +118,18 @@ def check_and_update_ytdlp():
             
             if latest_version and latest_version != current_version:
                 print(f"[INFO] Neue yt-dlp Version verfügbar: {latest_version} (aktuell: {current_version})")
+                update_message = f"Update verfügbar: {current_version} → {latest_version}"
                 if update_ytdlp():
+                    was_updated = True
+                    update_message = f"Erfolgreich aktualisiert: {current_version} → {latest_version}"
                     # Speichere Check-Datum
                     with open(update_check_file, 'w') as f:
                         json.dump({
                             'last_check': datetime.now().isoformat(),
                             'updated_to': latest_version
                         }, f)
-                    return True
+                else:
+                    update_message = f"Update fehlgeschlagen: {current_version} → {latest_version}"
             else:
                 # Speichere Check-Datum auch wenn keine Updates verfügbar
                 with open(update_check_file, 'w') as f:
@@ -130,7 +141,7 @@ def check_and_update_ytdlp():
         # Fehler bei Update-Check sind nicht kritisch
         print(f"[INFO] Update-Check übersprungen: {e}")
     
-    return ytdlp_available
+    return ytdlp_available, was_updated, update_message
 
 
 def install_ytdlp():
@@ -360,17 +371,25 @@ def install_ffmpeg_macos():
 def ensure_dependencies():
     """
     Stellt sicher, dass alle Abhängigkeiten vorhanden sind
-    Gibt (ytdlp_ok, ffmpeg_ok, messages) zurück
+    Gibt (ytdlp_ok, ffmpeg_ok, messages, has_updates) zurück
     """
     messages = []
     ytdlp_ok = False
     ffmpeg_ok = False
+    has_updates = False
     
     # Prüfe und aktualisiere yt-dlp
-    ytdlp_ok = check_and_update_ytdlp()
+    ytdlp_ok, ytdlp_updated, ytdlp_message = check_and_update_ytdlp()
     if ytdlp_ok:
         ytdlp_available, ytdlp_version = check_ytdlp()
-        messages.append(f"[OK] yt-dlp verfügbar (Version: {ytdlp_version})")
+        if ytdlp_updated:
+            messages.append(f"[OK] yt-dlp erfolgreich aktualisiert: {ytdlp_message}")
+            has_updates = True
+        elif ytdlp_message:
+            messages.append(f"[INFO] yt-dlp: {ytdlp_message}")
+            has_updates = True
+        else:
+            messages.append(f"[OK] yt-dlp verfügbar (Version: {ytdlp_version})")
     else:
         messages.append("[ERROR] yt-dlp Installation/Update fehlgeschlagen")
     
@@ -409,7 +428,7 @@ def ensure_dependencies():
             elif system == 'Darwin':
                 messages.append("  brew install ffmpeg")
     
-    return ytdlp_ok, ffmpeg_ok, messages
+    return ytdlp_ok, ffmpeg_ok, messages, has_updates
 
 
 if __name__ == "__main__":

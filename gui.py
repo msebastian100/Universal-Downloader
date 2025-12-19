@@ -4734,14 +4734,6 @@ Historie-Einträge: {len(self.video_download_history)}
                 
                 self._write_to_log_file(f"[DEBUG] Abhängigkeits-Prüfung: yt-dlp={ytdlp_ok}, ffmpeg={ffmpeg_ok}", "DEBUG")
                 
-                # Wenn beide vorhanden sind, nichts tun
-                if ytdlp_ok and ffmpeg_ok:
-                    self._write_to_log_file("[DEBUG] Alle Abhängigkeiten vorhanden - keine Installation nötig", "DEBUG")
-                    return
-                
-                # Zeige Installations-Dialog
-                self.root.after(0, self._show_dependency_installation_dialog)
-                
                 # Installiere Abhängigkeiten mit Progress-Callback
                 from auto_install_dependencies import ensure_dependencies
                 
@@ -4753,17 +4745,20 @@ Historie-Einträge: {len(self.video_download_history)}
                 # Setze Callback für ensure_dependencies
                 ensure_dependencies._progress_callback = update_progress
                 
+                # Zeige Installations-Dialog (auch wenn Updates durchgeführt werden)
+                self.root.after(0, self._show_dependency_installation_dialog)
+                
                 try:
-                    ytdlp_ok, ffmpeg_ok, messages = ensure_dependencies()
+                    ytdlp_ok, ffmpeg_ok, messages, has_updates = ensure_dependencies()
                 finally:
                     # Entferne Callback
                     if hasattr(ensure_dependencies, '_progress_callback'):
                         delattr(ensure_dependencies, '_progress_callback')
                 
-                self._write_to_log_file(f"[DEBUG] Abhängigkeits-Installation abgeschlossen: yt-dlp={ytdlp_ok}, ffmpeg={ffmpeg_ok}", "DEBUG")
+                self._write_to_log_file(f"[DEBUG] Abhängigkeits-Installation abgeschlossen: yt-dlp={ytdlp_ok}, ffmpeg={ffmpeg_ok}, updates={has_updates}", "DEBUG")
                 
-                # Aktualisiere Dialog mit Ergebnissen
-                self.root.after(0, lambda: self._update_dependency_dialog(ytdlp_ok, ffmpeg_ok, messages))
+                # Aktualisiere Dialog mit Ergebnissen (auch wenn nur Updates durchgeführt wurden)
+                self.root.after(0, lambda: self._update_dependency_dialog(ytdlp_ok, ffmpeg_ok, messages, has_updates))
                 
             except Exception as e:
                 # Zeige Fehler im Dialog
@@ -4847,7 +4842,7 @@ Historie-Einträge: {len(self.video_download_history)}
             self._dep_status_text.config(state=tk.DISABLED)
             self._dep_status_text.see(tk.END)
     
-    def _update_dependency_dialog(self, ytdlp_ok, ffmpeg_ok, messages):
+    def _update_dependency_dialog(self, ytdlp_ok, ffmpeg_ok, messages, has_updates=False):
         """Aktualisiert den Installations-Dialog mit Ergebnissen"""
         if not hasattr(self, '_dep_dialog') or not self._dep_dialog.winfo_exists():
             return
@@ -4869,7 +4864,8 @@ Historie-Einträge: {len(self.video_download_history)}
         self._dep_dialog.protocol("WM_DELETE_WINDOW", self._dep_dialog.destroy)
         
         # Zeige Erfolgsmeldung und frage nach Neustart
-        if ytdlp_ok and ffmpeg_ok:
+        # Frage nach Neustart wenn Updates durchgeführt wurden oder Installation nötig war
+        if (ytdlp_ok and ffmpeg_ok) and (has_updates or not (ytdlp_ok and ffmpeg_ok)):
             self._dep_status_text.config(state=tk.NORMAL)
             self._dep_status_text.insert(tk.END, "\n[OK] Alle Abhängigkeiten wurden erfolgreich installiert!\n")
             self._dep_status_text.config(state=tk.DISABLED)
