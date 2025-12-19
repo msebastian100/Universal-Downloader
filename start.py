@@ -95,40 +95,39 @@ def install_ffmpeg_if_missing():
     return False
 
 if __name__ == "__main__":
-    # Automatische Installation von Abhängigkeiten
+    # Schnelle Prüfung der wichtigsten Abhängigkeiten (nicht blockierend)
     try:
-        from auto_install_dependencies import ensure_dependencies
+        from auto_install_dependencies import check_ytdlp, check_ffmpeg, get_app_dir
         
-        print("[INFO] Prüfe Abhängigkeiten...")
-        ytdlp_ok, ffmpeg_ok, messages = ensure_dependencies()
-        
-        # Zeige nur wichtige Meldungen
-        for msg in messages:
-            if "[ERROR]" in msg or "[WARNING]" in msg or "[OK]" in msg:
-                print(msg)
+        # Schnelle Prüfung ohne Updates/Installation
+        ytdlp_ok, _ = check_ytdlp()
+        ffmpeg_ok, _ = check_ffmpeg()
         
         # Füge ffmpeg zum PATH hinzu (falls lokal installiert)
         if not ffmpeg_ok:
             from pathlib import Path
-            app_dir = Path(__file__).parent if not getattr(sys, 'frozen', False) else Path(sys.executable).parent
+            app_dir = get_app_dir()
             ffmpeg_bin = app_dir / "ffmpeg" / "bin"
             if ffmpeg_bin.exists():
                 os.environ['PATH'] = str(ffmpeg_bin) + os.pathsep + os.environ.get('PATH', '')
                 # Prüfe nochmal
                 ffmpeg_ok, _ = check_ffmpeg()
         
+        # Starte GUI sofort - Abhängigkeiten werden im Hintergrund geprüft/installiert
+        if not ytdlp_ok or not ffmpeg_ok:
+            print("[INFO] Einige Abhängigkeiten fehlen - werden im Hintergrund installiert...")
+        
     except ImportError:
         # Fallback: Alte Methode
         missing = check_dependencies_quick()
-        if "ffmpeg" in missing:
-            install_ffmpeg_if_missing()
-            missing = check_dependencies_quick()
-        
         if missing:
             print("⚠ Warnung: Einige Abhängigkeiten fehlen:")
             for dep in missing:
                 print(f"  - {dep}")
             print("\nVersuche trotzdem zu starten...\n")
+    except Exception as e:
+        # Fehler bei Abhängigkeitsprüfung sind nicht kritisch - starte trotzdem
+        print(f"[INFO] Abhängigkeitsprüfung übersprungen: {e}")
     
     try:
         from gui import main

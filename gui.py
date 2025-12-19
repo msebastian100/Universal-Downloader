@@ -103,10 +103,13 @@ class DeezerDownloaderGUI:
         if self.settings.get('log_cleanup_enabled', False):
             self._cleanup_old_logs()
         
+        # Prüfe und installiere Abhängigkeiten im Hintergrund (falls nötig)
+        self.root.after(1000, self._ensure_dependencies_background)
+        
         # Prüfe auf Updates beim Start (wenn aktiviert)
         if self.settings.get('auto_check_updates', True):
-            # Prüfe im Hintergrund nach 2 Sekunden (damit GUI geladen ist)
-            self.root.after(2000, self._check_updates_on_start)
+            # Prüfe im Hintergrund nach 5 Sekunden (damit GUI vollständig geladen ist)
+            self.root.after(5000, self._check_updates_on_start)
         
         # Downloader-Instanz
         self.downloader = None
