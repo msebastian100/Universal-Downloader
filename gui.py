@@ -5094,28 +5094,49 @@ Historie-Einträge: {len(self.video_download_history)}
             restart_flag_file.touch()
             self._write_to_log_file(f"[DEBUG] Restart-Flag gesetzt: {restart_flag_file}", "DEBUG")
             
+            # Prüfe ob wir als .exe (frozen) oder als Python-Skript laufen
+            is_frozen = getattr(sys, 'frozen', False) or hasattr(sys, '_MEIPASS')
+            
             if sys.platform == "win32":
-                # Windows: Starte die neue .exe
-                current_exe = Path(sys.executable)
-                self._write_to_log_file(f"[DEBUG] Starte neue Instanz: {current_exe}", "DEBUG")
-                
-                # Warte kurz, damit die Installation abgeschlossen ist
+                # Windows: Starte die neue Instanz
                 import time
-                time.sleep(2)  # Längere Wartezeit für Windows
+                time.sleep(2)  # Warte kurz, damit die Installation abgeschlossen ist
                 
-                # Starte neue Version (ohne shell=True, um Probleme zu vermeiden)
-                try:
-                    # Verwende CREATE_NEW_CONSOLE um sicherzustellen, dass es ein separater Prozess ist
-                    subprocess.Popen(
-                        [str(current_exe)],
-                        creationflags=subprocess.CREATE_NEW_CONSOLE,
-                        close_fds=True
-                    )
-                    self._write_to_log_file("[DEBUG] Neue Instanz gestartet", "DEBUG")
-                except Exception as e:
-                    self._write_to_log_file(f"[ERROR] Fehler beim Starten der neuen Instanz: {e}", "ERROR")
-                    # Fallback: Versuche mit shell=True
-                    subprocess.Popen([str(current_exe)], shell=True)
+                if is_frozen:
+                    # Als .exe: Starte die .exe direkt
+                    current_exe = Path(sys.executable)
+                    self._write_to_log_file(f"[DEBUG] Starte neue Instanz (.exe): {current_exe}", "DEBUG")
+                    try:
+                        # Verwende CREATE_NEW_CONSOLE um sicherzustellen, dass es ein separater Prozess ist
+                        subprocess.Popen(
+                            [str(current_exe)],
+                            creationflags=subprocess.CREATE_NEW_CONSOLE,
+                            close_fds=True
+                        )
+                        self._write_to_log_file("[DEBUG] Neue Instanz gestartet", "DEBUG")
+                    except Exception as e:
+                        self._write_to_log_file(f"[ERROR] Fehler beim Starten der neuen Instanz: {e}", "ERROR")
+                        # Fallback: Versuche mit shell=True
+                        subprocess.Popen([str(current_exe)], shell=True)
+                else:
+                    # Als Python-Skript: Starte start.py mit Python
+                    script_dir = Path(__file__).parent.absolute()
+                    start_script = script_dir / "start.py"
+                    python_exe = sys.executable
+                    self._write_to_log_file(f"[DEBUG] Starte neue Instanz (Python-Skript): {python_exe} {start_script}", "DEBUG")
+                    try:
+                        # Verwende CREATE_NEW_CONSOLE für Windows
+                        subprocess.Popen(
+                            [str(python_exe), str(start_script)],
+                            creationflags=subprocess.CREATE_NEW_CONSOLE,
+                            close_fds=True,
+                            cwd=str(script_dir)
+                        )
+                        self._write_to_log_file("[DEBUG] Neue Instanz gestartet", "DEBUG")
+                    except Exception as e:
+                        self._write_to_log_file(f"[ERROR] Fehler beim Starten der neuen Instanz: {e}", "ERROR")
+                        # Fallback: Versuche mit shell=True
+                        subprocess.Popen([str(python_exe), str(start_script)], shell=True, cwd=str(script_dir))
                 
                 # Warte länger, damit die neue Instanz sicher starten kann
                 time.sleep(3)
@@ -5127,9 +5148,15 @@ Historie-Einträge: {len(self.video_download_history)}
                 sys.exit(0)
             elif sys.platform == "linux":
                 # Linux: Starte die Anwendung neu
-                # Versuche die Anwendung neu zu starten
-                # (abhängig davon, wie sie installiert wurde)
-                subprocess.Popen(['universal-downloader'], shell=True)
+                if is_frozen:
+                    # Als .deb installiert: Verwende den System-Befehl
+                    subprocess.Popen(['universal-downloader'], shell=True)
+                else:
+                    # Als Python-Skript: Starte start.py
+                    script_dir = Path(__file__).parent.absolute()
+                    start_script = script_dir / "start.py"
+                    python_exe = sys.executable
+                    subprocess.Popen([str(python_exe), str(start_script)], cwd=str(script_dir))
                 self.root.quit()
                 self.root.destroy()
                 sys.exit(0)
@@ -5144,6 +5171,8 @@ Historie-Einträge: {len(self.video_download_history)}
                 sys.exit(0)
         except Exception as e:
             print(f"[ERROR] Fehler beim Neustart: {e}")
+            import traceback
+            self._write_to_log_file(f"[ERROR] Traceback: {traceback.format_exc()}", "ERROR")
             messagebox.showinfo(
                 "Update installiert",
                 "Das Update wurde installiert. Bitte starten Sie die Anwendung manuell neu."
