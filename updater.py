@@ -58,17 +58,33 @@ class UpdateChecker:
                 system = platform.system().lower()
                 
                 if system == 'windows':
-                    # Suche nach .exe
+                    # Suche nach .exe (priorisiere UniversalDownloader.exe)
+                    download_url = None
+                    # Zuerst nach UniversalDownloader.exe suchen
                     for asset in assets:
-                        if asset['name'].endswith('.exe'):
+                        if 'UniversalDownloader' in asset['name'] and asset['name'].endswith('.exe'):
                             download_url = asset['browser_download_url']
                             break
+                    # Fallback: Irgendeine .exe Datei
+                    if not download_url:
+                        for asset in assets:
+                            if asset['name'].endswith('.exe'):
+                                download_url = asset['browser_download_url']
+                                break
                 elif system == 'linux':
-                    # Suche nach .deb
+                    # Suche nach .deb (priorisiere universal-downloader)
+                    download_url = None
+                    # Zuerst nach universal-downloader suchen
                     for asset in assets:
-                        if asset['name'].endswith('.deb'):
+                        if 'universal-downloader' in asset['name'].lower() and asset['name'].endswith('.deb'):
                             download_url = asset['browser_download_url']
                             break
+                    # Fallback: Irgendeine .deb Datei
+                    if not download_url:
+                        for asset in assets:
+                            if asset['name'].endswith('.deb'):
+                                download_url = asset['browser_download_url']
+                                break
                 elif system == 'darwin':
                     # Suche nach .dmg oder .pkg
                     for asset in assets:
@@ -81,8 +97,23 @@ class UpdateChecker:
                     'download_url': download_url,
                     'changelog': data.get('body', ''),
                     'release_date': data.get('published_at', ''),
-                    'release_url': data.get('html_url', '')
+                    'release_url': data.get('html_url', ''),
+                    'assets': assets  # Für Debugging
                 }
+                
+                # Warnung wenn keine Download-URL gefunden wurde
+                if not download_url and assets:
+                    # Debug-Info: Zeige verfügbare Assets
+                    available_assets = [a['name'] for a in assets]
+                    print(f"[WARNING] Keine passende Asset-Datei gefunden für {system}")
+                    print(f"[INFO] Verfügbare Assets: {available_assets}")
+                    # Fallback: Verwende erste verfügbare Asset (außer Source Code)
+                    for asset in assets:
+                        if not asset['name'].endswith(('.zip', '.tar.gz')):
+                            download_url = asset['browser_download_url']
+                            update_info['download_url'] = download_url
+                            print(f"[INFO] Verwende Fallback-Asset: {asset['name']}")
+                            break
             else:
                 # Eigene JSON-Struktur
                 latest_version = data.get('version', '')

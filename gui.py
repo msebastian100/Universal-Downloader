@@ -17,6 +17,8 @@ import os
 import sys
 import json
 import base64
+import webbrowser
+import platform
 from deezer_downloader import DeezerDownloader
 
 # Import Authentifizierung
@@ -4627,15 +4629,37 @@ Historie-Einträge: {len(self.video_download_history)}
                             result_text.insert(tk.END, f"Änderungen:\n{info['changelog']}\n\n")
                         if info.get('release_date'):
                             result_text.insert(tk.END, f"Veröffentlicht: {info['release_date']}\n")
+                        
+                        # Zeige Download-URL Status
+                        if info.get('download_url'):
+                            result_text.insert(tk.END, f"\n✓ Download-URL verfügbar\n")
+                        else:
+                            result_text.insert(tk.END, f"\n⚠ Download-URL nicht verfügbar\n")
+                            if 'assets' in info and info['assets']:
+                                result_text.insert(tk.END, f"\nVerfügbare Assets:\n")
+                                for asset in info['assets']:
+                                    result_text.insert(tk.END, f"  - {asset['name']}\n")
+                            result_text.insert(tk.END, f"\nBitte laden Sie das Update manuell von der Release-Seite herunter:\n")
+                            result_text.insert(tk.END, f"{info.get('release_url', 'GitHub Releases')}\n")
+                        
                         result_text.config(state=tk.DISABLED)
                         
-                        # Download-Button hinzufügen
-                        download_btn = ttk.Button(
-                            button_frame,
-                            text="📥 Update herunterladen",
-                            command=lambda: self._download_update(info, update_window)
-                        )
-                        download_btn.pack(side=tk.LEFT, padx=5)
+                        # Download-Button hinzufügen (nur wenn URL verfügbar)
+                        if info.get('download_url'):
+                            download_btn = ttk.Button(
+                                button_frame,
+                                text="📥 Update herunterladen",
+                                command=lambda: self._download_update(info, update_window)
+                            )
+                            download_btn.pack(side=tk.LEFT, padx=5)
+                        else:
+                            # Link zu Release-Seite
+                            release_btn = ttk.Button(
+                                button_frame,
+                                text="🔗 Zur Release-Seite",
+                                command=lambda: webbrowser.open(info.get('release_url', ''))
+                            )
+                            release_btn.pack(side=tk.LEFT, padx=5)
                     else:
                         status_label.config(text="✓ Sie verwenden die neueste Version")
                         result_text.config(state=tk.NORMAL)
@@ -4670,7 +4694,19 @@ Historie-Einträge: {len(self.video_download_history)}
     def _download_update(self, update_info, parent_window=None):
         """Lädt ein Update herunter"""
         if not update_info.get('download_url'):
-            messagebox.showwarning("Warnung", "Download-URL nicht verfügbar.")
+            # Zeige detaillierte Fehlermeldung
+            assets_info = ""
+            if 'assets' in update_info and update_info['assets']:
+                available_assets = [a['name'] for a in update_info['assets']]
+                assets_info = f"\n\nVerfügbare Assets im Release:\n" + "\n".join(f"  - {name}" for name in available_assets)
+            
+            messagebox.showwarning(
+                "Warnung", 
+                f"Download-URL nicht verfügbar für Ihr Betriebssystem ({platform.system()}).\n"
+                f"Bitte laden Sie das Update manuell von der Release-Seite herunter:\n"
+                f"{update_info.get('release_url', 'GitHub Releases')}"
+                + assets_info
+            )
             return
         
         # Wähle Speicherort
