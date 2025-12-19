@@ -1,5 +1,7 @@
 # Universal Downloader
 
+[![Build Releases](https://github.com/msebastian100/Universal-Downloader/actions/workflows/build.yml/badge.svg)](https://github.com/msebastian100/Universal-Downloader/actions/workflows/build.yml)
+
 Ein Universal-Downloader für Musik, Hörbücher und Videos - für privaten Gebrauch.
 
 **Unterstützte Quellen:**
