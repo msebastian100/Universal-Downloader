@@ -4990,12 +4990,12 @@ Historie-Einträge: {len(self.video_download_history)}
             print(f"[ERROR] Fehler bei Update-Installation: {e}")
             return False
     
-    def _restart_application(self, update_file: Path):
+    def _restart_application(self, update_file: Path = None):
         """
-        Startet die Anwendung neu nach einem Update
+        Startet die Anwendung neu nach einem Update oder nach Abhängigkeits-Installation
         
         Args:
-            update_file: Pfad zur neuen .exe (wird nicht mehr benötigt, da bereits installiert)
+            update_file: Pfad zur neuen .exe (optional, wird nicht mehr benötigt, da bereits installiert)
         """
         try:
             # Setze Flag, um zu verhindern, dass nach Neustart sofort wieder geprüft wird
