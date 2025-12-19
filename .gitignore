@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv
+
+# Build-Artefakte
+build/
+dist/
+*.spec
+*.exe
+*.deb
+deb_build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-project
+*.sublime-workspace
+
+# Logs
+Logs/
+*.log
+
+# Konfiguration (sensible Daten)
+.deezer_config.json
+.audible_config.json
+settings.json
+
+# OS
+.DS_Store
+Thumbs.db
+*.tmp
+
+# Downloads (optional - falls nicht ins Repository soll)
+# Downloads/
