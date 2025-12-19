@@ -6,25 +6,29 @@ Build-Script für Windows .exe mit PyInstaller
 
 import os
 import sys
-import subprocess
-import shutil
-from pathlib import Path
 
-# Fix encoding für Windows - muss ganz am Anfang sein
+# Fix encoding für Windows - MUSS ganz am Anfang sein, vor allen anderen Imports!
 if sys.platform == 'win32' or os.getenv('GITHUB_ACTIONS') == 'true':
     import io
     # Setze UTF-8 Encoding für stdout/stderr
-    if sys.stdout.encoding != 'utf-8':
-        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace', line_buffering=True)
-    if sys.stderr.encoding != 'utf-8':
-        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace', line_buffering=True)
+    try:
+        if hasattr(sys.stdout, 'buffer'):
+            sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace', line_buffering=True)
+        if hasattr(sys.stderr, 'buffer'):
+            sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace', line_buffering=True)
+    except:
+        pass  # Falls es nicht funktioniert, ignorieren
+
+import subprocess
+import shutil
+from pathlib import Path
 
 # Für PyInstaller spec-Datei
 if __name__ != "__main__":
     import os
 
 def check_pyinstaller():
-    """Prüft ob PyInstaller installiert ist"""
+    """Prueft ob PyInstaller installiert ist"""
     try:
         import PyInstaller
         return True
@@ -43,7 +47,7 @@ def build_exe():
     print("Erstelle Windows .exe Datei...")
     print("=" * 70)
     
-    # Prüfe ob PyInstaller vorhanden ist
+    # Pruefe ob PyInstaller vorhanden ist
     if not check_pyinstaller():
         print("PyInstaller nicht gefunden. Installiere...")
         install_pyinstaller()
@@ -52,7 +56,7 @@ def build_exe():
     build_dir = Path("build")
     dist_dir = Path("dist")
     
-    # Lösche alte Builds
+    # Loesche alte Builds
     if build_dir.exists():
         shutil.rmtree(build_dir)
     if dist_dir.exists():
@@ -101,10 +105,10 @@ def build_exe():
             "start.py"
         ]
         
-        # Entferne leere Einträge
+        # Entferne leere Eintraege
         pyinstaller_cmd = [x for x in pyinstaller_cmd if x]
     
-    print(f"\nFühre aus: {' '.join(pyinstaller_cmd)}\n")
+    print(f"\nFuehre aus: {' '.join(pyinstaller_cmd)}\n")
     
     try:
         result = subprocess.run(pyinstaller_cmd, check=True, capture_output=False)
@@ -112,7 +116,7 @@ def build_exe():
         print("[OK] Build erfolgreich!")
         print("=" * 70)
         
-        # Prüfe ob .exe erstellt wurde
+        # Pruefe ob .exe erstellt wurde
         exe_path = dist_dir / "UniversalDownloader.exe"
         if exe_path.exists():
             print(f"\nDie .exe Datei befindet sich in: {dist_dir.absolute()}")
