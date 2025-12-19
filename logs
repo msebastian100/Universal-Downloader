@@ -3,8 +3,6 @@ PermissionError: [Errno 13] Permission denied
 During handling of the above exception, another exception occurred:
 
 Traceback (most recent call last):
-  File "start.py", line 213, in <module>
+  File "start.py", line 229, in <module>
   File "pathlib.py", line 1147, in unlink
 PermissionError: [WinError 32] Der Prozess kann nicht auf die Datei zugreifen, da sie von einem anderen Prozess verwendet wird: 'C:\\Users\\basti\\AppData\\Local\\Temp\\universal_downloader.lock'
-
-
