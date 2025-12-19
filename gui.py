@@ -5579,26 +5579,62 @@ Copyright (c) 2025 Universal Downloader Contributors
         except Exception as e:
             self.video_log(f"⚠ Fehler beim Speichern der Video-Daten: {e}")
     
-    def video_log(self, message: str):
+    def video_log(self, message: str, level: str = "INFO"):
         """Fügt eine Nachricht zum Video-Log hinzu"""
-        # Schreibe in Log-Datei
-        self._write_to_log_file(f"[VIDEO] {message}")
+        # Bestimme Level basierend auf Nachricht
+        if "[DEBUG]" in message:
+            level = "DEBUG"
+        elif "[WARNING]" in message or "⚠" in message:
+            level = "WARNING"
+        elif "[ERROR]" in message or "✗" in message:
+            level = "ERROR"
         
-        # Zeige in GUI (optional - kann reduziert werden)
-        self.video_log_text.config(state=tk.NORMAL)
-        self.video_log_text.insert(tk.END, message + "\n")
-        self.video_log_text.see(tk.END)
-        self.video_log_text.config(state=tk.DISABLED)
-        self.root.update_idletasks()
+        # Prüfe Log-Level-Einstellung
+        log_level_setting = self.settings.get('log_level', 'debug')
+        
+        # In normalem Modus: Überspringe DEBUG-Logs in GUI
+        show_in_gui = True
+        if log_level_setting == 'normal' and level == 'DEBUG':
+            show_in_gui = False
+        
+        # Schreibe in Log-Datei (immer, aber mit Level-Filterung)
+        self._write_to_log_file(f"[VIDEO] {message}", level)
+        
+        # Zeige in GUI (wenn nicht übersprungen)
+        if show_in_gui and hasattr(self, 'video_log_text'):
+            self.video_log_text.config(state=tk.NORMAL)
+            level_prefix = f"[{level}] " if level != "INFO" else ""
+            self.video_log_text.insert(tk.END, f"{level_prefix}{message}\n")
+            self.video_log_text.see(tk.END)
+            self.video_log_text.config(state=tk.DISABLED)
+            self.root.update_idletasks()
     
-    def log(self, message: str):
+    def log(self, message: str, level: str = "INFO"):
         """Fügt eine Nachricht zum Log hinzu"""
-        # Schreibe in Log-Datei
-        self._write_to_log_file(f"[DEEZER] {message}")
+        # Bestimme Level basierend auf Nachricht
+        if "[DEBUG]" in message:
+            level = "DEBUG"
+        elif "[WARNING]" in message or "⚠" in message:
+            level = "WARNING"
+        elif "[ERROR]" in message or "✗" in message:
+            level = "ERROR"
         
-        # Zeige in GUI
-        self.log_text.config(state=tk.NORMAL)
-        self.log_text.insert(tk.END, message + "\n")
+        # Prüfe Log-Level-Einstellung
+        log_level_setting = self.settings.get('log_level', 'debug')
+        
+        # In normalem Modus: Überspringe DEBUG-Logs in GUI
+        show_in_gui = True
+        if log_level_setting == 'normal' and level == 'DEBUG':
+            show_in_gui = False
+        
+        # Schreibe in Log-Datei (immer, aber mit Level-Filterung)
+        self._write_to_log_file(f"[DEEZER] {message}", level)
+        
+        # Zeige in GUI (wenn nicht übersprungen)
+        if show_in_gui and hasattr(self, 'log_text'):
+            self.log_text.config(state=tk.NORMAL)
+            level_prefix = f"[{level}] " if level != "INFO" else ""
+            self.log_text.insert(tk.END, f"{level_prefix}{message}\n")
         self.log_text.see(tk.END)
         self.log_text.config(state=tk.DISABLED)
         self.root.update_idletasks()
