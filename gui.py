@@ -4865,7 +4865,7 @@ Historie-Einträge: {len(self.video_download_history)}
         
         # Zeige Erfolgsmeldung und frage nach Neustart
         # Frage nach Neustart wenn Updates durchgeführt wurden oder Installation nötig war
-        if (ytdlp_ok and ffmpeg_ok) and (has_updates or not (ytdlp_ok and ffmpeg_ok)):
+        if has_updates or not (ytdlp_ok and ffmpeg_ok):
             self._dep_status_text.config(state=tk.NORMAL)
             self._dep_status_text.insert(tk.END, "\n[OK] Alle Abhängigkeiten wurden erfolgreich installiert!\n")
             self._dep_status_text.config(state=tk.DISABLED)
