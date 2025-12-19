@@ -260,7 +260,18 @@ if not exist "%PYTHON_EXE%" (
 
 REM Starte Python-Skript (versteckt) mit explizitem Arbeitsverzeichnis
 cd /d "%~dp0"
-start "" /min "!FULL_PYTHON_PATH!" "start.py"
+REM Verwende start mit /B (ohne neues Fenster) und /MIN (minimiert)
+REM Wichtig: Verwende pythonw.exe wenn moeglich, sonst python.exe
+if /i "!FULL_PYTHON_PATH!"=="pythonw.exe" (
+    REM Wenn nur pythonw.exe, versuche vollstaendigen Pfad zu finden
+    for /f "delims=" %%P in ('where pythonw.exe 2^>nul') do (
+        set "FULL_PYTHON_PATH=%%P"
+        goto :start_python
+    )
+)
+:start_python
+REM Starte mit start-Befehl, aber ohne neues Fenster
+start "" /B /MIN "!FULL_PYTHON_PATH!" "start.py"
 set START_RESULT=%errorlevel%
 
 REM Warte kurz und pruefe ob Prozess laeuft

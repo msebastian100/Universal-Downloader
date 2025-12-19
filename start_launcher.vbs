@@ -331,13 +331,27 @@ WriteLog "[INFO] Arbeitsverzeichnis: " & scriptPath
 WriteLog "[INFO] Python-Skript: " & pythonScript
 
 ' Starte mit vollständigem Pfad und explizitem Arbeitsverzeichnis
+' Verwende Shell.Application für bessere Kontrolle
+Dim objShell
+Set objShell = CreateObject("Shell.Application")
 Dim startCmd
 startCmd = Chr(34) & fullPythonPath & Chr(34) & " " & Chr(34) & pythonScript & Chr(34)
 WriteLog "[INFO] Start-Befehl: " & startCmd
 
+' Starte mit ShellExecute für bessere Kompatibilität
+On Error Resume Next
+objShell.ShellExecute fullPythonPath, Chr(34) & pythonScript & Chr(34), scriptPath, "open", 0
 Dim startResult
-startResult = WshShell.Run(startCmd, 0, False)
-WriteLog "[INFO] Start-Befehl ausgeführt, Exit-Code: " & startResult
+If Err.Number = 0 Then
+    startResult = 0
+    WriteLog "[INFO] Start-Befehl ausgeführt (ShellExecute), Exit-Code: " & startResult
+Else
+    ' Fallback: Verwende WshShell.Run
+    WriteLog "[WARNING] ShellExecute fehlgeschlagen, verwende WshShell.Run: " & Err.Description
+    startResult = WshShell.Run(startCmd, 0, False)
+    WriteLog "[INFO] Start-Befehl ausgeführt (WshShell.Run), Exit-Code: " & startResult
+End If
+On Error Goto 0
 
 ' Prüfe ob Prozess gestartet wurde (warte kurz)
 WScript.Sleep 1000
