@@ -19,6 +19,9 @@ import json
 import base64
 import webbrowser
 import platform
+import shutil
+import subprocess
+import tempfile
 from deezer_downloader import DeezerDownloader
 
 # Import Authentifizierung
@@ -4710,7 +4713,6 @@ Historie-Einträge: {len(self.video_download_history)}
             return
         
         # Automatischer Speicherort (Temp-Ordner)
-        import tempfile
         temp_dir = Path(tempfile.gettempdir())
         extension = ".exe" if sys.platform == "win32" else ".deb"
         save_path = temp_dir / f"UniversalDownloader_Update_{update_info['version']}{extension}"
@@ -4801,11 +4803,9 @@ Historie-Einträge: {len(self.video_download_history)}
                 # Erstelle Backup der alten .exe
                 backup_path = current_exe.parent / f"{current_exe.stem}_backup_{get_version()}.exe"
                 if current_exe.exists():
-                    import shutil
                     shutil.copy2(current_exe, backup_path)
                 
                 # Ersetze die .exe
-                import shutil
                 shutil.copy2(update_file, current_exe)
                 
                 # Lösche Update-Datei aus Temp
@@ -4814,7 +4814,6 @@ Historie-Einträge: {len(self.video_download_history)}
                 return True
             elif sys.platform == "linux":
                 # Linux: Installiere .deb Paket
-                import subprocess
                 result = subprocess.run(
                     ['sudo', 'dpkg', '-i', str(update_file)],
                     capture_output=True,
@@ -4842,7 +4841,6 @@ Historie-Einträge: {len(self.video_download_history)}
                 current_exe = Path(sys.executable)
                 
                 # Starte neue Version
-                import subprocess
                 subprocess.Popen([str(current_exe)], shell=True)
                 
                 # Schließe aktuelle Instanz
@@ -4851,7 +4849,6 @@ Historie-Einträge: {len(self.video_download_history)}
                 sys.exit(0)
             elif sys.platform == "linux":
                 # Linux: Starte die Anwendung neu
-                import subprocess
                 # Versuche die Anwendung neu zu starten
                 # (abhängig davon, wie sie installiert wurde)
                 subprocess.Popen(['universal-downloader'], shell=True)
