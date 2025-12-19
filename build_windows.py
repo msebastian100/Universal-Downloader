@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Build-Script für Windows .exe mit PyInstaller
+Build-Script fuer Windows .exe mit PyInstaller
 """
 
 import os
 import sys
 
-# Fix encoding für Windows - MUSS ganz am Anfang sein, vor allen anderen Imports!
+# Fix encoding fuer Windows - MUSS ganz am Anfang sein, vor allen anderen Imports!
 if sys.platform == 'win32' or os.getenv('GITHUB_ACTIONS') == 'true':
     import io
-    # Setze UTF-8 Encoding für stdout/stderr
+    # Setze UTF-8 Encoding fuer stdout/stderr
     try:
         if hasattr(sys.stdout, 'buffer'):
             sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace', line_buffering=True)
@@ -23,7 +23,7 @@ import subprocess
 import shutil
 from pathlib import Path
 
-# Für PyInstaller spec-Datei
+# Fuer PyInstaller spec-Datei
 if __name__ != "__main__":
     import os
 
