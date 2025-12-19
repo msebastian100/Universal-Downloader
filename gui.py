@@ -256,6 +256,40 @@ class DeezerDownloaderGUI:
                                     self.root.iconbitmap(str(icon_path))
                                     icon_set = True
                                     self._safe_log(f"[ICON] Icon geladen (ICO): {icon_path.name}")
+                                    
+                                    # Setze auch das Prozess-Icon (für Taskleiste und Task-Manager)
+                                    try:
+                                        import ctypes
+                                        from ctypes import wintypes
+                                        
+                                        # Lade Icon aus Datei
+                                        # LR_LOADFROMFILE = 0x00000010
+                                        # IMAGE_ICON = 1
+                                        LR_LOADFROMFILE = 0x00000010
+                                        IMAGE_ICON = 1
+                                        NULL = 0
+                                        
+                                        # LoadImageW für Unicode-Pfade
+                                        user32 = ctypes.windll.user32
+                                        hicon = user32.LoadImageW(
+                                            NULL,
+                                            str(icon_path),
+                                            IMAGE_ICON,
+                                            0, 0,
+                                            LR_LOADFROMFILE
+                                        )
+                                        
+                                        if hicon:
+                                            # Setze Icon für große und kleine Icons
+                                            # WM_SETICON: 0x0080 (ICON_BIG), 0x0081 (ICON_SMALL)
+                                            hwnd = self.root.winfo_id()
+                                            user32.SendMessageW(hwnd, 0x0080, hicon, 0)  # ICON_BIG
+                                            user32.SendMessageW(hwnd, 0x0081, hicon, 0)  # ICON_SMALL
+                                            self._safe_log(f"[ICON] Prozess-Icon gesetzt: {icon_path.name}")
+                                    except Exception as e:
+                                        # Fehler beim Setzen des Prozess-Icons ist nicht kritisch
+                                        self._safe_log(f"[ICON] Konnte Prozess-Icon nicht setzen: {e}")
+                                    
                                     break
                                 except Exception as e:
                                     self._safe_log(f"[ICON] Fehler beim Laden von ICO: {e}")
