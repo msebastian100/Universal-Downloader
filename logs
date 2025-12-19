@@ -1,40 +1,130 @@
-[2025/12/19 23:39:45] ==========================================
-[2025/12/19 23:39:45] Launcher gestartet: D:\Users\basti\Downloads\Universal-Downloader\start_launcher.vbs
-[2025/12/19 23:39:45] Verzeichnis: D:\Users\basti\Downloads\Universal-Downloader
-[2025/12/19 23:39:45] [OK] start.py gefunden: D:\Users\basti\Downloads\Universal-Downloader\start.py
-[2025/12/19 23:39:45] [INFO] Starte Python-Suche...
-[2025/12/19 23:39:45] [INFO] Methode 1: Prüfe pythonw.exe im PATH...
-[2025/12/19 23:39:45] [OK] Python gefunden (Methode 1): pythonw.exe im PATH
-[2025/12/19 23:39:45] [INFO] Starte Anwendung mit: pythonw.exe D:\Users\basti\Downloads\Universal-Downloader\start.py
-[2025/12/19 23:39:45] [INFO] Start-Befehl ausgeführt, Exit-Code: 0
-[2025/12/19 23:39:45] [OK] Launcher beendet erfolgreich
-[2025/12/19 23:54:14] ==========================================
-[2025/12/19 23:54:14] Launcher gestartet: D:\Users\basti\Downloads\Universal-Downloader\Universal-Downloader-main\start_launcher.vbs
-[2025/12/19 23:54:14] Verzeichnis: D:\Users\basti\Downloads\Universal-Downloader\Universal-Downloader-main
-[2025/12/19 23:54:14] [OK] start.py gefunden: D:\Users\basti\Downloads\Universal-Downloader\Universal-Downloader-main\start.py
-[2025/12/19 23:54:14] [INFO] Starte Python-Suche...
-[2025/12/19 23:54:14] [INFO] Methode 1: Prüfe pythonw.exe im PATH...
-[2025/12/19 23:54:14] [OK] Python gefunden (Methode 1): pythonw.exe im PATH
-[2025/12/19 23:54:14] [INFO] Starte Anwendung mit: pythonw.exe D:\Users\basti\Downloads\Universal-Downloader\Universal-Downloader-main\start.py
-[2025/12/19 23:54:15] [INFO] Vollständiger Python-Pfad: C:\Users\basti\AppData\Local\Programs\Python\Python310\pythonw.exe
-[2025/12/19 23:54:15] [INFO] Arbeitsverzeichnis: D:\Users\basti\Downloads\Universal-Downloader\Universal-Downloader-main
-[2025/12/19 23:54:15] [INFO] Python-Skript: D:\Users\basti\Downloads\Universal-Downloader\Universal-Downloader-main\start.py
-[2025/12/19 23:54:15] [INFO] Start-Befehl: "C:\Users\basti\AppData\Local\Programs\Python\Python310\pythonw.exe" "D:\Users\basti\Downloads\Universal-Downloader\Universal-Downloader-main\start.py"
-[2025/12/19 23:54:15] [INFO] Start-Befehl ausgeführt (ShellExecute), Exit-Code: 0
-[2025/12/19 23:54:16] [WARNING] Python-Prozess scheint nicht zu laufen
-[2025/12/19 23:54:16] [OK] Launcher beendet erfolgreich
-[2025/12/19 23:56:13] ==========================================
-[2025/12/19 23:56:13] Launcher gestartet: D:\Users\basti\Downloads\Universal-Downloader\Universal-Downloader-main\start_launcher.vbs
-[2025/12/19 23:56:13] Verzeichnis: D:\Users\basti\Downloads\Universal-Downloader\Universal-Downloader-main
-[2025/12/19 23:56:13] [OK] start.py gefunden: D:\Users\basti\Downloads\Universal-Downloader\Universal-Downloader-main\start.py
-[2025/12/19 23:56:13] [INFO] Starte Python-Suche...
-[2025/12/19 23:56:13] [INFO] Methode 1: Prüfe pythonw.exe im PATH...
-[2025/12/19 23:56:13] [OK] Python gefunden (Methode 1): pythonw.exe im PATH
-[2025/12/19 23:56:13] [INFO] Starte Anwendung mit: pythonw.exe D:\Users\basti\Downloads\Universal-Downloader\Universal-Downloader-main\start.py
-[2025/12/19 23:56:14] [INFO] Vollständiger Python-Pfad: C:\Users\basti\AppData\Local\Programs\Python\Python310\pythonw.exe
-[2025/12/19 23:56:14] [INFO] Arbeitsverzeichnis: D:\Users\basti\Downloads\Universal-Downloader\Universal-Downloader-main
-[2025/12/19 23:56:14] [INFO] Python-Skript: D:\Users\basti\Downloads\Universal-Downloader\Universal-Downloader-main\start.py
-[2025/12/19 23:56:14] [INFO] Start-Befehl: "C:\Users\basti\AppData\Local\Programs\Python\Python310\pythonw.exe" "D:\Users\basti\Downloads\Universal-Downloader\Universal-Downloader-main\start.py"
-[2025/12/19 23:56:14] [INFO] Start-Befehl ausgeführt (ShellExecute), Exit-Code: 0
-[2025/12/19 23:56:15] [WARNING] Python-Prozess scheint nicht zu laufen
-[2025/12/19 23:56:15] [OK] Launcher beendet erfolgreich
+bat
+
+Der Befehl "ncher" ist entweder falsch geschrieben oder
+konnte nicht gefunden werden.
+Der Befehl "rsteckt" ist entweder falsch geschrieben oder
+konnte nicht gefunden werden.
+Der Befehl "ole" ist entweder falsch geschrieben oder
+konnte nicht gefunden werden.
+Der Befehl ""D:\Users\basti\Downloads\Universal-Downloader\"" ist entweder falsch geschrieben oder
+konnte nicht gefunden werden.
+Der Befehl "og-Datei" ist entweder falsch geschrieben oder
+konnte nicht gefunden werden.
+Der Befehl "OG_FILE" ist entweder falsch geschrieben oder
+konnte nicht gefunden werden.
+Der Befehl "chreibe" ist entweder falsch geschrieben oder
+konnte nicht gefunden werden.
+Das System kann den angegebenen Pfad nicht finden.
+Das System kann den angegebenen Pfad nicht finden.
+Das System kann den angegebenen Pfad nicht finden.
+Das System kann den angegebenen Pfad nicht finden.
+Der Befehl "efe" ist entweder falsch geschrieben oder
+konnte nicht gefunden werden.
+Der Befehl "xist" ist entweder falsch geschrieben oder
+konnte nicht gefunden werden.
+Der Befehl "Fallback" ist entweder falsch geschrieben oder
+konnte nicht gefunden werden.
+Die Syntax für den Dateinamen, Verzeichnisnamen oder die Datenträgerbezeichnung ist falsch.
+Das System kann den angegebenen Pfad nicht finden.
+Das System kann den angegebenen Pfad nicht finden.
+Das System kann den angegebenen Pfad nicht finden.
+Das System kann den angegebenen Pfad nicht finden.
+Der Befehl "üfe" ist entweder falsch geschrieben oder
+konnte nicht gefunden werden.
+Der Befehl "xist" ist entweder falsch geschrieben oder
+konnte nicht gefunden werden.
+Das System kann den angegebenen Pfad nicht finden.
+Der Befehl "." ist entweder falsch geschrieben oder
+konnte nicht gefunden werden.
+Der Befehl "FEHLER:" ist entweder falsch geschrieben oder
+konnte nicht gefunden werden.
+Der Befehl "." ist entweder falsch geschrieben oder
+konnte nicht gefunden werden.
+Der Befehl "Log-Datei:" ist entweder falsch geschrieben oder
+konnte nicht gefunden werden.
+Der Befehl "." ist entweder falsch geschrieben oder
+konnte nicht gefunden werden.
+Der Befehl "e" ist entweder falsch geschrieben oder
+konnte nicht gefunden werden.
+Der Befehl "/b" ist entweder falsch geschrieben oder
+konnte nicht gefunden werden.
+Das System kann den angegebenen Pfad nicht finden.
+Der Befehl "suche" ist entweder falsch geschrieben oder
+konnte nicht gefunden werden.
+Der Befehl "N_EXE" ist entweder falsch geschrieben oder
+konnte nicht gefunden werden.
+Der Befehl "enabledelayedexpansion" ist entweder falsch geschrieben oder
+konnte nicht gefunden werden.
+Der Befehl "atetimeLOG_FILE"" ist entweder falsch geschrieben oder
+konnte nicht gefunden werden.
+Der Befehl "ode" ist entweder falsch geschrieben oder
+konnte nicht gefunden werden.
+Das System kann den angegebenen Pfad nicht finden.
+Der Befehl "rlevel" ist entweder falsch geschrieben oder
+konnte nicht gefunden werden.
+Der Befehl "PYTHON_EXE" ist entweder falsch geschrieben oder
+konnte nicht gefunden werden.
+Das System kann den angegebenen Pfad nicht finden.
+Der Befehl "ethode" ist entweder falsch geschrieben oder
+konnte nicht gefunden werden.
+Der Befehl "datetimeLOG_FILE"" ist entweder falsch geschrieben oder
+konnte nicht gefunden werden.
+Das System kann den angegebenen Pfad nicht finden.
+Der Befehl "rlevel" ist entweder falsch geschrieben oder
+konnte nicht gefunden werden.
+Der Befehl "PYTHON_EXE" ist entweder falsch geschrieben oder
+konnte nicht gefunden werden.
+Das System kann den angegebenen Pfad nicht finden.
+Der Befehl "ethode" ist entweder falsch geschrieben oder
+konnte nicht gefunden werden.
+Der Befehl "datetimeLOG_FILE"" ist entweder falsch geschrieben oder
+konnte nicht gefunden werden.
+Das System kann den angegebenen Pfad nicht finden.
+Der Befehl "t" ist entweder falsch geschrieben oder
+konnte nicht gefunden werden.
+Der Befehl "PYTHON_EXE" ist entweder falsch geschrieben oder
+konnte nicht gefunden werden.
+Das System kann den angegebenen Pfad nicht finden.
+Der Befehl "o" ist entweder falsch geschrieben oder
+konnte nicht gefunden werden.
+Der Befehl "Methode" ist entweder falsch geschrieben oder
+konnte nicht gefunden werden.
+Das System kann den angegebenen Pfad nicht finden.
+Der Befehl "t" ist entweder falsch geschrieben oder
+konnte nicht gefunden werden.
+Der Befehl "%P" ist entweder falsch geschrieben oder
+konnte nicht gefunden werden.
+Das System kann den angegebenen Pfad nicht finden.
+Das System kann den angegebenen Pfad nicht finden.
+Das System kann den angegebenen Pfad nicht finden.
+Das System kann den angegebenen Pfad nicht finden.
+Die Datei "!FULL_PYTHON_PATH!" kann nicht gefunden werden.
+Das System kann den angegebenen Pfad nicht finden.
+Das System kann den angegebenen Pfad nicht finden.
+
+WARNUNG: Python-Prozess wurde nicht gefunden!
+
+Log-Datei:
+
+Drücken Sie eine beliebige Taste . .
+
+
+
+
+vbs
+
+[2025/12/20 00:14:32] ==========================================
+[2025/12/20 00:14:32] Launcher gestartet: D:\Users\basti\Downloads\Universal-Downloader\start_launcher.vbs
+[2025/12/20 00:14:32] Verzeichnis: D:\Users\basti\Downloads\Universal-Downloader
+[2025/12/20 00:14:32] [OK] start.py gefunden: D:\Users\basti\Downloads\Universal-Downloader\start.py
+[2025/12/20 00:14:32] [INFO] Starte Python-Suche...
+[2025/12/20 00:14:32] [INFO] Methode 1: Prüfe pythonw.exe im PATH...
+[2025/12/20 00:14:32] [OK] Python gefunden (Methode 1): pythonw.exe im PATH
+[2025/12/20 00:14:32] [INFO] Starte Anwendung mit: pythonw.exe D:\Users\basti\Downloads\Universal-Downloader\start.py
+[2025/12/20 00:14:32] [INFO] Vollständiger Python-Pfad: C:\Users\basti\AppData\Local\Programs\Python\Python310\pythonw.exe
+[2025/12/20 00:14:32] [INFO] Arbeitsverzeichnis: D:\Users\basti\Downloads\Universal-Downloader
+[2025/12/20 00:14:32] [INFO] Python-Skript: D:\Users\basti\Downloads\Universal-Downloader\start.py
+[2025/12/20 00:14:32] [INFO] Start-Befehl: "C:\Users\basti\AppData\Local\Programs\Python\Python310\pythonw.exe" "D:\Users\basti\Downloads\Universal-Downloader\start.py"
+[2025/12/20 00:14:32] [INFO] Start-Befehl ausgeführt (ShellExecute), Exit-Code: 0
+[2025/12/20 00:14:34] [WARNING] Python-Prozess scheint nicht zu laufen
+[2025/12/20 00:14:34] [OK] Launcher beendet erfolgreich
