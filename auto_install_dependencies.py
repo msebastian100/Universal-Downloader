@@ -190,43 +190,41 @@ def install_ffmpeg_windows():
         ffmpeg_url = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
         zip_path = ffmpeg_dir / "ffmpeg.zip"
         
-        # Download mit Progress-Tracking
+        # Download mit Progress-Tracking und sofortigem Schreiben
         print("[INFO] Lade ffmpeg herunter (dies kann einige Minuten dauern)...")
         try:
             import requests
-            from tqdm import tqdm
             
-            # Download mit Progress-Bar
+            # Download mit Progress-Tracking
             response = requests.get(ffmpeg_url, stream=True, timeout=300)
             response.raise_for_status()
             
             total_size = int(response.headers.get('content-length', 0))
+            downloaded = 0
             
-            # Öffne Datei im Binary-Mode und schreibe direkt
+            # Öffne Datei im Binary-Mode und schreibe direkt mit Flush
             with open(zip_path, 'wb') as f:
-                if total_size > 0:
-                    # Mit Progress-Bar
-                    with tqdm(total=total_size, unit='B', unit_scale=True, desc="Downloading ffmpeg") as pbar:
-                        for chunk in response.iter_content(chunk_size=8192):
-                            if chunk:
-                                f.write(chunk)
-                                f.flush()  # Wichtig: Sofort schreiben
-                                os.fsync(f.fileno())  # Force write to disk
-                                pbar.update(len(chunk))
-                else:
-                    # Ohne Content-Length: Einfach herunterladen
-                    for chunk in response.iter_content(chunk_size=8192):
-                        if chunk:
-                            f.write(chunk)
-                            f.flush()  # Wichtig: Sofort schreiben
-                            os.fsync(f.fileno())  # Force write to disk
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+                        f.flush()  # Wichtig: Sofort schreiben
+                        os.fsync(f.fileno())  # Force write to disk
+                        downloaded += len(chunk)
+                        if total_size > 0:
+                            percent = (downloaded * 100) // total_size
+                            downloaded_mb = downloaded // (1024*1024)
+                            total_mb = total_size // (1024*1024)
+                            print(f"\r[INFO] Download Fortschritt: {percent}% ({downloaded_mb}MB / {total_mb}MB)", end='', flush=True)
+                print()  # Neue Zeile nach Progress
         except ImportError:
             # Fallback: Verwende urllib mit besserem Schreiben
             print("[INFO] Verwende Fallback-Download-Methode...")
             def reporthook(count, block_size, total_size):
                 if total_size > 0:
                     percent = min(100, (count * block_size * 100) // total_size)
-                    print(f"\r[INFO] Download Fortschritt: {percent}%", end='', flush=True)
+                    downloaded_mb = (count * block_size) // (1024*1024)
+                    total_mb = total_size // (1024*1024)
+                    print(f"\r[INFO] Download Fortschritt: {percent}% ({downloaded_mb}MB / {total_mb}MB)", end='', flush=True)
             
             urllib.request.urlretrieve(ffmpeg_url, zip_path, reporthook=reporthook)
             print()  # Neue Zeile nach Progress
