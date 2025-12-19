@@ -4572,8 +4572,19 @@ Historie-Einträge: {len(self.video_download_history)}
         if not UpdateChecker:
             return
         
+        # Prüfe ob wir gerade nach einem Update neu gestartet wurden
+        # Verhindere Endlosschleife: Prüfe nicht sofort nach Neustart
+        import time
+        restart_flag_file = Path(tempfile.gettempdir()) / "universal_downloader_restarting.flag"
+        if restart_flag_file.exists():
+            # Wir wurden gerade neu gestartet - lösche Flag und überspringe Update-Check
+            restart_flag_file.unlink(missing_ok=True)
+            return
+        
         def check_thread():
             try:
+                # Warte kurz, damit die GUI vollständig geladen ist
+                time.sleep(3)
                 checker = UpdateChecker()
                 available, info = checker.check_for_updates()
                 if available and info:
@@ -4836,12 +4847,23 @@ Historie-Einträge: {len(self.video_download_history)}
             update_file: Pfad zur neuen .exe (wird nicht mehr benötigt, da bereits installiert)
         """
         try:
+            # Setze Flag, um zu verhindern, dass nach Neustart sofort wieder geprüft wird
+            restart_flag_file = Path(tempfile.gettempdir()) / "universal_downloader_restarting.flag"
+            restart_flag_file.touch()
+            
             if sys.platform == "win32":
                 # Windows: Starte die neue .exe
                 current_exe = Path(sys.executable)
                 
+                # Warte kurz, damit die Installation abgeschlossen ist
+                import time
+                time.sleep(1)
+                
                 # Starte neue Version
                 subprocess.Popen([str(current_exe)], shell=True)
+                
+                # Warte kurz, damit die neue Instanz starten kann
+                time.sleep(2)
                 
                 # Schließe aktuelle Instanz
                 self.root.quit()

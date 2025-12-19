@@ -1248,6 +1248,9 @@ class VideoDownloader:
                     # Baue yt-dlp Kommando nur für Thumbnail
                     from yt_dlp_helper import get_ytdlp_command
                     cmd = get_ytdlp_command()
+                    if cmd is None:
+                        self.log("yt-dlp Kommando konnte nicht erstellt werden", "ERROR")
+                        return None
                     cmd.extend(['--write-thumbnail', '--convert-thumbnails', 'jpg', '--skip-download'])
                     cmd.append(url)
                     
@@ -1346,6 +1349,9 @@ class VideoDownloader:
                     # Baue yt-dlp Kommando nur für Thumbnail
                     from yt_dlp_helper import get_ytdlp_command
                     cmd = get_ytdlp_command()
+                    if cmd is None:
+                        self.log("yt-dlp Kommando konnte nicht erstellt werden", "ERROR")
+                        return None
                     cmd.extend(['--write-thumbnail', '--convert-thumbnails', 'jpg', '--skip-download'])
                     cmd.append(url)
                     
@@ -1399,6 +1405,12 @@ class VideoDownloader:
             # Baue yt-dlp Kommando
             from yt_dlp_helper import get_ytdlp_command
             cmd = get_ytdlp_command()
+            
+            # Prüfe ob cmd None ist
+            if cmd is None:
+                error_msg = "yt-dlp Kommando konnte nicht erstellt werden"
+                self.log(error_msg, "ERROR")
+                return (False, None, error_msg)
             
             # Füge Cookies hinzu falls vorhanden
             if cookies_file:
