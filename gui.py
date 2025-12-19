@@ -3638,12 +3638,26 @@ class DeezerDownloaderGUI:
             print(f"Warnung: Konnte Log-Datei nicht erstellen: {e}")
             self.log_file = None
     
-    def _write_to_log_file(self, message: str):
-        """Schreibt eine Nachricht in die Log-Datei"""
+    def _write_to_log_file(self, message: str, level: str = "INFO"):
+        """
+        Schreibt eine Nachricht in die Log-Datei
+        
+        Args:
+            message: Die Log-Nachricht
+            level: Log-Level ('INFO', 'DEBUG', 'WARNING', 'ERROR')
+        """
         if self.log_file:
             try:
+                # Prüfe Log-Level-Einstellung
+                log_level_setting = self.settings.get('log_level', 'debug')
+                
+                # In normalem Modus: Überspringe DEBUG-Logs
+                if log_level_setting == 'normal' and level == 'DEBUG':
+                    return
+                
                 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                self.log_file.write(f"[{timestamp}] {message}\n")
+                log_entry = f"[{timestamp}] [{level}] {message}\n"
+                self.log_file.write(log_entry)
                 self.log_file.flush()  # Sofort schreiben
             except:
                 pass
@@ -5164,6 +5178,7 @@ Copyright (c) 2025 Universal Downloader Contributors
             'log_cleanup_days': 30,
             'log_cleanup_on_exit': False,
             'auto_check_updates': True,  # Automatische Update-Prüfung beim Start
+            'log_level': 'debug',  # Log-Level: 'normal' oder 'debug'
             'video_accounts': []  # Liste von Account-Dictionaries
         }
         
@@ -5325,6 +5340,29 @@ Copyright (c) 2025 Universal Downloader Contributors
         # Automatische Update-Prüfung
         auto_check_updates_var = tk.BooleanVar(value=self.settings.get('auto_check_updates', True))
         ttk.Checkbutton(general_frame, text="Automatisch auf Updates prüfen beim Start", variable=auto_check_updates_var).pack(anchor=tk.W, pady=5)
+        
+        # Log-Level-Einstellung
+        log_level_frame = ttk.Frame(general_frame)
+        log_level_frame.pack(fill=tk.X, pady=10)
+        ttk.Label(log_level_frame, text="Log-Level:").pack(side=tk.LEFT, padx=(0, 10))
+        log_level_var = tk.StringVar(value=self.settings.get('log_level', 'debug'))
+        log_level_combo = ttk.Combobox(
+            log_level_frame, 
+            textvariable=log_level_var, 
+            values=['normal', 'debug'], 
+            state='readonly', 
+            width=15
+        )
+        log_level_combo.pack(side=tk.LEFT, padx=5)
+        
+        # Info-Text für Log-Level
+        log_level_info = ttk.Label(
+            log_level_frame,
+            text="Debug: Alle Logs (inkl. Debug-Informationen) | Normal: Nur wichtige Logs",
+            foreground="gray",
+            font=("Arial", 8)
+        )
+        log_level_info.pack(side=tk.LEFT, padx=10)
         
         # Maximale gleichzeitige Downloads
         ttk.Label(general_frame, text="Max. gleichzeitige Downloads:").pack(anchor=tk.W, pady=(10, 5))
