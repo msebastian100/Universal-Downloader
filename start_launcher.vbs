@@ -58,6 +58,64 @@ Else
                 If pythonExe <> "" Then Exit For
             End If
         Next
+        
+        ' Methode 4: Prüfe Registry für Python-Installationen
+        If pythonExe = "" Then
+            Err.Clear
+            Dim reg, pythonPath
+            Set reg = WshShell.RegRead("HKEY_LOCAL_MACHINE\SOFTWARE\Python\PythonCore\3.11\InstallPath\ExecutablePath")
+            If Not IsEmpty(reg) And reg <> "" Then
+                ' Versuche pythonw.exe im gleichen Verzeichnis zu finden
+                Dim execPath
+                execPath = fso.GetParentFolderName(reg)
+                If fso.FileExists(execPath & "\pythonw.exe") Then
+                    pythonExe = execPath & "\pythonw.exe"
+                ElseIf fso.FileExists(reg) Then
+                    pythonExe = reg
+                End If
+            End If
+            On Error Resume Next
+        End If
+        
+        ' Methode 5: Suche auf allen Laufwerken (C:, D:, E:, etc.)
+        If pythonExe = "" Then
+            Err.Clear
+            Dim drives, drive, drivePath
+            Set drives = fso.Drives
+            For Each drive In drives
+                If drive.IsReady And drive.DriveType = 2 Then ' Fixed Disk
+                    drivePath = drive.DriveLetter & ":\"
+                    ' Suche in typischen Pfaden auf diesem Laufwerk
+                    Dim altPaths
+                    altPaths = Array( _
+                        drivePath & "Program Files\Python", _
+                        drivePath & "Program Files (x86)\Python", _
+                        drivePath & "Python", _
+                        drivePath & "Python3*", _
+                        drivePath & "Program Files\Python3*" _
+                    )
+                    For Each altPath In altPaths
+                        If fso.FolderExists(altPath) Then
+                            If fso.FileExists(altPath & "\pythonw.exe") Then
+                                pythonExe = altPath & "\pythonw.exe"
+                                Exit For
+                            End If
+                            ' Suche in Unterordnern
+                            Set folder = fso.GetFolder(altPath)
+                            For Each subfolder In folder.SubFolders
+                                If fso.FileExists(subfolder.Path & "\pythonw.exe") Then
+                                    pythonExe = subfolder.Path & "\pythonw.exe"
+                                    Exit For
+                                End If
+                            Next
+                            If pythonExe <> "" Then Exit For
+                        End If
+                    Next
+                    If pythonExe <> "" Then Exit For
+                End If
+            Next
+            On Error Resume Next
+        End If
     End If
 End If
 On Error Goto 0

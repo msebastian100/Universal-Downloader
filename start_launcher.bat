@@ -14,6 +14,7 @@ if not exist "start.py" (
 
 REM Versuche Python zu finden
 set PYTHON_EXE=
+setlocal enabledelayedexpansion
 
 REM Methode 1: Prüfe ob pythonw.exe im PATH ist
 where pythonw.exe >nul 2>&1
@@ -29,20 +30,57 @@ if %errorlevel% == 0 (
     goto :found_python
 )
 
-REM Methode 3: Suche in typischen Python-Installationspfaden
-if exist "%LOCALAPPDATA%\Programs\Python\Python3*\pythonw.exe" (
-    for %%P in ("%LOCALAPPDATA%\Programs\Python\Python3*\pythonw.exe") do set PYTHON_EXE=%%~fP
-    if defined PYTHON_EXE goto :found_python
-)
-
+REM Methode 3: Prüfe Microsoft Store Python (WindowsApps)
 if exist "%LOCALAPPDATA%\Microsoft\WindowsApps\pythonw.exe" (
     set PYTHON_EXE=%LOCALAPPDATA%\Microsoft\WindowsApps\pythonw.exe
     goto :found_python
 )
 
+REM Methode 4: Suche in typischen Python-Installationspfaden
+if exist "%LOCALAPPDATA%\Programs\Python\Python3*\pythonw.exe" (
+    for %%P in ("%LOCALAPPDATA%\Programs\Python\Python3*\pythonw.exe") do set PYTHON_EXE=%%~fP
+    if defined PYTHON_EXE goto :found_python
+)
+
 if exist "%PROGRAMFILES%\Python3*\pythonw.exe" (
     for %%P in ("%PROGRAMFILES%\Python3*\pythonw.exe") do set PYTHON_EXE=%%~fP
     if defined PYTHON_EXE goto :found_python
+)
+
+REM Methode 5: Prüfe Registry für Python-Installationen
+for /f "tokens=2*" %%A in ('reg query "HKLM\SOFTWARE\Python\PythonCore" /s /v "ExecutablePath" 2^>nul ^| findstr /i "ExecutablePath"') do (
+    set REG_PATH=%%B
+    if exist "!REG_PATH!" (
+        REM Versuche pythonw.exe im gleichen Verzeichnis zu finden
+        for %%F in ("!REG_PATH!") do set PYTHON_DIR=%%~dpF
+        if exist "!PYTHON_DIR!pythonw.exe" (
+            set PYTHON_EXE=!PYTHON_DIR!pythonw.exe
+            goto :found_python
+        )
+    )
+)
+
+REM Methode 6: Suche auf allen Laufwerken (C:, D:, E:, etc.)
+for %%D in (C D E F G H I J K L M N O P Q R S T U V W X Y Z) do (
+    if exist "%%D:\" (
+        REM Suche in typischen Pfaden auf diesem Laufwerk
+        if exist "%%D:\Program Files\Python3*\pythonw.exe" (
+            for %%P in ("%%D:\Program Files\Python3*\pythonw.exe") do set PYTHON_EXE=%%~fP
+            if defined PYTHON_EXE goto :found_python
+        )
+        if exist "%%D:\Program Files (x86)\Python3*\pythonw.exe" (
+            for %%P in ("%%D:\Program Files (x86)\Python3*\pythonw.exe") do set PYTHON_EXE=%%~fP
+            if defined PYTHON_EXE goto :found_python
+        )
+        if exist "%%D:\Python3*\pythonw.exe" (
+            for %%P in ("%%D:\Python3*\pythonw.exe") do set PYTHON_EXE=%%~fP
+            if defined PYTHON_EXE goto :found_python
+        )
+        if exist "%%D:\Python\pythonw.exe" (
+            set PYTHON_EXE=%%D:\Python\pythonw.exe
+            goto :found_python
+        )
+    )
 )
 
 REM Python nicht gefunden - versuche Installation
