@@ -75,26 +75,31 @@ class DeezerDownloaderGUI:
         
         # Basis-Download-Pfad (muss zuerst gesetzt werden, damit _load_window_geometry funktioniert)
         try:
-            self.base_download_path = Path.home() / "Downloads" / "Universal Downloader"
-            self.base_download_path.mkdir(parents=True, exist_ok=True)
-            # Debug: Prüfe ob Ordner wirklich erstellt wurde
-            if not self.base_download_path.exists():
-                # Fallback: Verwende AppData
+            # Verwende path_helper um den echten Download-Ordner zu erkennen
+            from path_helper import get_app_base_path
+            self.base_download_path = get_app_base_path()
+        except ImportError:
+            # Fallback: Alte Methode
+            try:
+                self.base_download_path = Path.home() / "Downloads" / "Universal Downloader"
+                self.base_download_path.mkdir(parents=True, exist_ok=True)
+                if not self.base_download_path.exists():
+                    # Fallback: Verwende AppData
+                    if sys.platform == "win32":
+                        appdata = os.getenv('APPDATA', Path.home() / "AppData" / "Roaming")
+                        self.base_download_path = Path(appdata) / "Universal Downloader"
+                    else:
+                        self.base_download_path = Path.home() / ".universal-downloader"
+                    self.base_download_path.mkdir(parents=True, exist_ok=True)
+            except Exception as e:
+                # Fallback bei Fehler
                 if sys.platform == "win32":
                     appdata = os.getenv('APPDATA', Path.home() / "AppData" / "Roaming")
                     self.base_download_path = Path(appdata) / "Universal Downloader"
                 else:
                     self.base_download_path = Path.home() / ".universal-downloader"
                 self.base_download_path.mkdir(parents=True, exist_ok=True)
-        except Exception as e:
-            # Fallback bei Fehler
-            if sys.platform == "win32":
-                appdata = os.getenv('APPDATA', Path.home() / "AppData" / "Roaming")
-                self.base_download_path = Path(appdata) / "Universal Downloader"
-            else:
-                self.base_download_path = Path.home() / ".universal-downloader"
-            self.base_download_path.mkdir(parents=True, exist_ok=True)
-            print(f"[WARNING] Konnte Standard-Download-Pfad nicht erstellen, verwende: {self.base_download_path}")
+                print(f"[WARNING] Konnte Standard-Download-Pfad nicht erstellen, verwende: {self.base_download_path}")
         
         # Lade gespeicherte Fenstergröße (wird nach create_widgets gesetzt)
         self._saved_geometry = self._load_window_geometry()

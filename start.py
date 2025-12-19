@@ -244,18 +244,24 @@ if __name__ == "__main__":
         
         # Schreibe auch in Log-Datei falls möglich
         try:
-            # Versuche zuerst Standard-Pfad
-            log_dir = Path.home() / "Downloads" / "Universal Downloader" / "Logs"
+            # Verwende path_helper um den echten Download-Ordner zu erkennen
             try:
-                log_dir.mkdir(parents=True, exist_ok=True)
-            except (PermissionError, OSError):
-                # Fallback: Verwende AppData oder Temp
-                if sys.platform == "win32":
-                    appdata = os.getenv('APPDATA', Path.home() / "AppData" / "Roaming")
-                    log_dir = Path(appdata) / "Universal Downloader" / "Logs"
-                else:
-                    log_dir = Path.home() / ".universal-downloader" / "Logs"
-                log_dir.mkdir(parents=True, exist_ok=True)
+                from path_helper import get_app_base_path
+                app_base = get_app_base_path()
+                log_dir = app_base / "Logs"
+            except ImportError:
+                # Fallback: Alte Methode
+                log_dir = Path.home() / "Downloads" / "Universal Downloader" / "Logs"
+                try:
+                    log_dir.mkdir(parents=True, exist_ok=True)
+                except (PermissionError, OSError):
+                    # Fallback: Verwende AppData oder Temp
+                    if sys.platform == "win32":
+                        appdata = os.getenv('APPDATA', Path.home() / "AppData" / "Roaming")
+                        log_dir = Path(appdata) / "Universal Downloader" / "Logs"
+                    else:
+                        log_dir = Path.home() / ".universal-downloader" / "Logs"
+                    log_dir.mkdir(parents=True, exist_ok=True)
             
             log_file = log_dir / f"start_debug_{datetime.now().strftime('%Y-%m-%d')}.log"
             with open(log_file, 'a', encoding='utf-8') as f:
@@ -272,7 +278,14 @@ if __name__ == "__main__":
     debug_log(f"Executable: {sys.executable}")
     debug_log(f"Frozen: {getattr(sys, 'frozen', False)}")
     debug_log(f"PID: {os.getpid()}")
-    log_file_path = Path.home() / 'Downloads' / 'Universal Downloader' / 'Logs' / f'start_debug_{datetime.now().strftime("%Y-%m-%d")}.log'
+    # Verwende path_helper um den echten Download-Ordner zu erkennen
+    try:
+        from path_helper import get_app_base_path
+        app_base = get_app_base_path()
+        log_file_path = app_base / 'Logs' / f'start_debug_{datetime.now().strftime("%Y-%m-%d")}.log'
+    except ImportError:
+        # Fallback: Alte Methode
+        log_file_path = Path.home() / 'Downloads' / 'Universal Downloader' / 'Logs' / f'start_debug_{datetime.now().strftime("%Y-%m-%d")}.log'
     debug_log(f"Log-Datei: {log_file_path}")
     
     # Prüfe auf Restart-Flag
