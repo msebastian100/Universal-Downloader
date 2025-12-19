@@ -3662,16 +3662,33 @@ class DeezerDownloaderGUI:
         try:
             # Erstelle Logs-Verzeichnis
             logs_dir = self.base_download_path / "Logs"
-            logs_dir.mkdir(parents=True, exist_ok=True)
+            try:
+                logs_dir.mkdir(parents=True, exist_ok=True)
+            except (PermissionError, OSError) as e:
+                # Fallback: Verwende AppData oder Temp
+                if sys.platform == "win32":
+                    appdata = os.getenv('APPDATA', Path.home() / "AppData" / "Roaming")
+                    logs_dir = Path(appdata) / "Universal Downloader" / "Logs"
+                else:
+                    logs_dir = Path.home() / ".universal-downloader" / "Logs"
+                logs_dir.mkdir(parents=True, exist_ok=True)
+                print(f"[WARNING] Konnte Log-Ordner nicht im Standard-Pfad erstellen, verwende: {logs_dir}")
+            
+            # Prüfe ob Ordner wirklich existiert
+            if not logs_dir.exists():
+                raise Exception(f"Log-Ordner konnte nicht erstellt werden: {logs_dir}")
             
             # Erstelle Log-Datei mit Timestamp
             timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             log_filename = logs_dir / f"universal_downloader_{timestamp}.log"
             self.log_file = open(log_filename, 'w', encoding='utf-8')
-            self._write_to_log_file(f"=== Universal Downloader gestartet ===")
-            self._write_to_log_file(f"Log-Datei: {log_filename}")
+            self._write_to_log_file(f"=== Universal Downloader gestartet ===", "INFO")
+            self._write_to_log_file(f"Log-Datei: {log_filename}", "INFO")
+            self._write_to_log_file(f"Download-Pfad: {self.base_download_path}", "INFO")
         except Exception as e:
-            print(f"Warnung: Konnte Log-Datei nicht erstellen: {e}")
+            print(f"[ERROR] Konnte Log-Datei nicht erstellen: {e}")
+            import traceback
+            print(f"[ERROR] Traceback: {traceback.format_exc()}")
             self.log_file = None
     
     def _write_to_log_file(self, message: str, level: str = "INFO"):
