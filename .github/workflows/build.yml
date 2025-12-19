@@ -44,7 +44,7 @@ jobs:
       - name: Get version from version.py
         id: get_version
         run: |
-          python -c "import re; content = open('version.py').read(); match = re.search(r\"__version__\s*=\s*['\\\"]([^'\\\"]+)['\\\"]\", content); print('version=' + match.group(1) if match else 'version=unknown')" >> $GITHUB_OUTPUT
+          python -c "import re; content = open('version.py', 'r', encoding='utf-8').read(); match = re.search(r\"__version__\s*=\s*['\\\"]([^'\\\"]+)['\\\"]\", content); version = match.group(1) if match else 'unknown'; print(f'version={version}')" >> $GITHUB_OUTPUT
       
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
