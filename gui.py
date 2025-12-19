@@ -202,7 +202,7 @@ class DeezerDownloaderGUI:
                 print(f"Fehler beim Laden der gespeicherten Audible-Anmeldung: {e}")
     
     def _set_application_icon(self):
-        """Setzt das Programm-Icon für das Hauptfenster"""
+        """Setzt das Programm-Icon für das Hauptfenster und den Prozess"""
         try:
             # Suche nach Icon-Dateien im Projektverzeichnis
             # Priorität: .ico vor .png (Windows bevorzugt .ico)
@@ -215,8 +215,11 @@ class DeezerDownloaderGUI:
             ]
             
             icon_set = False
+            icon_path_found = None
+            
             for icon_path in icon_paths:
                 if icon_path.exists():
+                    icon_path_found = icon_path
                     try:
                         # Für macOS und Linux: iconphoto verwenden
                         if sys.platform == "darwin" or sys.platform.startswith("linux"):

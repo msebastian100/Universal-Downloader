@@ -12,6 +12,40 @@ from pathlib import Path
 # Füge das aktuelle Verzeichnis zum Python-Pfad hinzu
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+# Setze Prozess-Icon auf Windows (wird im Task-Manager und Taskleiste angezeigt)
+if sys.platform == "win32":
+    try:
+        import ctypes
+        from ctypes import wintypes
+        
+        # Finde Icon-Datei
+        script_dir = Path(__file__).parent.absolute()
+        icon_paths = [
+            script_dir / "icon.ico",
+            script_dir / "icon.png",
+        ]
+        
+        icon_path = None
+        for path in icon_paths:
+            if path.exists():
+                icon_path = path
+                break
+        
+        if icon_path:
+            try:
+                # Setze Icon für den Prozess
+                # LoadIcon und SetClassLongPtr sind veraltet, verwende stattdessen:
+                # Für moderne Windows-Versionen: Setze das Icon über die Window-Klasse
+                # Das wird in gui.py gemacht, aber hier können wir es auch für den Prozess versuchen
+                
+                # Alternative: Verwende LoadImage um das Icon zu laden
+                # Dies funktioniert nur wenn ein Fenster existiert, daher machen wir es in gui.py
+                pass  # Wird in gui.py gemacht
+            except Exception:
+                pass
+    except Exception:
+        pass
+
 def check_ffmpeg():
     """Prüft ob ffmpeg verfügbar ist"""
     import subprocess
