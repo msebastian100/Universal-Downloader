@@ -10,8 +10,6 @@ on:
         required: false
         type: string
   push:
-    branches:
-      - main
     tags:
       - 'v*'  # Ausloesen bei Tags wie v2.0.0 oder v.2.0.0
 
