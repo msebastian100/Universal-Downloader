@@ -72,21 +72,22 @@ If pythonExe = "" Then
     
     If response = vbYes Then
         ' Versuche Python automatisch zu installieren
-        Dim installerPath, installerUrl, http, ts, installerFile
+        Dim installerPath, installerUrl
         installerPath = WshShell.ExpandEnvironmentStrings("%TEMP%\python-installer.exe")
         installerUrl = "https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe"
         
-        ' Lade Python-Installer herunter
+        ' Lade Python-Installer herunter mit PowerShell (zuverlässiger für binäre Dateien)
         On Error Resume Next
-        Set http = CreateObject("MSXML2.XMLHTTP")
-        http.Open "GET", installerUrl, False
-        http.Send
+        Dim downloadCmd
+        downloadCmd = "powershell.exe -Command ""[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '" & installerUrl & "' -OutFile '" & installerPath & "'"""
+        WshShell.Run downloadCmd, 0, True
         
-        If http.Status = 200 Then
-            Set ts = fso.CreateTextFile(installerPath, True)
-            ts.Write http.ResponseBody
-            ts.Close
-            Set ts = Nothing
+        If Not fso.FileExists(installerPath) Then
+            MsgBox "Konnte Python-Installer nicht herunterladen." & vbCrLf & vbCrLf & _
+                   "Bitte installieren Sie Python manuell von:" & vbCrLf & _
+                   "https://www.python.org/downloads/", vbCritical, "Fehler"
+            WScript.Quit
+        End If
             
             ' Installiere Python im Silent-Modus
             ' /quiet = Silent installation
