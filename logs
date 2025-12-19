@@ -1,10 +1,7 @@
 Prüfe ob es eine Serie/Staffel ist...
-✓ Serie/Staffel erkannt!
-Rufe Episoden/Playlist-Daten ab...
-⚠ Keine Serien-Daten erhalten
 ============================================================
 Starte Video-Download
-URL: https://www.ardmediathek.de/serie/mozart-mozart-oder-historische-dramaserie/staffel-1/Y3JpZDovL3dkci5kZS9tb3phcnRtb3phcnQ/1
+URL: https://www.ardmediathek.de/video/mozart-mozart/folge-1-skandal-s01-e01/wdr/Y3JpZDovL3dkci5kZS9CZWl0cmFnLXNvcGhvcmEtOTczMjk1ZTktMzQxZS00YTIyLWJmZWYtNTU1YmRmNTViYjM1
 Format: MP4
 Qualität: best
 Ziel: C:\Users\basti\Downloads\Universal Downloader\Video
@@ -14,5 +11,6 @@ Rufe Video-Informationen ab...
 
 Starte Download...
 
-✗ Download fehlgeschlagen: C:\Users\basti\AppData\Local\Microsoft\WindowsApps\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\python.exe: No module named yt_dlp
+✗ Download fehlgeschlagen: 'NoneType' object has no attribute 'extend'
+
 
