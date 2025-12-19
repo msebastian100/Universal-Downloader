@@ -91,7 +91,12 @@ def build_exe():
         return False
 
 if __name__ == "__main__":
-    if sys.platform != "win32":
+    # In GitHub Actions keine interaktive Eingabe
+    if os.getenv('GITHUB_ACTIONS') == 'true':
+        # Automatisch fortfahren in CI/CD
+        success = build_exe()
+        sys.exit(0 if success else 1)
+    elif sys.platform != "win32":
         print("⚠ Warnung: Dieses Script ist für Windows gedacht.")
         print("Sie können es trotzdem ausführen, aber die .exe wird nur auf Windows funktionieren.")
         response = input("Fortfahren? (j/n): ")

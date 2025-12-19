@@ -7,7 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 APP_NAME="universal-downloader"
-VERSION="1.0.0"
+VERSION="2.0.0"
 DEB_DIR="deb_build"
 BUILD_DIR="$DEB_DIR/$APP_NAME-$VERSION"
 
@@ -17,10 +17,15 @@ echo "============================================================"
 
 # Prüfe ob wir auf Linux sind
 if [[ "$OSTYPE" != "linux-gnu"* ]]; then
-    echo "⚠ Warnung: Dieses Script ist für Linux gedacht."
-    read -p "Fortfahren? (j/n): " response
-    if [[ ! "$response" =~ ^[jJ]$ ]]; then
-        exit 1
+    # In GitHub Actions automatisch fortfahren
+    if [[ "$GITHUB_ACTIONS" == "true" ]]; then
+        echo "⚠ Warnung: Läuft in GitHub Actions, fortfahren..."
+    else
+        echo "⚠ Warnung: Dieses Script ist für Linux gedacht."
+        read -p "Fortfahren? (j/n): " response
+        if [[ ! "$response" =~ ^[jJ]$ ]]; then
+            exit 1
+        fi
     fi
 fi
 

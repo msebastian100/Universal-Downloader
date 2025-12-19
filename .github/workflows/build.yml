@@ -41,8 +41,12 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: dist/UniversalDownloader.exe
+          draft: false
+          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        permissions:
+          contents: write
 
   build-linux:
     name: Build Linux .deb
@@ -84,5 +88,9 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: deb_build/*.deb
+          draft: false
+          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        permissions:
+          contents: write
