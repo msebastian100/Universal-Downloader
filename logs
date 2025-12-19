@@ -1,8 +1,70 @@
-PermissionError: [Errno 13] Permission denied
+[INFO] [2025-12-19 21:53:36] ============================================================
+[WARNING] Konnte Log-Datei nicht schreiben: [Errno 2] No such file or directory: 'D:\\Users\\basti\\Downloads\\Universal Downloader\\Logs\\start_debug_2025-12-19.log'
+[INFO] [2025-12-19 21:53:36] Universal Downloader wird gestartet...
+[WARNING] Konnte Log-Datei nicht schreiben: [Errno 2] No such file or directory: 'D:\\Users\\basti\\Downloads\\Universal Downloader\\Logs\\start_debug_2025-12-19.log'
+[INFO] [2025-12-19 21:53:36] Python-Version: 3.11.9 (tags/v3.11.9:de54cf5, Apr  2 2024, 10:12:12) [MSC v.1938 64 bit (AMD64)]
+[WARNING] Konnte Log-Datei nicht schreiben: [Errno 2] No such file or directory: 'D:\\Users\\basti\\Downloads\\Universal Downloader\\Logs\\start_debug_2025-12-19.log'
+[INFO] [2025-12-19 21:53:36] Plattform: win32
+[WARNING] Konnte Log-Datei nicht schreiben: [Errno 2] No such file or directory: 'D:\\Users\\basti\\Downloads\\Universal Downloader\\Logs\\start_debug_2025-12-19.log'
+[INFO] [2025-12-19 21:53:36] Executable: C:\Users\basti\AppData\Local\Microsoft\WindowsApps\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\python.exe
+[WARNING] Konnte Log-Datei nicht schreiben: [Errno 2] No such file or directory: 'D:\\Users\\basti\\Downloads\\Universal Downloader\\Logs\\start_debug_2025-12-19.log'
+[INFO] [2025-12-19 21:53:36] Frozen: False
+[WARNING] Konnte Log-Datei nicht schreiben: [Errno 2] No such file or directory: 'D:\\Users\\basti\\Downloads\\Universal Downloader\\Logs\\start_debug_2025-12-19.log'
+[INFO] [2025-12-19 21:53:36] PID: 44072
+[WARNING] Konnte Log-Datei nicht schreiben: [Errno 2] No such file or directory: 'D:\\Users\\basti\\Downloads\\Universal Downloader\\Logs\\start_debug_2025-12-19.log'
+[INFO] [2025-12-19 21:53:36] Log-Datei: D:\Users\basti\Downloads\Universal Downloader\Logs\start_debug_2025-12-19.log
+[WARNING] Konnte Log-Datei nicht schreiben: [Errno 2] No such file or directory: 'D:\\Users\\basti\\Downloads\\Universal Downloader\\Logs\\start_debug_2025-12-19.log'
+[INFO] [2025-12-19 21:53:36] Kein Restart-Flag gefunden - normaler Start
+[WARNING] Konnte Log-Datei nicht schreiben: [Errno 2] No such file or directory: 'D:\\Users\\basti\\Downloads\\Universal Downloader\\Logs\\start_debug_2025-12-19.log'
+[INFO] [2025-12-19 21:53:36] Importiere auto_install_dependencies...
+[WARNING] Konnte Log-Datei nicht schreiben: [Errno 2] No such file or directory: 'D:\\Users\\basti\\Downloads\\Universal Downloader\\Logs\\start_debug_2025-12-19.log'
+[INFO] [2025-12-19 21:53:36] Prüfe yt-dlp...
+[WARNING] Konnte Log-Datei nicht schreiben: [Errno 2] No such file or directory: 'D:\\Users\\basti\\Downloads\\Universal Downloader\\Logs\\start_debug_2025-12-19.log'
+[INFO] [2025-12-19 21:53:37] yt-dlp Status: OK (Version: 2025.12.08)
+[WARNING] Konnte Log-Datei nicht schreiben: [Errno 2] No such file or directory: 'D:\\Users\\basti\\Downloads\\Universal Downloader\\Logs\\start_debug_2025-12-19.log'
+[INFO] [2025-12-19 21:53:37] Prüfe ffmpeg...
+[WARNING] Konnte Log-Datei nicht schreiben: [Errno 2] No such file or directory: 'D:\\Users\\basti\\Downloads\\Universal Downloader\\Logs\\start_debug_2025-12-19.log'
+[INFO] [2025-12-19 21:53:37] ffmpeg Status: FEHLT (Version: N/A)
+[WARNING] Konnte Log-Datei nicht schreiben: [Errno 2] No such file or directory: 'D:\\Users\\basti\\Downloads\\Universal Downloader\\Logs\\start_debug_2025-12-19.log'
+[INFO] [2025-12-19 21:53:37] Prüfe lokales ffmpeg in: D:\Users\basti\Downloads\Universal-Downloader-main\Universal-Downloader-main\ffmpeg\bin
+[WARNING] Konnte Log-Datei nicht schreiben: [Errno 2] No such file or directory: 'D:\\Users\\basti\\Downloads\\Universal Downloader\\Logs\\start_debug_2025-12-19.log'
+[WARNING] [2025-12-19 21:53:37] Einige Abhängigkeiten fehlen - werden im Hintergrund installiert
+[WARNING] Konnte Log-Datei nicht schreiben: [Errno 2] No such file or directory: 'D:\\Users\\basti\\Downloads\\Universal Downloader\\Logs\\start_debug_2025-12-19.log'
+[INFO] [2025-12-19 21:53:37] Importiere gui...
+[WARNING] Konnte Log-Datei nicht schreiben: [Errno 2] No such file or directory: 'D:\\Users\\basti\\Downloads\\Universal Downloader\\Logs\\start_debug_2025-12-19.log'
+[INFO] [2025-12-19 21:53:37] Starte GUI...
+[WARNING] Konnte Log-Datei nicht schreiben: [Errno 2] No such file or directory: 'D:\\Users\\basti\\Downloads\\Universal Downloader\\Logs\\start_debug_2025-12-19.log'
+[ICON] Icon geladen: icon.png
+[INFO] Prüfe auf yt-dlp Updates...
+[INFO] Neue yt-dlp Version verfügbar: 2025.12.8 (aktuell: 2025.12.08)
+[INFO] Aktualisiere yt-dlp auf die neueste Version...
+[OK] yt-dlp erfolgreich aktualisiert
+[INFO] Lade ffmpeg für Windows herunter...
+[INFO] Lade ffmpeg herunter (dies kann einige Minuten dauern)...
+[INFO] Download Fortschritt: 30% (30MB / 101MB)
 
-During handling of the above exception, another exception occurred:
 
-Traceback (most recent call last):
-  File "start.py", line 229, in <module>
-  File "pathlib.py", line 1147, in unlink
-PermissionError: [WinError 32] Der Prozess kann nicht auf die Datei zugreifen, da sie von einem anderen Prozess verwendet wird: 'C:\\Users\\basti\\AppData\\Local\\Temp\\universal_downloader.lock'
+nach dem Neustart
+[INFO] [2025-12-19 22:01:48] ============================================================
+[INFO] [2025-12-19 22:01:48] Universal Downloader wird gestartet...
+[INFO] [2025-12-19 22:01:48] Python-Version: 3.11.9 (tags/v3.11.9:de54cf5, Apr  2 2024, 10:12:12) [MSC v.1938 64 bit (AMD64)]
+[INFO] [2025-12-19 22:01:48] Plattform: win32
+[INFO] [2025-12-19 22:01:48] Executable: C:\Users\basti\AppData\Local\Microsoft\WindowsApps\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\python.exe
+[INFO] [2025-12-19 22:01:48] Frozen: False
+[INFO] [2025-12-19 22:01:48] PID: 32864
+[INFO] [2025-12-19 22:01:48] Log-Datei: D:\Users\basti\Downloads\Universal Downloader\Logs\start_debug_2025-12-19.log
+[INFO] [2025-12-19 22:01:48] Restart-Flag gefunden - lösche Flag und überspringe Abhängigkeits-Installation
+[INFO] [2025-12-19 22:01:48] Importiere auto_install_dependencies...
+[INFO] [2025-12-19 22:01:48] Prüfe yt-dlp...
+[INFO] [2025-12-19 22:01:49] yt-dlp Status: OK (Version: 2025.12.08)
+[INFO] [2025-12-19 22:01:49] Prüfe ffmpeg...
+[INFO] [2025-12-19 22:01:49] ffmpeg Status: FEHLT (Version: N/A)
+[INFO] [2025-12-19 22:01:49] Prüfe lokales ffmpeg in: D:\Users\basti\Downloads\Universal-Downloader-main\Universal-Downloader-main\ffmpeg\bin
+[INFO] [2025-12-19 22:01:49] Lokales ffmpeg gefunden - füge zum PATH hinzu
+[INFO] [2025-12-19 22:01:49] ffmpeg Status nach PATH-Update: OK
+[INFO] [2025-12-19 22:01:49] Alle Abhängigkeiten vorhanden
+[INFO] [2025-12-19 22:01:49] Importiere gui...
+[INFO] [2025-12-19 22:01:49] Starte GUI...
+[ICON] Icon geladen: icon.png
+
+
