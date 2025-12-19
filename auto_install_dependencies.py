@@ -192,7 +192,7 @@ def check_ffmpeg():
     return False, None
 
 
-def install_ffmpeg_windows():
+def install_ffmpeg_windows(progress_callback=None):
     """Installiert ffmpeg auf Windows"""
     app_dir = get_app_dir()
     ffmpeg_dir = app_dir / "ffmpeg"
@@ -202,9 +202,13 @@ def install_ffmpeg_windows():
     if ffmpeg_exe.exists():
         # Füge zum PATH hinzu für diese Session
         os.environ['PATH'] = str(ffmpeg_dir / "bin") + os.pathsep + os.environ.get('PATH', '')
+        if progress_callback:
+            progress_callback("[OK] ffmpeg bereits vorhanden")
         return True, "bereits vorhanden"
     
     try:
+        if progress_callback:
+            progress_callback("[INFO] Lade ffmpeg für Windows herunter...")
         print("[INFO] Lade ffmpeg für Windows herunter...")
         
         # Erstelle ffmpeg Verzeichnis
@@ -216,6 +220,8 @@ def install_ffmpeg_windows():
         zip_path = ffmpeg_dir / "ffmpeg.zip"
         
         # Download mit Progress-Tracking und sofortigem Schreiben
+        if progress_callback:
+            progress_callback("[INFO] Lade ffmpeg herunter (dies kann einige Minuten dauern)...")
         print("[INFO] Lade ffmpeg herunter (dies kann einige Minuten dauern)...")
         try:
             import requests
@@ -226,6 +232,7 @@ def install_ffmpeg_windows():
             
             total_size = int(response.headers.get('content-length', 0))
             downloaded = 0
+            last_percent = -1
             
             # Öffne Datei im Binary-Mode und schreibe direkt mit Flush
             with open(zip_path, 'wb') as f:
@@ -237,16 +244,18 @@ def install_ffmpeg_windows():
                         downloaded += len(chunk)
                         if total_size > 0:
                             percent = (downloaded * 100) // total_size
-                            downloaded_mb = downloaded // (1024*1024)
-                            total_mb = total_size // (1024*1024)
-                            progress_msg = f"[INFO] Download Fortschritt: {percent}% ({downloaded_mb}MB / {total_mb}MB)"
-                            print(f"\r{progress_msg}", end='', flush=True)
-                            # Aktualisiere auch GUI-Dialog falls vorhanden
-                            if hasattr(install_ffmpeg_windows, '_gui_callback'):
-                                try:
-                                    install_ffmpeg_windows._gui_callback(progress_msg)
-                                except:
-                                    pass
+                            # Nur alle 5% oder alle 5MB aktualisieren
+                            if percent != last_percent and (percent % 5 == 0 or downloaded % (5*1024*1024) == 0):
+                                downloaded_mb = downloaded // (1024*1024)
+                                total_mb = total_size // (1024*1024)
+                                progress_msg = f"[INFO] Download Fortschritt: {percent}% ({downloaded_mb}MB / {total_mb}MB)"
+                                print(f"\r{progress_msg}", end='', flush=True)
+                                if progress_callback:
+                                    try:
+                                        progress_callback(progress_msg)
+                                    except:
+                                        pass
+                                last_percent = percent
                 print()  # Neue Zeile nach Progress
         except ImportError:
             # Fallback: Verwende urllib mit besserem Schreiben

@@ -4743,22 +4743,22 @@ Historie-Einträge: {len(self.video_download_history)}
                 self.root.after(0, self._show_dependency_installation_dialog)
                 
                 # Installiere Abhängigkeiten mit Progress-Callback
-                from auto_install_dependencies import ensure_dependencies, install_ffmpeg_windows
+                from auto_install_dependencies import ensure_dependencies
                 
-                # Setze Progress-Callback für ffmpeg-Installation
+                # Setze Progress-Callback für Abhängigkeits-Installation
                 def update_progress(message):
                     if hasattr(self, '_dep_status_text') and self._dep_status_text.winfo_exists():
                         self.root.after(0, lambda: self._add_status_message(message))
                 
-                # Temporärer Callback für ffmpeg-Installation
-                install_ffmpeg_windows._gui_callback = update_progress
+                # Setze Callback für ensure_dependencies
+                ensure_dependencies._progress_callback = update_progress
                 
                 try:
                     ytdlp_ok, ffmpeg_ok, messages = ensure_dependencies()
                 finally:
                     # Entferne Callback
-                    if hasattr(install_ffmpeg_windows, '_gui_callback'):
-                        delattr(install_ffmpeg_windows, '_gui_callback')
+                    if hasattr(ensure_dependencies, '_progress_callback'):
+                        delattr(ensure_dependencies, '_progress_callback')
                 
                 self._write_to_log_file(f"[DEBUG] Abhängigkeits-Installation abgeschlossen: yt-dlp={ytdlp_ok}, ffmpeg={ffmpeg_ok}", "DEBUG")
                 
