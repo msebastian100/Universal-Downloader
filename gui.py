@@ -205,12 +205,13 @@ class DeezerDownloaderGUI:
         """Setzt das Programm-Icon für das Hauptfenster"""
         try:
             # Suche nach Icon-Dateien im Projektverzeichnis
+            # Priorität: .ico vor .png (Windows bevorzugt .ico)
             script_dir = Path(__file__).parent.absolute()
             icon_paths = [
+                script_dir / "icon.ico",  # Windows bevorzugt .ico
                 script_dir / "icon.png",
-                script_dir / "icon.ico",
-                script_dir / "app_icon.png",
                 script_dir / "app_icon.ico",
+                script_dir / "app_icon.png",
             ]
             
             icon_set = False
