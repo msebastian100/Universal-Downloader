@@ -372,23 +372,31 @@ Else
 End If
 On Error Goto 0
 
-' Prüfe ob Prozess gestartet wurde (warte kurz)
-WScript.Sleep 1000
+' Prüfe ob Prozess gestartet wurde (warte länger, damit start.py Zeit hat zu starten)
+WScript.Sleep 2000
 Dim processCheck
 On Error Resume Next
-Set processCheck = WshShell.Exec("tasklist /FI ""IMAGENAME eq " & fso.GetBaseName(fullPythonPath) & ".exe"" /FO CSV /NH")
-processCheck.StdOut.ReadAll
+Dim pythonExeName
+pythonExeName = fso.GetBaseName(fullPythonPath) & ".exe"
+Set processCheck = WshShell.Exec("tasklist /FI ""IMAGENAME eq " & pythonExeName & """ /FO CSV /NH")
+Dim processOutput
+processOutput = processCheck.StdOut.ReadAll
 processCheck.WaitOnReturn = True
-If processCheck.ExitCode = 0 Then
-    Dim processOutput
-    processOutput = processCheck.StdOut.ReadAll
-    If InStr(processOutput, fso.GetBaseName(fullPythonPath) & ".exe") > 0 Then
-        WriteLog "[OK] Python-Prozess läuft"
-    Else
-        WriteLog "[WARNING] Python-Prozess scheint nicht zu laufen"
-    End If
+If processCheck.ExitCode = 0 And InStr(processOutput, pythonExeName) > 0 Then
+    WriteLog "[OK] Python-Prozess läuft: " & pythonExeName
 Else
-    WriteLog "[WARNING] Konnte Python-Prozess-Status nicht prüfen"
+    WriteLog "[WARNING] Python-Prozess scheint nicht zu laufen"
+    ' Prüfe auch nach start.py oder gui.py Prozessen
+    Set processCheck2 = WshShell.Exec("tasklist /FI ""IMAGENAME eq python.exe"" /FO CSV /NH")
+    Dim processOutput2
+    processOutput2 = processCheck2.StdOut.ReadAll
+    processCheck2.WaitOnReturn = True
+    If InStr(processOutput2, "python.exe") > 0 Then
+        WriteLog "[OK] Python-Prozess gefunden (python.exe)"
+    Else
+        WriteLog "[WARNING] Kein Python-Prozess gefunden - start.py wurde möglicherweise sofort beendet"
+        WriteLog "[INFO] Prüfe ob start.py einen Fehler hat - bitte Log-Dateien prüfen"
+    End If
 End If
 On Error Goto 0
 
