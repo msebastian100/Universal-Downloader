@@ -97,8 +97,18 @@ def install_ffmpeg_if_missing():
 if __name__ == "__main__":
     import tempfile
     from datetime import datetime
-    import fcntl  # Für Unix
-    import msvcrt  # Für Windows
+    
+    # Plattform-spezifische Imports für Lock-Mechanismus
+    if sys.platform == "win32":
+        try:
+            import msvcrt  # Für Windows
+        except ImportError:
+            msvcrt = None
+    else:
+        try:
+            import fcntl  # Für Unix/Linux/macOS
+        except ImportError:
+            fcntl = None
     
     # Single-Instance-Mechanismus: Verhindere mehrere gleichzeitige Instanzen
     lock_file = Path(tempfile.gettempdir()) / "universal_downloader.lock"
@@ -145,9 +155,17 @@ if __name__ == "__main__":
         try:
             if lock_file_handle:
                 if sys.platform == "win32":
-                    msvcrt.locking(lock_file_handle.fileno(), msvcrt.LK_UNLCK, 1)
+                    if msvcrt:
+                        try:
+                            msvcrt.locking(lock_file_handle.fileno(), msvcrt.LK_UNLCK, 1)
+                        except:
+                            pass
                 else:
-                    fcntl.flock(lock_file_handle.fileno(), fcntl.LOCK_UN)
+                    if fcntl:
+                        try:
+                            fcntl.flock(lock_file_handle.fileno(), fcntl.LOCK_UN)
+                        except:
+                            pass
                 lock_file_handle.close()
                 lock_file_handle = None
             if lock_file.exists():
