@@ -7,15 +7,23 @@ cd /d "%~dp0"
 
 REM Log-Datei Setup - im gleichen Verzeichnis wie start.py
 set "LOG_FILE=%~dp0bat.log.txt"
-REM Pruefe ob Log-Datei geschrieben werden kann, sonst Fallback zu Temp
-(echo [%date% %time%] ==========================================) >> "%LOG_FILE%" 2>nul
+REM Erstelle Log-Datei sofort und teste Schreibzugriff
+(
+    echo [%date% %time%] ==========================================
+    echo [%date% %time%] Launcher gestartet: %~f0
+    echo [%date% %time%] Verzeichnis: %~dp0
+    echo [%date% %time%] Log-Datei: %LOG_FILE%
+) >> "%LOG_FILE%" 2>&1
 if %errorlevel% neq 0 (
+    REM Fallback zu Temp-Verzeichnis
     set "LOG_FILE=%TEMP%\bat.log.txt"
+    (
+        echo [%date% %time%] ==========================================
+        echo [%date% %time%] Launcher gestartet: %~f0
+        echo [%date% %time%] Verzeichnis: %~dp0
+        echo [%date% %time%] Log-Datei: %LOG_FILE% ^(Fallback^)
+    ) >> "%LOG_FILE%" 2>&1
 )
-(echo [%date% %time%] ==========================================) >> "%LOG_FILE%"
-(echo [%date% %time%] Launcher gestartet: %~f0) >> "%LOG_FILE%"
-(echo [%date% %time%] Verzeichnis: %~dp0) >> "%LOG_FILE%"
-(echo [%date% %time%] Log-Datei: %LOG_FILE%) >> "%LOG_FILE%"
 
 REM Prüfe ob start.py existiert
 if not exist "start.py" (
@@ -234,12 +242,47 @@ timeout /t 5 >nul 2>&1
 exit /b 1
 
 :found_python
-(echo [%date% %time%] [INFO] Starte Anwendung mit: %PYTHON_EXE% start.py) >> "%LOG_FILE%"
-REM Starte Python-Skript (versteckt)
-start "" /min "%PYTHON_EXE%" start.py
+REM Pruefe ob PYTHON_EXE ein vollstaendiger Pfad ist
+set "FULL_PYTHON_PATH=%PYTHON_EXE%"
+if not exist "%PYTHON_EXE%" (
+    REM Nur Befehl - finde vollstaendigen Pfad
+    where "%PYTHON_EXE%" >nul 2>&1
+    if %errorlevel% == 0 (
+        for /f "delims=" %%P in ('where "%PYTHON_EXE%"') do set "FULL_PYTHON_PATH=%%P"
+    )
+)
+
+(
+    echo [%date% %time%] [INFO] Starte Anwendung mit: !FULL_PYTHON_PATH! start.py
+    echo [%date% %time%] [INFO] Arbeitsverzeichnis: %~dp0
+    echo [%date% %time%] [INFO] Python-Skript: %~dp0start.py
+) >> "%LOG_FILE%"
+
+REM Starte Python-Skript (versteckt) mit explizitem Arbeitsverzeichnis
+cd /d "%~dp0"
+start "" /min "!FULL_PYTHON_PATH!" "start.py"
 set START_RESULT=%errorlevel%
-(echo [%date% %time%] [INFO] Start-Befehl ausgefuehrt, Exit-Code: !START_RESULT!) >> "%LOG_FILE%"
-(echo [%date% %time%] [OK] Launcher beendet erfolgreich) >> "%LOG_FILE%"
+
+REM Warte kurz und pruefe ob Prozess laeuft
+timeout /t 1 >nul 2>&1
+tasklist /FI "IMAGENAME eq %~nx1" /FO CSV /NH 2>nul | find /i "%~nx1" >nul 2>&1
+if %errorlevel% == 0 (
+    (echo [%date% %time%] [OK] Python-Prozess laeuft) >> "%LOG_FILE%"
+) else (
+    REM Pruefe mit Python-Exe-Name
+    for %%F in ("!FULL_PYTHON_PATH!") do set "PYTHON_EXE_NAME=%%~nxF"
+    tasklist /FI "IMAGENAME eq !PYTHON_EXE_NAME!" /FO CSV /NH 2>nul | find /i "!PYTHON_EXE_NAME!" >nul 2>&1
+    if %errorlevel% == 0 (
+        (echo [%date% %time%] [OK] Python-Prozess laeuft ^(!PYTHON_EXE_NAME!^)) >> "%LOG_FILE%"
+    ) else (
+        (echo [%date% %time%] [WARNING] Python-Prozess scheint nicht zu laufen) >> "%LOG_FILE%"
+    )
+)
+
+(
+    echo [%date% %time%] [INFO] Start-Befehl ausgefuehrt, Exit-Code: !START_RESULT!
+    echo [%date% %time%] [OK] Launcher beendet erfolgreich
+) >> "%LOG_FILE%"
 
 REM Beende sofort (damit kein Konsolen-Fenster sichtbar ist)
 REM Warte kurz, damit Log geschrieben wird
