@@ -166,10 +166,26 @@ if __name__ == "__main__":
                             fcntl.flock(lock_file_handle.fileno(), fcntl.LOCK_UN)
                         except:
                             pass
-                lock_file_handle.close()
+                try:
+                    lock_file_handle.close()
+                except:
+                    pass
                 lock_file_handle = None
+            # Warte kurz, damit die Datei vollständig geschlossen ist
+            import time
+            time.sleep(0.1)
+            # Versuche Lock-Datei zu löschen (mehrmals mit Retry)
             if lock_file.exists():
-                lock_file.unlink(missing_ok=True)
+                for attempt in range(3):
+                    try:
+                        lock_file.unlink(missing_ok=True)
+                        break
+                    except (PermissionError, OSError) as e:
+                        if attempt < 2:
+                            time.sleep(0.2)
+                        else:
+                            # Bei letztem Versuch: Ignoriere Fehler
+                            pass
         except Exception:
             pass
     
