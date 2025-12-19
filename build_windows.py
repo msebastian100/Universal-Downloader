@@ -10,11 +10,14 @@ import subprocess
 import shutil
 from pathlib import Path
 
-# Fix encoding für Windows
-if sys.platform == 'win32':
+# Fix encoding für Windows - muss ganz am Anfang sein
+if sys.platform == 'win32' or os.getenv('GITHUB_ACTIONS') == 'true':
     import io
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+    # Setze UTF-8 Encoding für stdout/stderr
+    if sys.stdout.encoding != 'utf-8':
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace', line_buffering=True)
+    if sys.stderr.encoding != 'utf-8':
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace', line_buffering=True)
 
 # Für PyInstaller spec-Datei
 if __name__ != "__main__":
@@ -32,7 +35,7 @@ def install_pyinstaller():
     """Installiert PyInstaller"""
     print("Installiere PyInstaller...")
     subprocess.run([sys.executable, "-m", "pip", "install", "pyinstaller"], check=True)
-    print("✓ PyInstaller installiert")
+    print("[OK] PyInstaller installiert")
 
 def build_exe():
     """Erstellt die .exe Datei"""
@@ -59,7 +62,7 @@ def build_exe():
     spec_file = Path("UniversalDownloader.spec")
     
     if spec_file.exists():
-        print("Verwende UniversalDownloader.spec für Build...")
+        print("Verwende UniversalDownloader.spec fuer Build...")
         pyinstaller_cmd = [
             sys.executable, "-m", "PyInstaller",
             "--clean",  # Bereinige Cache
