@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-# Fix encoding fuer Windows - MUSS ganz am Anfang sein, VOR allem anderen!
+# Fix encoding fuer Windows - MUSS direkt nach encoding-Kommentar kommen!
 import os
 import sys
 
