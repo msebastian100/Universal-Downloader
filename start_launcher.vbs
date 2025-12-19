@@ -201,7 +201,12 @@ If pythonExe = "" Then
             MsgBox "Konnte Python-Installer nicht herunterladen." & vbCrLf & vbCrLf & _
                    "Bitte installieren Sie Python manuell von:" & vbCrLf & _
                    "https://www.python.org/downloads/", vbCritical, "Fehler"
-            logStream.Close
+            On Error Resume Next
+            If Not logStream Is Nothing Then
+                logStream.Close
+                Set logStream = Nothing
+            End If
+            On Error Goto 0
             WScript.Quit
         End If
         WriteLog "[OK] Python-Installer heruntergeladen: " & installerPath
@@ -253,7 +258,12 @@ If pythonExe = "" Then
                        vbCritical, "Fehler"
                 ' Lösche Installer
                 If fso.FileExists(installerPath) Then fso.DeleteFile installerPath
-                logStream.Close
+                On Error Resume Next
+                If Not logStream Is Nothing Then
+                    logStream.Close
+                    Set logStream = Nothing
+                End If
+                On Error Goto 0
                 WScript.Quit
             End If
         End If
@@ -270,7 +280,12 @@ If pythonExe = "" Then
         MsgBox "Python ist erforderlich, um die Anwendung zu starten." & vbCrLf & vbCrLf & _
                "Bitte installieren Sie Python 3.8 oder höher von:" & vbCrLf & _
                "https://www.python.org/downloads/", vbInformation, "Python erforderlich"
-        logStream.Close
+        On Error Resume Next
+        If Not logStream Is Nothing Then
+            logStream.Close
+            Set logStream = Nothing
+        End If
+        On Error Goto 0
         WScript.Quit
     End If
 End If
