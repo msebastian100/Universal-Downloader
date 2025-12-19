@@ -5,10 +5,17 @@ Set fso = CreateObject("Scripting.FileSystemObject")
 scriptPath = fso.GetParentFolderName(WScript.ScriptFullName)
 pythonScript = scriptPath & "\start.py"
 
-' Log-Datei Setup
+' Log-Datei Setup - im gleichen Verzeichnis wie start.py
 Dim logFile, logStream
-logFile = scriptPath & "\start_launcher.log"
+logFile = scriptPath & "\vbs.log.txt"
+On Error Resume Next
 Set logStream = fso.OpenTextFile(logFile, 8, True) ' 8 = ForAppending, True = Create if not exists
+If Err.Number <> 0 Then
+    ' Fallback: Versuche im Temp-Verzeichnis
+    logFile = WshShell.ExpandEnvironmentStrings("%TEMP%\vbs.log.txt")
+    Set logStream = fso.OpenTextFile(logFile, 8, True)
+End If
+On Error Goto 0
 
 Sub WriteLog(message)
     Dim timestamp

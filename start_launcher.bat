@@ -5,11 +5,17 @@ REM Versteckt das Konsolen-Fenster und startet die Anwendung
 REM Hole das Verzeichnis der .bat Datei
 cd /d "%~dp0"
 
-REM Log-Datei Setup
-set "LOG_FILE=%~dp0start_launcher.log"
+REM Log-Datei Setup - im gleichen Verzeichnis wie start.py
+set "LOG_FILE=%~dp0bat.log.txt"
+REM Pruefe ob Log-Datei geschrieben werden kann, sonst Fallback zu Temp
+(echo [%date% %time%] ==========================================) >> "%LOG_FILE%" 2>nul
+if %errorlevel% neq 0 (
+    set "LOG_FILE=%TEMP%\bat.log.txt"
+)
 (echo [%date% %time%] ==========================================) >> "%LOG_FILE%"
 (echo [%date% %time%] Launcher gestartet: %~f0) >> "%LOG_FILE%"
 (echo [%date% %time%] Verzeichnis: %~dp0) >> "%LOG_FILE%"
+(echo [%date% %time%] Log-Datei: %LOG_FILE%) >> "%LOG_FILE%"
 
 REM Prüfe ob start.py existiert
 if not exist "start.py" (
