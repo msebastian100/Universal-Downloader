@@ -4574,19 +4574,151 @@ Historie-Einträge: {len(self.video_download_history)}
         """Prüft und installiert Abhängigkeiten im Hintergrund"""
         def check_thread():
             try:
+                from auto_install_dependencies import check_ytdlp, check_ffmpeg
+                
+                # Schnelle Prüfung ob Installation nötig ist
+                ytdlp_ok, _ = check_ytdlp()
+                ffmpeg_ok, _ = check_ffmpeg()
+                
+                # Wenn beide vorhanden sind, nichts tun
+                if ytdlp_ok and ffmpeg_ok:
+                    return
+                
+                # Zeige Installations-Dialog
+                self.root.after(0, self._show_dependency_installation_dialog)
+                
+                # Installiere Abhängigkeiten
                 from auto_install_dependencies import ensure_dependencies
                 ytdlp_ok, ffmpeg_ok, messages = ensure_dependencies()
                 
-                # Zeige wichtige Meldungen in der GUI (optional)
-                for msg in messages:
-                    if "[ERROR]" in msg:
-                        # Zeige Fehler in der GUI
-                        self.root.after(0, lambda m=msg: self.log_message(m))
+                # Aktualisiere Dialog mit Ergebnissen
+                self.root.after(0, lambda: self._update_dependency_dialog(ytdlp_ok, ffmpeg_ok, messages))
+                
             except Exception as e:
-                # Stille Fehlerbehandlung - nicht kritisch
-                pass
+                # Zeige Fehler im Dialog
+                self.root.after(0, lambda: self._update_dependency_dialog(False, False, [f"[ERROR] Fehler: {e}"]))
         
         threading.Thread(target=check_thread, daemon=True).start()
+    
+    def _show_dependency_installation_dialog(self):
+        """Zeigt Dialog während der Abhängigkeits-Installation"""
+        if hasattr(self, '_dep_dialog') and self._dep_dialog.winfo_exists():
+            return  # Dialog bereits vorhanden
+        
+        self._dep_dialog = tk.Toplevel(self.root)
+        self._dep_dialog.title("Abhängigkeiten installieren")
+        self._dep_dialog.geometry("500x300")
+        self._dep_dialog.transient(self.root)
+        self._dep_dialog.grab_set()
+        
+        # Verhindere Schließen während Installation
+        self._dep_dialog.protocol("WM_DELETE_WINDOW", lambda: None)
+        
+        frame = ttk.Frame(self._dep_dialog, padding="20")
+        frame.pack(fill=tk.BOTH, expand=True)
+        
+        ttk.Label(
+            frame,
+            text="Installiere fehlende Abhängigkeiten...",
+            font=("Arial", 12, "bold")
+        ).pack(pady=10)
+        
+        ttk.Label(
+            frame,
+            text="Bitte warten Sie, während die benötigten Komponenten installiert werden.",
+            wraplength=450
+        ).pack(pady=5)
+        
+        # Status-Text
+        self._dep_status_text = scrolledtext.ScrolledText(
+            frame,
+            height=10,
+            width=60,
+            wrap=tk.WORD,
+            state=tk.DISABLED
+        )
+        self._dep_status_text.pack(pady=10, fill=tk.BOTH, expand=True)
+        
+        # Progress Bar
+        self._dep_progress = ttk.Progressbar(
+            frame,
+            mode='indeterminate'
+        )
+        self._dep_progress.pack(fill=tk.X, pady=5)
+        self._dep_progress.start()
+        
+        # Schließen-Button (zunächst deaktiviert)
+        button_frame = ttk.Frame(frame)
+        button_frame.pack(pady=10)
+        
+        self._dep_close_button = ttk.Button(
+            button_frame,
+            text="Schließen",
+            command=self._dep_dialog.destroy,
+            state=tk.DISABLED
+        )
+        self._dep_close_button.pack()
+        
+        # Starte Status-Updates
+        self._dep_status_text.config(state=tk.NORMAL)
+        self._dep_status_text.insert(tk.END, "[INFO] Prüfe Abhängigkeiten...\n")
+        self._dep_status_text.config(state=tk.DISABLED)
+        self._dep_status_text.see(tk.END)
+    
+    def _update_dependency_dialog(self, ytdlp_ok, ffmpeg_ok, messages):
+        """Aktualisiert den Installations-Dialog mit Ergebnissen"""
+        if not hasattr(self, '_dep_dialog') or not self._dep_dialog.winfo_exists():
+            return
+        
+        # Stoppe Progress Bar
+        self._dep_progress.stop()
+        
+        # Zeige alle Meldungen
+        self._dep_status_text.config(state=tk.NORMAL)
+        for msg in messages:
+            self._dep_status_text.insert(tk.END, msg + "\n")
+        self._dep_status_text.config(state=tk.DISABLED)
+        self._dep_status_text.see(tk.END)
+        
+        # Aktiviere Schließen-Button
+        self._dep_close_button.config(state=tk.NORMAL)
+        
+        # Erlaube Schließen
+        self._dep_dialog.protocol("WM_DELETE_WINDOW", self._dep_dialog.destroy)
+        
+        # Zeige Erfolgsmeldung und frage nach Neustart
+        if ytdlp_ok and ffmpeg_ok:
+            self._dep_status_text.config(state=tk.NORMAL)
+            self._dep_status_text.insert(tk.END, "\n[OK] Alle Abhängigkeiten wurden erfolgreich installiert!\n")
+            self._dep_status_text.config(state=tk.DISABLED)
+            self._dep_status_text.see(tk.END)
+            
+            # Frage nach Neustart
+            self.root.after(500, lambda: self._ask_restart_after_dependency_install())
+        else:
+            self._dep_status_text.config(state=tk.NORMAL)
+            self._dep_status_text.insert(tk.END, "\n[WARNING] Einige Abhängigkeiten konnten nicht installiert werden.\n")
+            self._dep_status_text.insert(tk.END, "Die Anwendung kann möglicherweise nicht vollständig funktionieren.\n")
+            self._dep_status_text.config(state=tk.DISABLED)
+            self._dep_status_text.see(tk.END)
+    
+    def _ask_restart_after_dependency_install(self):
+        """Fragt ob die Anwendung nach Abhängigkeits-Installation neu gestartet werden soll"""
+        if not hasattr(self, '_dep_dialog') or not self._dep_dialog.winfo_exists():
+            return
+        
+        result = messagebox.askyesno(
+            "Abhängigkeiten installiert",
+            "Die Abhängigkeiten wurden erfolgreich installiert.\n\n"
+            "Möchten Sie die Anwendung jetzt neu starten, um sicherzustellen, "
+            "dass alle Komponenten korrekt geladen werden?",
+            parent=self._dep_dialog
+        )
+        
+        if result:
+            self._dep_dialog.destroy()
+            # Starte Anwendung neu
+            self._restart_application(Path())
     
     def _check_updates_on_start(self):
         """Prüft im Hintergrund auf Updates beim Start"""
