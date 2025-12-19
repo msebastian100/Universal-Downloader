@@ -4,11 +4,16 @@ on:
   release:
     types: [created]
   workflow_dispatch:  # Manuell auslösbar
+  push:
+    branches:
+      - main
 
 jobs:
   build-windows:
     name: Build Windows .exe
     runs-on: windows-latest
+    permissions:
+      contents: write  # Erforderlich für softprops/action-gh-release
     
     steps:
       - name: Checkout code
@@ -49,6 +54,8 @@ jobs:
   build-linux:
     name: Build Linux .deb
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Erforderlich für softprops/action-gh-release
     
     steps:
       - name: Checkout code
