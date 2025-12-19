@@ -305,25 +305,39 @@ If InStr(pythonExe, "\") > 0 Then
 Else
     ' Nur Befehl - finde vollständigen Pfad
     On Error Resume Next
-    Dim pythonCheckPath
-    Set pythonCheckPath = WshShell.Exec(pythonExe & " --version")
-    pythonCheckPath.StdOut.ReadAll
-    pythonCheckPath.WaitOnReturn = True
-    If pythonCheckPath.ExitCode = 0 Then
-        ' Versuche vollständigen Pfad zu finden
-        Dim whereResult
-        Set whereResult = WshShell.Exec("where " & pythonExe)
-        whereResult.StdOut.ReadAll
-        whereResult.WaitOnReturn = True
-        If whereResult.ExitCode = 0 Then
-            fullPythonPath = Trim(whereResult.StdOut.ReadAll)
+    ' Versuche vollständigen Pfad zu finden mit "where"
+    Dim whereResult
+    Set whereResult = WshShell.Exec("where " & pythonExe)
+    Dim whereOutput
+    whereOutput = whereResult.StdOut.ReadAll
+    whereResult.WaitOnReturn = True
+    If whereResult.ExitCode = 0 And Trim(whereOutput) <> "" Then
+        ' Nimm die erste Zeile (erste gefundene Python-Installation)
+        Dim lines
+        lines = Split(whereOutput, vbCrLf)
+        If UBound(lines) >= 0 Then
+            fullPythonPath = Trim(lines(0))
         Else
             fullPythonPath = pythonExe
         End If
     Else
-        fullPythonPath = pythonExe
+        ' Fallback: Versuche mit pythonExe direkt
+        Dim pythonCheckPath
+        Set pythonCheckPath = WshShell.Exec(pythonExe & " --version")
+        pythonCheckPath.StdOut.ReadAll
+        pythonCheckPath.WaitOnReturn = True
+        If pythonCheckPath.ExitCode = 0 Then
+            fullPythonPath = pythonExe
+        Else
+            fullPythonPath = pythonExe
+        End If
     End If
     On Error Goto 0
+End If
+
+' Stelle sicher, dass fullPythonPath gesetzt ist
+If fullPythonPath = "" Then
+    fullPythonPath = pythonExe
 End If
 
 WriteLog "[INFO] Vollständiger Python-Pfad: " & fullPythonPath
