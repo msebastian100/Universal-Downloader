@@ -243,7 +243,8 @@ if __name__ == "__main__":
     debug_log(f"Executable: {sys.executable}")
     debug_log(f"Frozen: {getattr(sys, 'frozen', False)}")
     debug_log(f"PID: {os.getpid()}")
-    debug_log(f"Log-Datei: {Path.home() / 'Downloads' / 'Universal Downloader' / 'Logs' / f'start_debug_{datetime.now().strftime(\"%Y-%m-%d\")}.log'}")
+    log_file_path = Path.home() / 'Downloads' / 'Universal Downloader' / 'Logs' / f'start_debug_{datetime.now().strftime("%Y-%m-%d")}.log'
+    debug_log(f"Log-Datei: {log_file_path}")
     
     # Prüfe auf Restart-Flag
     restart_flag_file = Path(tempfile.gettempdir()) / "universal_downloader_restarting.flag"
