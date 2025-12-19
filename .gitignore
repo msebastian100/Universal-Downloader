@@ -12,10 +12,10 @@ ENV/
 # Build-Artefakte
 build/
 dist/
-*.spec
 *.exe
 *.deb
 deb_build/
+# UniversalDownloader.spec sollte im Repo sein (nicht ignorieren)
 
 # IDE
 .vscode/
