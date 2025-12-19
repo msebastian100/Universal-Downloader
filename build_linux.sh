@@ -50,15 +50,17 @@ mkdir -p "$BUILD_DIR/usr/share/pixmaps"
 
 # Kopiere Dateien
 echo "Kopiere Dateien..."
-cp start.py "$BUILD_DIR/usr/share/$APP_NAME/"
-cp gui.py "$BUILD_DIR/usr/share/$APP_NAME/"
-cp deezer_downloader.py "$BUILD_DIR/usr/share/$APP_NAME/"
-cp deezer_auth.py "$BUILD_DIR/usr/share/$APP_NAME/"
-cp spotify_downloader.py "$BUILD_DIR/usr/share/$APP_NAME/"
-cp video_downloader.py "$BUILD_DIR/usr/share/$APP_NAME/"
-cp audible_integration.py "$BUILD_DIR/usr/share/$APP_NAME/"
-cp install_ffmpeg.py "$BUILD_DIR/usr/share/$APP_NAME/"
-cp requirements.txt "$BUILD_DIR/usr/share/$APP_NAME/"
+cp start.py "$BUILD_DIR/usr/share/$APP_NAME/" || exit 1
+cp gui.py "$BUILD_DIR/usr/share/$APP_NAME/" || exit 1
+cp deezer_downloader.py "$BUILD_DIR/usr/share/$APP_NAME/" || exit 1
+cp deezer_auth.py "$BUILD_DIR/usr/share/$APP_NAME/" || exit 1
+cp spotify_downloader.py "$BUILD_DIR/usr/share/$APP_NAME/" || exit 1
+cp video_downloader.py "$BUILD_DIR/usr/share/$APP_NAME/" || exit 1
+cp audible_integration.py "$BUILD_DIR/usr/share/$APP_NAME/" || exit 1
+cp install_ffmpeg.py "$BUILD_DIR/usr/share/$APP_NAME/" || exit 1
+cp requirements.txt "$BUILD_DIR/usr/share/$APP_NAME/" || exit 1
+cp updater.py "$BUILD_DIR/usr/share/$APP_NAME/" || exit 1
+cp version.py "$BUILD_DIR/usr/share/$APP_NAME/" || exit 1
 
 # Kopiere Icon falls vorhanden
 if [ -f "icon.png" ]; then
@@ -129,7 +131,16 @@ chmod +x "$BUILD_DIR/DEBIAN/prerm"
 # Erstelle .deb Paket
 echo ""
 echo "Erstelle .deb Paket..."
-dpkg-deb --build "$BUILD_DIR" "$DEB_DIR/${APP_NAME}_${VERSION}_all.deb"
+if ! dpkg-deb --build "$BUILD_DIR" "$DEB_DIR/${APP_NAME}_${VERSION}_all.deb"; then
+    echo "✗ Fehler beim Erstellen des .deb Pakets"
+    exit 1
+fi
+
+# Prüfe ob .deb erstellt wurde
+if [ ! -f "$DEB_DIR/${APP_NAME}_${VERSION}_all.deb" ]; then
+    echo "✗ .deb Datei wurde nicht erstellt"
+    exit 1
+fi
 
 echo ""
 echo "============================================================"

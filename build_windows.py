@@ -49,45 +49,80 @@ def build_exe():
     if dist_dir.exists():
         shutil.rmtree(dist_dir)
     
-    # PyInstaller-Befehle
-    pyinstaller_cmd = [
-        sys.executable, "-m", "PyInstaller",
-        "--name=UniversalDownloader",
-        "--onefile",
-        "--windowed",  # Kein Konsolen-Fenster
-        "--icon=icon.png" if Path("icon.png").exists() else "",
-        "--add-data=icon.png;." if Path("icon.png").exists() else "",
-        "--hidden-import=tkinter",
-        "--hidden-import=PIL",
-        "--hidden-import=mutagen",
-        "--hidden-import=deezer",
-        "--hidden-import=yt_dlp",
-        "--hidden-import=requests",
-        "--hidden-import=beautifulsoup4",
-        "--hidden-import=selenium",
-        "--hidden-import=audible",
-        "--hidden-import=browser_cookie3",
-        "--collect-all=yt_dlp",
-        "--collect-all=PIL",
-        "--collect-all=mutagen",
-        "start.py"
-    ]
+    # Verwende .spec Datei falls vorhanden, sonst manuelle Parameter
+    spec_file = Path("UniversalDownloader.spec")
     
-    # Entferne leere Einträge
-    pyinstaller_cmd = [x for x in pyinstaller_cmd if x]
+    if spec_file.exists():
+        print("Verwende UniversalDownloader.spec für Build...")
+        pyinstaller_cmd = [
+            sys.executable, "-m", "PyInstaller",
+            "--clean",  # Bereinige Cache
+            str(spec_file)
+        ]
+    else:
+        print("Keine .spec Datei gefunden, verwende manuelle Parameter...")
+        # PyInstaller-Befehle
+        pyinstaller_cmd = [
+            sys.executable, "-m", "PyInstaller",
+            "--name=UniversalDownloader",
+            "--onefile",
+            "--windowed",  # Kein Konsolen-Fenster
+            "--icon=icon.png" if Path("icon.png").exists() else "",
+            "--add-data=icon.png;." if Path("icon.png").exists() else "",
+            "--hidden-import=tkinter",
+            "--hidden-import=PIL",
+            "--hidden-import=mutagen",
+            "--hidden-import=deezer",
+            "--hidden-import=yt_dlp",
+            "--hidden-import=requests",
+            "--hidden-import=beautifulsoup4",
+            "--hidden-import=selenium",
+            "--hidden-import=audible",
+            "--hidden-import=browser_cookie3",
+            "--hidden-import=deezer_auth",
+            "--hidden-import=deezer_downloader",
+            "--hidden-import=spotify_downloader",
+            "--hidden-import=video_downloader",
+            "--hidden-import=audible_integration",
+            "--hidden-import=updater",
+            "--hidden-import=version",
+            "--collect-all=yt_dlp",
+            "--collect-all=PIL",
+            "--collect-all=mutagen",
+            "start.py"
+        ]
+        
+        # Entferne leere Einträge
+        pyinstaller_cmd = [x for x in pyinstaller_cmd if x]
     
     print(f"\nFühre aus: {' '.join(pyinstaller_cmd)}\n")
     
     try:
-        result = subprocess.run(pyinstaller_cmd, check=True)
+        result = subprocess.run(pyinstaller_cmd, check=True, capture_output=False)
         print("\n" + "=" * 70)
         print("✓ Build erfolgreich!")
         print("=" * 70)
-        print(f"\nDie .exe Datei befindet sich in: {dist_dir.absolute()}")
-        print(f"Dateiname: UniversalDownloader.exe")
-        return True
+        
+        # Prüfe ob .exe erstellt wurde
+        exe_path = dist_dir / "UniversalDownloader.exe"
+        if exe_path.exists():
+            print(f"\nDie .exe Datei befindet sich in: {dist_dir.absolute()}")
+            print(f"Dateiname: UniversalDownloader.exe")
+            print(f"Größe: {exe_path.stat().st_size / (1024*1024):.2f} MB")
+            return True
+        else:
+            print(f"\n⚠ Warnung: .exe Datei nicht gefunden in {dist_dir}")
+            return False
     except subprocess.CalledProcessError as e:
         print(f"\n✗ Build fehlgeschlagen: {e}")
+        print(f"Returncode: {e.returncode}")
+        if hasattr(e, 'stderr') and e.stderr:
+            print(f"Fehlerausgabe: {e.stderr.decode()}")
+        return False
+    except Exception as e:
+        print(f"\n✗ Unerwarteter Fehler: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 if __name__ == "__main__":
