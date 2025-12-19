@@ -4570,6 +4570,24 @@ Historie-Einträge: {len(self.video_download_history)}
         
         ttk.Button(button_frame, text="Statistiken zurücksetzen", command=reset_stats).pack()
     
+    def _ensure_dependencies_background(self):
+        """Prüft und installiert Abhängigkeiten im Hintergrund"""
+        def check_thread():
+            try:
+                from auto_install_dependencies import ensure_dependencies
+                ytdlp_ok, ffmpeg_ok, messages = ensure_dependencies()
+                
+                # Zeige wichtige Meldungen in der GUI (optional)
+                for msg in messages:
+                    if "[ERROR]" in msg:
+                        # Zeige Fehler in der GUI
+                        self.root.after(0, lambda m=msg: self.log_message(m))
+            except Exception as e:
+                # Stille Fehlerbehandlung - nicht kritisch
+                pass
+        
+        threading.Thread(target=check_thread, daemon=True).start()
+    
     def _check_updates_on_start(self):
         """Prüft im Hintergrund auf Updates beim Start"""
         if not UpdateChecker:
@@ -4586,8 +4604,6 @@ Historie-Einträge: {len(self.video_download_history)}
         
         def check_thread():
             try:
-                # Warte kurz, damit die GUI vollständig geladen ist
-                time.sleep(3)
                 checker = UpdateChecker()
                 available, info = checker.check_for_updates()
                 if available and info:
