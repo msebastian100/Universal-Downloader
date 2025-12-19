@@ -4309,8 +4309,8 @@ class DeezerDownloaderGUI:
                 self.root.update()
                 
                 search_url = f"ytsearch20:{query}"  # Erste 20 Ergebnisse
-                cmd = [
-                    'yt-dlp',
+                from yt_dlp_helper import get_ytdlp_command
+                cmd = get_ytdlp_command() + [
                     '--dump-json',
                     '--flat-playlist',
                     '--no-warnings',

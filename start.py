@@ -26,12 +26,19 @@ def check_dependencies_quick():
     except ImportError:
         missing.append("yt-dlp")
     
-    # Prüfe System-Befehle
-    import subprocess
+    # Prüfe yt-dlp (System oder Modul)
     try:
-        subprocess.run(['yt-dlp', '--version'], capture_output=True, timeout=2, check=True)
-    except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError):
-        missing.append("yt-dlp (System)")
+        from yt_dlp_helper import get_ytdlp_version
+        version = get_ytdlp_version()
+        if not version:
+            missing.append("yt-dlp")
+    except ImportError:
+        # Fallback: Alte Methode
+        import subprocess
+        try:
+            subprocess.run(['yt-dlp', '--version'], capture_output=True, timeout=2, check=True)
+        except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError):
+            missing.append("yt-dlp")
     
     try:
         subprocess.run(['ffmpeg', '-version'], capture_output=True, timeout=2, check=True)

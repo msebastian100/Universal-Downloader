@@ -430,8 +430,8 @@ class SpotifyDownloader:
             # Versuche Track-Info über yt-dlp zu bekommen
             spotify_url = f"https://open.spotify.com/track/{track_id}"
             
-            cmd = [
-                'yt-dlp',
+            from yt_dlp_helper import get_ytdlp_command
+            cmd = get_ytdlp_command() + [
                 '--dump-json',
                 '--no-playlist',
                 spotify_url
@@ -513,8 +513,8 @@ class SpotifyDownloader:
         
         try:
             # Versuche Playlist über yt-dlp zu bekommen
-            cmd = [
-                'yt-dlp',
+            from yt_dlp_helper import get_ytdlp_command
+            cmd = get_ytdlp_command() + [
                 '--dump-json',
                 '--flat-playlist',
                 '--yes-playlist',
@@ -688,8 +688,8 @@ class SpotifyDownloader:
         
         try:
             # Versuche Album über yt-dlp zu bekommen
-            cmd = [
-                'yt-dlp',
+            from yt_dlp_helper import get_ytdlp_command
+            cmd = get_ytdlp_command() + [
                 '--dump-json',
                 '--flat-playlist',
                 '--yes-playlist',
@@ -750,8 +750,8 @@ class SpotifyDownloader:
         try:
             search_query = f"{track_info['artist']} {track_info['title']}"
             
-            cmd = [
-                'yt-dlp',
+            from yt_dlp_helper import get_ytdlp_command
+            cmd = get_ytdlp_command() + [
                 '--dump-json',
                 f'ytsearch1:{search_query}'
             ]

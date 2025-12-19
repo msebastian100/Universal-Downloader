@@ -1246,7 +1246,8 @@ class VideoDownloader:
                 # Für Thumbnail: Verwende yt-dlp nur für Thumbnail-Download
                 if download_thumbnail:
                     # Baue yt-dlp Kommando nur für Thumbnail
-                    cmd = ['yt-dlp']
+                    from yt_dlp_helper import get_ytdlp_command
+                    cmd = get_ytdlp_command()
                     cmd.extend(['--write-thumbnail', '--convert-thumbnails', 'jpg', '--skip-download'])
                     cmd.append(url)
                     
@@ -1343,7 +1344,8 @@ class VideoDownloader:
                 # Für Thumbnail: Verwende yt-dlp nur für Thumbnail-Download
                 if download_thumbnail:
                     # Baue yt-dlp Kommando nur für Thumbnail
-                    cmd = ['yt-dlp']
+                    from yt_dlp_helper import get_ytdlp_command
+                    cmd = get_ytdlp_command()
                     cmd.extend(['--write-thumbnail', '--convert-thumbnails', 'jpg', '--skip-download'])
                     cmd.append(url)
                     
@@ -1395,7 +1397,8 @@ class VideoDownloader:
                         self.log(f"⚠ Keine gültigen Cookies für {service} gefunden", "WARNING")
             
             # Baue yt-dlp Kommando
-            cmd = ['yt-dlp']
+            from yt_dlp_helper import get_ytdlp_command
+            cmd = get_ytdlp_command()
             
             # Füge Cookies hinzu falls vorhanden
             if cookies_file:

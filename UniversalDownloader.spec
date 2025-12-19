@@ -21,6 +21,7 @@ a = Analysis(
         'mutagen',
         'deezer',
         'yt_dlp',
+        'yt_dlp_helper',
         'requests',
         'beautifulsoup4',
         'selenium',
