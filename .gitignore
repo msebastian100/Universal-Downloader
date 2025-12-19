@@ -47,3 +47,5 @@ audible-activator/
 
 # Dokumentation (lokal behalten, aber nicht ins Repository)
 *.md
+# README.md soll im Repository sein
+!README.md
