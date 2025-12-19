@@ -31,7 +31,10 @@ Falls Sie nach Benutzername/Passwort gefragt werden:
 - **Benutzername**: `msebastian100`
 - **Passwort**: Verwenden Sie ein **Personal Access Token** (nicht Ihr GitHub-Passwort)
   - Erstellen Sie eines hier: https://github.com/settings/tokens
-  - Scopes: `repo` (vollständiger Zugriff)
+  - **Benötigte Scopes**: 
+    - ✅ `repo` (vollständiger Zugriff auf Repositories)
+    - ✅ `workflow` (optional, für GitHub Actions)
+  - **Detaillierte Anleitung**: Siehe [GITHUB_TOKEN_ANLEITUNG.md](GITHUB_TOKEN_ANLEITUNG.md)
 
 ## Schritt 3: Erste Release erstellen (mit automatischen Builds!)
 

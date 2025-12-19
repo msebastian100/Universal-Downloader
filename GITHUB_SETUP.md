@@ -16,6 +16,19 @@ Diese Anleitung erklärt, wie Sie das Universal Downloader Projekt auf GitHub ei
      - ✅ Choose a license → **Wählen Sie "MIT License"**
 4. Klicken Sie auf "Create repository"
 
+## 🔑 Schritt 1.5: Personal Access Token erstellen (wichtig!)
+
+Bevor Sie Code hochladen können, benötigen Sie ein Personal Access Token:
+
+1. Gehen Sie zu: https://github.com/settings/tokens
+2. Klicken Sie auf "Generate new token" → "Generate new token (classic)"
+3. Aktivieren Sie folgende Scopes:
+   - ✅ **`repo`** (vollständiger Zugriff auf Repositories)
+   - ✅ **`workflow`** (optional, für GitHub Actions)
+4. Kopieren Sie den Token (wird nur einmal angezeigt!)
+
+**Detaillierte Anleitung**: Siehe [GITHUB_TOKEN_ANLEITUNG.md](GITHUB_TOKEN_ANLEITUNG.md)
+
 ## 📝 Schritt 2: Lokales Repository einrichten
 
 Falls Sie noch kein Git-Repository haben:
