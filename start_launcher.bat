@@ -262,19 +262,31 @@ if not exist "%PYTHON_EXE%" (
 :found_full_path
 if "!FULL_PYTHON_PATH!"=="" set "FULL_PYTHON_PATH=%PYTHON_EXE%"
 
-echo [%date% %time%] [INFO] Vollständiger Python-Pfad: !FULL_PYTHON_PATH! >> "%LOG_FILE%"
+echo [%date% %time%] [INFO] ========================================== >> "%LOG_FILE%"
+echo [%date% %time%] [INFO] Python gefunden: !FULL_PYTHON_PATH! >> "%LOG_FILE%"
 echo [%date% %time%] [INFO] Arbeitsverzeichnis: %~dp0 >> "%LOG_FILE%"
+echo [%date% %time%] [INFO] ========================================== >> "%LOG_FILE%"
 
 REM Prüfe und installiere requirements.txt
 if exist "requirements.txt" (
+    echo [%date% %time%] [INFO] ========================================== >> "%LOG_FILE%"
     echo [%date% %time%] [INFO] Pruefe requirements.txt... >> "%LOG_FILE%"
+    echo [%date% %time%] [INFO] ========================================== >> "%LOG_FILE%"
     REM Prüfe ob pip verfügbar ist
-    !FULL_PYTHON_PATH! -m pip --version >nul 2>&1
-    if %errorlevel% == 0 (
+    echo [%date% %time%] [INFO] Pruefe pip-Verfuegbarkeit... >> "%LOG_FILE%"
+    !FULL_PYTHON_PATH! -m pip --version >> "%LOG_FILE%" 2>&1
+    set PIP_CHECK_RESULT=%errorlevel%
+    echo [%date% %time%] [INFO] pip --version Exit-Code: !PIP_CHECK_RESULT! >> "%LOG_FILE%"
+    if !PIP_CHECK_RESULT! == 0 (
         echo [%date% %time%] [OK] pip verfügbar >> "%LOG_FILE%"
-        echo [%date% %time%] [INFO] Installiere/aktualisiere requirements.txt... >> "%LOG_FILE%"
-        !FULL_PYTHON_PATH! -m pip install --upgrade -r "requirements.txt"
+        echo [%date% %time%] [INFO] ========================================== >> "%LOG_FILE%"
+        echo [%date% %time%] [INFO] Starte requirements.txt Installation... >> "%LOG_FILE%"
+        echo [%date% %time%] [INFO] Befehl: !FULL_PYTHON_PATH! -m pip install --upgrade -r "requirements.txt" >> "%LOG_FILE%"
+        echo [%date% %time%] [INFO] ========================================== >> "%LOG_FILE%"
+        REM Führe Installation aus und leite Ausgabe ins Log um
+        !FULL_PYTHON_PATH! -m pip install --upgrade -r "requirements.txt" >> "%LOG_FILE%" 2>&1
         set PIP_RESULT=%errorlevel%
+        echo [%date% %time%] [INFO] pip install Exit-Code: !PIP_RESULT! >> "%LOG_FILE%"
         if !PIP_RESULT! == 0 (
             echo [%date% %time%] [OK] requirements.txt erfolgreich installiert/aktualisiert >> "%LOG_FILE%"
         ) else (
@@ -289,6 +301,11 @@ if exist "requirements.txt" (
 
 REM Starte start.py
 cd /d "%~dp0"
+echo [%date% %time%] [INFO] ========================================== >> "%LOG_FILE%"
+echo [%date% %time%] [INFO] Starte Anwendung... >> "%LOG_FILE%"
+echo [%date% %time%] [INFO] Start-Befehl: "!FULL_PYTHON_PATH!" "start.py" >> "%LOG_FILE%"
+echo [%date% %time%] [INFO] Arbeitsverzeichnis: %~dp0 >> "%LOG_FILE%"
+echo [%date% %time%] [INFO] ========================================== >> "%LOG_FILE%"
 start "" /B /MIN "!FULL_PYTHON_PATH!" "start.py"
 set START_RESULT=%errorlevel%
 echo [%date% %time%] [INFO] Start-Befehl ausgefuehrt, Exit-Code: !START_RESULT! >> "%LOG_FILE%"
@@ -296,20 +313,32 @@ echo [%date% %time%] [INFO] Start-Befehl ausgefuehrt, Exit-Code: !START_RESULT! 
 REM Warte kurz und pruefe ob Prozess laeuft
 timeout /t 2 >nul 2>&1
 for %%F in ("!FULL_PYTHON_PATH!") do set "PYTHON_EXE_NAME=%%~nxF"
+echo [%date% %time%] [INFO] Pruefe ob Python-Prozess laeuft: !PYTHON_EXE_NAME! >> "%LOG_FILE%"
+tasklist /FI "IMAGENAME eq !PYTHON_EXE_NAME!" /FO CSV /NH >> "%LOG_FILE%" 2>&1
 tasklist /FI "IMAGENAME eq !PYTHON_EXE_NAME!" /FO CSV /NH 2>nul | find /i "!PYTHON_EXE_NAME!" >nul 2>&1
 if %errorlevel% == 0 (
     echo [%date% %time%] [OK] Python-Prozess laeuft (!PYTHON_EXE_NAME!) >> "%LOG_FILE%"
 ) else (
     echo [%date% %time%] [WARNING] Python-Prozess scheint nicht zu laufen >> "%LOG_FILE%"
-    echo.
-    echo WARNUNG: Python-Prozess wurde nicht gefunden!
-    echo.
-    echo Log-Datei: %LOG_FILE%
-    echo.
-    pause
+    REM Pruefe auch python.exe
+    tasklist /FI "IMAGENAME eq python.exe" /FO CSV /NH >> "%LOG_FILE%" 2>&1
+    tasklist /FI "IMAGENAME eq python.exe" /FO CSV /NH 2>nul | find /i "python.exe" >nul 2>&1
+    if %errorlevel% == 0 (
+        echo [%date% %time%] [OK] Python-Prozess gefunden (python.exe) >> "%LOG_FILE%"
+    ) else (
+        echo [%date% %time%] [WARNING] Kein Python-Prozess gefunden >> "%LOG_FILE%"
+        echo.
+        echo WARNUNG: Python-Prozess wurde nicht gefunden!
+        echo.
+        echo Log-Datei: %LOG_FILE%
+        echo.
+        pause
+    )
 )
 
+echo [%date% %time%] [OK] ========================================== >> "%LOG_FILE%"
 echo [%date% %time%] [OK] Launcher beendet erfolgreich >> "%LOG_FILE%"
+echo [%date% %time%] [OK] ========================================== >> "%LOG_FILE%"
 
 if errorlevel 1 (
     echo.

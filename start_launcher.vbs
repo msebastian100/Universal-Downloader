@@ -15,22 +15,20 @@ ElseIf fso.FileExists(scriptPath & "\icon.png") Then
     iconPath = scriptPath & "\icon.png"
 End If
 
-' Setze Icon für das VBS-Skript (wenn möglich)
-If iconPath <> "" Then
-    On Error Resume Next
-    ' Versuche Icon zu setzen (funktioniert nur wenn WScript.Shell das unterstützt)
-    ' Für bessere Icon-Anzeige verwenden wir das Icon in start.py
-    On Error Goto 0
-End If
-
-' Log-Datei Setup
+' Log-Datei Setup - IMMER ins Arbeitsverzeichnis
 Dim logFile, logStream
 logFile = scriptPath & "\vbs.log.txt"
 On Error Resume Next
 Set logStream = fso.OpenTextFile(logFile, 8, True)
 If Err.Number <> 0 Then
-    logFile = WshShell.ExpandEnvironmentStrings("%TEMP%\vbs.log.txt")
-    Set logStream = fso.OpenTextFile(logFile, 8, True)
+    ' Versuche es nochmal mit explizitem Pfad
+    Err.Clear
+    Set logStream = fso.OpenTextFile(logFile, 2, True) ' 2 = ForWriting, True = Create
+    If Err.Number <> 0 Then
+        ' Fallback zu Temp nur wenn wirklich nötig
+        logFile = WshShell.ExpandEnvironmentStrings("%TEMP%\vbs.log.txt")
+        Set logStream = fso.OpenTextFile(logFile, 8, True)
+    End If
 End If
 On Error Goto 0
 
@@ -40,6 +38,9 @@ Sub WriteLog(message)
     timestamp = Now()
     If Not logStream Is Nothing Then
         logStream.WriteLine "[" & timestamp & "] " & message
+        ' Flush sofort (schließe und öffne neu)
+        logStream.Close
+        Set logStream = fso.OpenTextFile(logFile, 8, True)
     End If
     On Error Goto 0
 End Sub
@@ -47,15 +48,39 @@ End Sub
 WriteLog "=========================================="
 WriteLog "Launcher gestartet: " & WScript.ScriptFullName
 WriteLog "Verzeichnis: " & scriptPath
+WriteLog "Log-Datei: " & logFile
 If iconPath <> "" Then
     WriteLog "[INFO] Icon gefunden: " & iconPath
+Else
+    WriteLog "[WARNING] Kein Icon gefunden"
+End If
+
+' Erstelle Shortcut (.lnk) mit Icon für Taskleiste
+Dim shortcutPath
+shortcutPath = scriptPath & "\Universal Downloader.lnk"
+If Not fso.FileExists(shortcutPath) And iconPath <> "" Then
+    WriteLog "[INFO] Erstelle Shortcut mit Icon: " & shortcutPath
+    On Error Resume Next
+    Dim shortcut
+    Set shortcut = WshShell.CreateShortcut(shortcutPath)
+    shortcut.TargetPath = WScript.ScriptFullName
+    shortcut.WorkingDirectory = scriptPath
+    shortcut.Description = "Universal Downloader"
+    shortcut.IconLocation = iconPath & ",0"
+    shortcut.Save
+    If Err.Number = 0 Then
+        WriteLog "[OK] Shortcut erstellt: " & shortcutPath
+    Else
+        WriteLog "[WARNING] Konnte Shortcut nicht erstellen: " & Err.Description
+    End If
+    On Error Goto 0
 End If
 
 ' Prüfe ob start.py existiert
 If Not fso.FileExists(pythonScript) Then
     WriteLog "[ERROR] start.py nicht gefunden in: " & scriptPath
     MsgBox "start.py nicht gefunden in: " & scriptPath, vbCritical, "Fehler"
-    logStream.Close
+    If Not logStream Is Nothing Then logStream.Close
     WScript.Quit
 End If
 WriteLog "[OK] start.py gefunden: " & pythonScript
@@ -63,20 +88,27 @@ WriteLog "[OK] start.py gefunden: " & pythonScript
 ' Prüfe ob requirements.txt existiert
 Dim requirementsFile
 requirementsFile = scriptPath & "\requirements.txt"
-If Not fso.FileExists(requirementsFile) Then
+If fso.FileExists(requirementsFile) Then
+    WriteLog "[OK] requirements.txt gefunden: " & requirementsFile
+Else
     WriteLog "[WARNING] requirements.txt nicht gefunden: " & requirementsFile
 End If
 
 ' Versuche Python zu finden (auf allen Laufwerken)
 pythonExe = ""
+WriteLog "[INFO] =========================================="
 WriteLog "[INFO] Starte Python-Suche auf allen Laufwerken..."
+WriteLog "[INFO] =========================================="
 On Error Resume Next
 
 ' Methode 1: PATH
 WriteLog "[INFO] Methode 1: Prüfe pythonw.exe im PATH..."
 Set pythonCheck = WshShell.Exec("pythonw.exe --version")
-pythonCheck.StdOut.ReadAll
+Dim pythonOutput
+pythonOutput = pythonCheck.StdOut.ReadAll
 pythonCheck.WaitOnReturn = True
+WriteLog "[INFO] pythonw.exe --version Ausgabe: " & pythonOutput
+WriteLog "[INFO] pythonw.exe --version Exit-Code: " & pythonCheck.ExitCode
 If pythonCheck.ExitCode = 0 Then
     pythonExe = "pythonw.exe"
     WriteLog "[OK] Python gefunden (Methode 1): pythonw.exe im PATH"
@@ -86,8 +118,11 @@ Else
     Err.Clear
     WriteLog "[INFO] Methode 2: Prüfe python.exe im PATH..."
     Set pythonCheck2 = WshShell.Exec("python.exe --version")
-    pythonCheck2.StdOut.ReadAll
+    Dim pythonOutput2
+    pythonOutput2 = pythonCheck2.StdOut.ReadAll
     pythonCheck2.WaitOnReturn = True
+    WriteLog "[INFO] python.exe --version Ausgabe: " & pythonOutput2
+    WriteLog "[INFO] python.exe --version Exit-Code: " & pythonCheck2.ExitCode
     If pythonCheck2.ExitCode = 0 Then
         pythonExe = "python.exe"
         WriteLog "[OK] Python gefunden (Methode 2): python.exe im PATH"
@@ -204,7 +239,9 @@ On Error Goto 0
 
 ' Falls Python nicht gefunden wurde, versuche Installation
 If pythonExe = "" Then
+    WriteLog "[WARNING] =========================================="
     WriteLog "[WARNING] Python nicht gefunden nach allen Suchmethoden"
+    WriteLog "[WARNING] =========================================="
     Dim response
     response = MsgBox("Python nicht gefunden!" & vbCrLf & vbCrLf & _
            "Möchten Sie Python 3.11 automatisch herunterladen und installieren?" & vbCrLf & vbCrLf & _
@@ -218,6 +255,7 @@ If pythonExe = "" Then
         installerUrl = "https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe"
         
         WriteLog "[INFO] Starte Python-Download von: " & installerUrl
+        WriteLog "[INFO] Ziel: " & installerPath
         Dim downloadCmd
         downloadCmd = "powershell.exe -Command ""[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '" & installerUrl & "' -OutFile '" & installerPath & "'"""
         Dim downloadResult
@@ -229,14 +267,15 @@ If pythonExe = "" Then
             MsgBox "Konnte Python-Installer nicht herunterladen." & vbCrLf & vbCrLf & _
                    "Bitte installieren Sie Python manuell von:" & vbCrLf & _
                    "https://www.python.org/downloads/", vbCritical, "Fehler"
-            logStream.Close
+            If Not logStream Is Nothing Then logStream.Close
             WScript.Quit
         End If
-        WriteLog "[OK] Python-Installer heruntergeladen"
+        WriteLog "[OK] Python-Installer heruntergeladen: " & installerPath
         
         Dim installCmd
         installCmd = "powershell.exe -Command ""Start-Process -FilePath '" & installerPath & "' -ArgumentList '/quiet InstallAllUsers=1 PrependPath=1 Include_test=0' -Verb RunAs -Wait"""
         WriteLog "[INFO] Starte Python-Installation mit Administrator-Rechten..."
+        WriteLog "[INFO] Installations-Befehl: " & installCmd
         Dim installResult
         installResult = WshShell.Run(installCmd, 1, True)
         WriteLog "[INFO] Installations-Befehl beendet mit Exit-Code: " & installResult
@@ -268,7 +307,7 @@ If pythonExe = "" Then
                        "Bitte installieren Sie Python manuell von:" & vbCrLf & _
                        "https://www.python.org/downloads/", vbCritical, "Fehler"
                 If fso.FileExists(installerPath) Then fso.DeleteFile installerPath
-                logStream.Close
+                If Not logStream Is Nothing Then logStream.Close
                 WScript.Quit
             End If
         End If
@@ -280,7 +319,7 @@ If pythonExe = "" Then
         MsgBox "Python ist erforderlich, um die Anwendung zu starten." & vbCrLf & vbCrLf & _
                "Bitte installieren Sie Python 3.8 oder höher von:" & vbCrLf & _
                "https://www.python.org/downloads/", vbInformation, "Python erforderlich"
-        logStream.Close
+        If Not logStream Is Nothing Then logStream.Close
         WScript.Quit
     End If
 End If
@@ -296,6 +335,8 @@ Else
     Dim whereOutput
     whereOutput = whereResult.StdOut.ReadAll
     whereResult.WaitOnReturn = True
+    WriteLog "[INFO] where " & pythonExe & " Ausgabe: " & whereOutput
+    WriteLog "[INFO] where " & pythonExe & " Exit-Code: " & whereResult.ExitCode
     If whereResult.ExitCode = 0 And Trim(whereOutput) <> "" Then
         Dim lines
         lines = Split(whereOutput, vbCrLf)
@@ -314,28 +355,37 @@ If fullPythonPath = "" Then
     fullPythonPath = pythonExe
 End If
 
-WriteLog "[INFO] Vollständiger Python-Pfad: " & fullPythonPath
+WriteLog "[INFO] =========================================="
+WriteLog "[INFO] Python gefunden: " & fullPythonPath
 WriteLog "[INFO] Arbeitsverzeichnis: " & scriptPath
+WriteLog "[INFO] =========================================="
 
 ' Prüfe und installiere requirements.txt
 If fso.FileExists(requirementsFile) Then
+    WriteLog "[INFO] =========================================="
     WriteLog "[INFO] Prüfe requirements.txt..."
+    WriteLog "[INFO] =========================================="
     ' Prüfe ob pip verfügbar ist
     On Error Resume Next
     Dim pipCheck
     Set pipCheck = WshShell.Exec(fullPythonPath & " -m pip --version")
-    pipCheck.StdOut.ReadAll
+    Dim pipOutput
+    pipOutput = pipCheck.StdOut.ReadAll
     pipCheck.WaitOnReturn = True
+    WriteLog "[INFO] pip --version Ausgabe: " & pipOutput
+    WriteLog "[INFO] pip --version Exit-Code: " & pipCheck.ExitCode
     If pipCheck.ExitCode = 0 Then
         WriteLog "[OK] pip verfügbar"
-        ' Prüfe ob requirements.txt aktualisiert werden muss
-        WriteLog "[INFO] Prüfe ob requirements.txt installiert/aktualisiert werden muss..."
         ' Installiere/aktualisiere requirements.txt
         Dim pipInstallCmd
         pipInstallCmd = fullPythonPath & " -m pip install --upgrade -r """ & requirementsFile & """"
-        WriteLog "[INFO] Führe aus: " & pipInstallCmd
+        WriteLog "[INFO] =========================================="
+        WriteLog "[INFO] Starte requirements.txt Installation..."
+        WriteLog "[INFO] Befehl: " & pipInstallCmd
+        WriteLog "[INFO] =========================================="
         Dim pipResult
-        pipResult = WshShell.Run(pipInstallCmd, 0, True)
+        pipResult = WshShell.Run(pipInstallCmd, 1, True) ' 1 = sichtbar, damit Ausgabe gesehen wird
+        WriteLog "[INFO] pip install Exit-Code: " & pipResult
         If pipResult = 0 Then
             WriteLog "[OK] requirements.txt erfolgreich installiert/aktualisiert"
         Else
@@ -346,14 +396,18 @@ If fso.FileExists(requirementsFile) Then
     End If
     On Error Goto 0
 Else
-    WriteLog "[WARNING] requirements.txt nicht gefunden"
+    WriteLog "[WARNING] requirements.txt nicht gefunden: " & requirementsFile
 End If
 
 ' Starte start.py mit ShellExecute
 WshShell.CurrentDirectory = scriptPath
 Dim startCmd
 startCmd = Chr(34) & fullPythonPath & Chr(34) & " " & Chr(34) & pythonScript & Chr(34)
+WriteLog "[INFO] =========================================="
+WriteLog "[INFO] Starte Anwendung..."
 WriteLog "[INFO] Start-Befehl: " & startCmd
+WriteLog "[INFO] Arbeitsverzeichnis: " & scriptPath
+WriteLog "[INFO] =========================================="
 
 On Error Resume Next
 objShell.ShellExecute fullPythonPath, pythonScript, scriptPath, "open", 0
@@ -379,6 +433,8 @@ Set processCheck = WshShell.Exec("tasklist /FI ""IMAGENAME eq " & pythonExeName 
 Dim processOutput
 processOutput = processCheck.StdOut.ReadAll
 processCheck.WaitOnReturn = True
+WriteLog "[INFO] tasklist Ausgabe: " & processOutput
+WriteLog "[INFO] tasklist Exit-Code: " & processCheck.ExitCode
 If processCheck.ExitCode = 0 And InStr(processOutput, pythonExeName) > 0 Then
     WriteLog "[OK] Python-Prozess läuft: " & pythonExeName
 Else
@@ -395,7 +451,9 @@ Else
 End If
 On Error Goto 0
 
+WriteLog "[OK] =========================================="
 WriteLog "[OK] Launcher beendet erfolgreich"
+WriteLog "[OK] =========================================="
 On Error Resume Next
 If Not logStream Is Nothing Then
     logStream.Close
