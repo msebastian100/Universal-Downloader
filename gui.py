@@ -4605,14 +4605,24 @@ Historie-Einträge: {len(self.video_download_history)}
         """Prüft und installiert Abhängigkeiten im Hintergrund"""
         def check_thread():
             try:
+                # Prüfe ob wir gerade nach einem Neustart sind (verhindere Endlosschleife)
+                restart_flag_file = Path(tempfile.gettempdir()) / "universal_downloader_restarting.flag"
+                if restart_flag_file.exists():
+                    # Wir wurden gerade neu gestartet - überspringe Abhängigkeits-Installation
+                    self._write_to_log_file("[DEBUG] Restart-Flag gefunden - überspringe Abhängigkeits-Installation", "DEBUG")
+                    return
+                
                 from auto_install_dependencies import check_ytdlp, check_ffmpeg
                 
                 # Schnelle Prüfung ob Installation nötig ist
                 ytdlp_ok, _ = check_ytdlp()
                 ffmpeg_ok, _ = check_ffmpeg()
                 
+                self._write_to_log_file(f"[DEBUG] Abhängigkeits-Prüfung: yt-dlp={ytdlp_ok}, ffmpeg={ffmpeg_ok}", "DEBUG")
+                
                 # Wenn beide vorhanden sind, nichts tun
                 if ytdlp_ok and ffmpeg_ok:
+                    self._write_to_log_file("[DEBUG] Alle Abhängigkeiten vorhanden - keine Installation nötig", "DEBUG")
                     return
                 
                 # Zeige Installations-Dialog
@@ -4622,11 +4632,16 @@ Historie-Einträge: {len(self.video_download_history)}
                 from auto_install_dependencies import ensure_dependencies
                 ytdlp_ok, ffmpeg_ok, messages = ensure_dependencies()
                 
+                self._write_to_log_file(f"[DEBUG] Abhängigkeits-Installation abgeschlossen: yt-dlp={ytdlp_ok}, ffmpeg={ffmpeg_ok}", "DEBUG")
+                
                 # Aktualisiere Dialog mit Ergebnissen
                 self.root.after(0, lambda: self._update_dependency_dialog(ytdlp_ok, ffmpeg_ok, messages))
                 
             except Exception as e:
                 # Zeige Fehler im Dialog
+                self._write_to_log_file(f"[ERROR] Fehler bei Abhängigkeits-Installation: {e}", "ERROR")
+                import traceback
+                self._write_to_log_file(f"[ERROR] Traceback: {traceback.format_exc()}", "ERROR")
                 self.root.after(0, lambda: self._update_dependency_dialog(False, False, [f"[ERROR] Fehler: {e}"]))
         
         threading.Thread(target=check_thread, daemon=True).start()
