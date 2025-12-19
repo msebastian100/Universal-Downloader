@@ -354,7 +354,8 @@ WriteLog "[INFO] Start-Befehl: " & startCmd
 
 ' Starte mit ShellExecute für bessere Kompatibilität
 On Error Resume Next
-objShell.ShellExecute fullPythonPath, Chr(34) & pythonScript & Chr(34), scriptPath, "open", 0
+' ShellExecute: Application, File, WorkingDirectory, Operation, Show
+objShell.ShellExecute fullPythonPath, pythonScript, scriptPath, "open", 0
 Dim startResult
 If Err.Number = 0 Then
     startResult = 0
@@ -362,6 +363,8 @@ If Err.Number = 0 Then
 Else
     ' Fallback: Verwende WshShell.Run
     WriteLog "[WARNING] ShellExecute fehlgeschlagen, verwende WshShell.Run: " & Err.Description
+    ' Verwende expliziten Pfad und Arbeitsverzeichnis
+    WshShell.CurrentDirectory = scriptPath
     startResult = WshShell.Run(startCmd, 0, False)
     WriteLog "[INFO] Start-Befehl ausgeführt (WshShell.Run), Exit-Code: " & startResult
 End If

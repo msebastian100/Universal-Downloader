@@ -5,6 +5,9 @@ REM Versteckt das Konsolen-Fenster und startet die Anwendung
 REM Hole das Verzeichnis der .bat Datei
 cd /d "%~dp0"
 
+REM Setze ERRORLEVEL auf 0 am Anfang
+set ERRORLEVEL=0
+
 REM Log-Datei Setup - im gleichen Verzeichnis wie start.py
 set "LOG_FILE=%~dp0bat.log.txt"
 REM Erstelle Log-Datei sofort und teste Schreibzugriff
@@ -14,7 +17,7 @@ REM Erstelle Log-Datei sofort und teste Schreibzugriff
     echo [%date% %time%] Verzeichnis: %~dp0
     echo [%date% %time%] Log-Datei: %LOG_FILE%
 ) >> "%LOG_FILE%" 2>&1
-if %errorlevel% neq 0 (
+if errorlevel 1 (
     REM Fallback zu Temp-Verzeichnis
     set "LOG_FILE=%TEMP%\bat.log.txt"
     (
@@ -28,8 +31,12 @@ if %errorlevel% neq 0 (
 REM Prüfe ob start.py existiert
 if not exist "start.py" (
     (echo [%date% %time%] [ERROR] start.py nicht gefunden in: %~dp0) >> "%LOG_FILE%"
-    msgbox "start.py nicht gefunden" 2>nul || echo Fehler: start.py nicht gefunden
-    timeout /t 3 >nul 2>&1
+    echo.
+    echo FEHLER: start.py nicht gefunden in: %~dp0
+    echo.
+    echo Log-Datei: %LOG_FILE%
+    echo.
+    pause
     exit /b 1
 )
 (echo [%date% %time%] [OK] start.py gefunden) >> "%LOG_FILE%"
@@ -291,6 +298,21 @@ if %errorlevel% == 0 (
     echo [%date% %time%] [INFO] Start-Befehl ausgefuehrt, Exit-Code: !START_RESULT!
     echo [%date% %time%] [OK] Launcher beendet erfolgreich
 ) >> "%LOG_FILE%"
+
+REM Pruefe ob es Fehler gab
+if errorlevel 1 (
+    echo.
+    echo ========================================
+    echo FEHLER beim Starten der Anwendung!
+    echo ========================================
+    echo.
+    echo Log-Datei: %LOG_FILE%
+    echo.
+    echo Bitte pruefen Sie die Log-Datei fuer Details.
+    echo.
+    pause
+    exit /b 1
+)
 
 REM Beende sofort (damit kein Konsolen-Fenster sichtbar ist)
 REM Warte kurz, damit Log geschrieben wird
