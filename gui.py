@@ -5996,6 +5996,10 @@ def main():
     
     app = DeezerDownloaderGUI(root)
     
+    # Setze Icon erneut nach vollständiger Initialisierung (für Windows)
+    if sys.platform == "win32":
+        root.after(100, app._set_application_icon)
+    
     # Cleanup beim Schließen
     def on_closing():
         app._save_window_geometry()  # Speichere Fenstergröße

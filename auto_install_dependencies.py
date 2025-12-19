@@ -255,8 +255,8 @@ def install_ffmpeg_windows(progress_callback=None):
                         downloaded += len(chunk)
                         if total_size > 0:
                             percent = (downloaded * 100) // total_size
-                            # Nur alle 5% oder alle 5MB aktualisieren
-                            if percent != last_percent and (percent % 5 == 0 or downloaded % (5*1024*1024) == 0):
+                            # Aktualisiere häufiger: alle 1% oder alle 1MB für bessere Echtzeit-Anzeige
+                            if percent != last_percent and (percent % 1 == 0 or downloaded % (1*1024*1024) == 0):
                                 downloaded_mb = downloaded // (1024*1024)
                                 total_mb = total_size // (1024*1024)
                                 progress_msg = f"[INFO] Download Fortschritt: {percent}% ({downloaded_mb}MB / {total_mb}MB)"
