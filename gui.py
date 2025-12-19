@@ -6013,6 +6013,9 @@ def main():
     """Hauptfunktion"""
     root = tk.Tk()
     
+    # Setze Fenstertitel (wichtig für Windows Taskleiste)
+    root.title("Universal Downloader")
+    
     # Wichtig: update_idletasks() vor dem Erstellen der App, damit das Fenster initialisiert ist
     root.update_idletasks()
     
@@ -6021,6 +6024,23 @@ def main():
     # Setze Icon erneut nach vollständiger Initialisierung (für Windows)
     if sys.platform == "win32":
         root.after(100, app._set_application_icon)
+        
+        # Versuche App-Namen für Windows Taskleiste zu setzen
+        try:
+            import ctypes
+            from ctypes import wintypes
+            
+            # Setze App User Model ID (für Windows 7+)
+            # Dies hilft Windows, die Anwendung korrekt zu identifizieren
+            try:
+                shell32 = ctypes.windll.shell32
+                # SetCurrentProcessExplicitAppUserModelID
+                app_id = "UniversalDownloader.UniversalDownloader.1.0"
+                shell32.SetCurrentProcessExplicitAppUserModelID(app_id)
+            except:
+                pass
+        except:
+            pass
     
     # Cleanup beim Schließen
     def on_closing():
