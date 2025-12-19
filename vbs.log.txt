@@ -1,0 +1,10 @@
+[2025/12/19 23:39:45] ==========================================
+[2025/12/19 23:39:45] Launcher gestartet: D:\Users\basti\Downloads\Universal-Downloader\start_launcher.vbs
+[2025/12/19 23:39:45] Verzeichnis: D:\Users\basti\Downloads\Universal-Downloader
+[2025/12/19 23:39:45] [OK] start.py gefunden: D:\Users\basti\Downloads\Universal-Downloader\start.py
+[2025/12/19 23:39:45] [INFO] Starte Python-Suche...
+[2025/12/19 23:39:45] [INFO] Methode 1: Prüfe pythonw.exe im PATH...
+[2025/12/19 23:39:45] [OK] Python gefunden (Methode 1): pythonw.exe im PATH
+[2025/12/19 23:39:45] [INFO] Starte Anwendung mit: pythonw.exe D:\Users\basti\Downloads\Universal-Downloader\start.py
+[2025/12/19 23:39:45] [INFO] Start-Befehl ausgeführt, Exit-Code: 0
+[2025/12/19 23:39:45] [OK] Launcher beendet erfolgreich
