@@ -43,6 +43,96 @@ def check_ytdlp():
         return False, None
 
 
+def get_latest_ytdlp_version():
+    """Ruft die neueste yt-dlp Version von PyPI ab"""
+    try:
+        import urllib.request
+        import json
+        
+        # PyPI API für yt-dlp
+        url = "https://pypi.org/pypi/yt-dlp/json"
+        with urllib.request.urlopen(url, timeout=10) as response:
+            data = json.loads(response.read())
+            latest_version = data['info']['version']
+            return latest_version
+    except Exception:
+        return None
+
+
+def update_ytdlp():
+    """Aktualisiert yt-dlp auf die neueste Version"""
+    try:
+        print("[INFO] Aktualisiere yt-dlp auf die neueste Version...")
+        subprocess.run(
+            [sys.executable, '-m', 'pip', 'install', '--upgrade', 'yt-dlp'],
+            check=True,
+            capture_output=True,
+            timeout=180
+        )
+        print("[OK] yt-dlp erfolgreich aktualisiert")
+        return True
+    except Exception as e:
+        print(f"[WARNING] Fehler bei yt-dlp Update: {e}")
+        return False
+
+
+def check_and_update_ytdlp():
+    """Prüft ob yt-dlp aktualisiert werden muss und aktualisiert es falls nötig"""
+    ytdlp_available, current_version = check_ytdlp()
+    
+    if not ytdlp_available:
+        return install_ytdlp()
+    
+    # Prüfe auf Updates (nur alle X Tage, um nicht bei jedem Start zu prüfen)
+    try:
+        from pathlib import Path
+        import json
+        from datetime import datetime, timedelta
+        
+        app_dir = get_app_dir()
+        update_check_file = app_dir / ".ytdlp_update_check.json"
+        
+        # Prüfe wann zuletzt geprüft wurde
+        should_check = True
+        if update_check_file.exists():
+            try:
+                with open(update_check_file, 'r') as f:
+                    data = json.load(f)
+                    last_check = datetime.fromisoformat(data.get('last_check', '2000-01-01'))
+                    # Prüfe nur alle 7 Tage
+                    if datetime.now() - last_check < timedelta(days=7):
+                        should_check = False
+            except:
+                pass
+        
+        if should_check:
+            print("[INFO] Prüfe auf yt-dlp Updates...")
+            latest_version = get_latest_ytdlp_version()
+            
+            if latest_version and latest_version != current_version:
+                print(f"[INFO] Neue yt-dlp Version verfügbar: {latest_version} (aktuell: {current_version})")
+                if update_ytdlp():
+                    # Speichere Check-Datum
+                    with open(update_check_file, 'w') as f:
+                        json.dump({
+                            'last_check': datetime.now().isoformat(),
+                            'updated_to': latest_version
+                        }, f)
+                    return True
+            else:
+                # Speichere Check-Datum auch wenn keine Updates verfügbar
+                with open(update_check_file, 'w') as f:
+                    json.dump({
+                        'last_check': datetime.now().isoformat(),
+                        'current_version': current_version
+                    }, f)
+    except Exception as e:
+        # Fehler bei Update-Check sind nicht kritisch
+        print(f"[INFO] Update-Check übersprungen: {e}")
+    
+    return ytdlp_available
+
+
 def install_ytdlp():
     """Installiert yt-dlp über pip"""
     try:
@@ -197,18 +287,13 @@ def ensure_dependencies():
     ytdlp_ok = False
     ffmpeg_ok = False
     
-    # Prüfe yt-dlp
-    ytdlp_available, ytdlp_version = check_ytdlp()
-    if ytdlp_available:
-        ytdlp_ok = True
+    # Prüfe und aktualisiere yt-dlp
+    ytdlp_ok = check_and_update_ytdlp()
+    if ytdlp_ok:
+        ytdlp_available, ytdlp_version = check_ytdlp()
         messages.append(f"[OK] yt-dlp verfügbar (Version: {ytdlp_version})")
     else:
-        messages.append("[WARNING] yt-dlp nicht gefunden - versuche Installation...")
-        if install_ytdlp():
-            ytdlp_ok = True
-            messages.append("[OK] yt-dlp erfolgreich installiert")
-        else:
-            messages.append("[ERROR] yt-dlp Installation fehlgeschlagen")
+        messages.append("[ERROR] yt-dlp Installation/Update fehlgeschlagen")
     
     # Prüfe ffmpeg
     ffmpeg_available, ffmpeg_version = check_ffmpeg()
