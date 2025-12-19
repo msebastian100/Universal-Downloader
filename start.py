@@ -244,13 +244,26 @@ if __name__ == "__main__":
         
         # Schreibe auch in Log-Datei falls möglich
         try:
+            # Versuche zuerst Standard-Pfad
             log_dir = Path.home() / "Downloads" / "Universal Downloader" / "Logs"
-            log_dir.mkdir(parents=True, exist_ok=True)
+            try:
+                log_dir.mkdir(parents=True, exist_ok=True)
+            except (PermissionError, OSError):
+                # Fallback: Verwende AppData oder Temp
+                if sys.platform == "win32":
+                    appdata = os.getenv('APPDATA', Path.home() / "AppData" / "Roaming")
+                    log_dir = Path(appdata) / "Universal Downloader" / "Logs"
+                else:
+                    log_dir = Path.home() / ".universal-downloader" / "Logs"
+                log_dir.mkdir(parents=True, exist_ok=True)
+            
             log_file = log_dir / f"start_debug_{datetime.now().strftime('%Y-%m-%d')}.log"
             with open(log_file, 'a', encoding='utf-8') as f:
                 f.write(f"{level_tag} [{timestamp}] {message}\n")
-        except Exception:
-            pass  # Ignoriere Fehler beim Log-Schreiben
+                f.flush()  # Sofort schreiben
+        except Exception as e:
+            # Ignoriere Fehler beim Log-Schreiben, aber logge es
+            print(f"[WARNING] Konnte Log-Datei nicht schreiben: {e}")
     
     debug_log("=" * 60)
     debug_log("Universal Downloader wird gestartet...")
