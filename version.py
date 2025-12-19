@@ -4,8 +4,8 @@
 Versionsinformationen für Universal Downloader
 """
 
-__version__ = "2.0.9"
-__version_info__ = (2, 0, 9)
+__version__ = "2.1.0"
+__version_info__ = (2, 1, 0)
 __build_date__ = "2025-01-19"
 
 # GitHub Repository URL (für Links und Updates)
