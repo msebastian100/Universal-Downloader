@@ -95,14 +95,30 @@ def run_ytdlp(args, **kwargs):
     
     Args:
         args: Liste mit yt-dlp Argumenten (ohne 'yt-dlp' selbst)
-        **kwargs: Weitere Argumente für subprocess.run
+        **kwargs: Weitere Argumente für subprocess.run oder subprocess.Popen
     
     Returns:
-        subprocess.CompletedProcess Ergebnis
+        subprocess.CompletedProcess oder subprocess.Popen Ergebnis
+        Oder FakeCompletedProcess in .exe Builds wenn direkte API verwendet wird
     """
-    # In .exe Builds: Verwende immer direkte API
+    # Prüfe ob Popen gewünscht ist (für Prozessüberwachung)
+    use_popen = kwargs.pop('use_popen', False)
+    
+    # In .exe Builds: Versuche zuerst subprocess, falls Python verfügbar
     if is_frozen():
-        return run_ytdlp_direct(args, **kwargs)
+        # Versuche Python zu finden für subprocess
+        python_exe = _find_python_executable()
+        if python_exe and use_popen:
+            # Verwende subprocess.Popen für Prozessüberwachung
+            import subprocess as sp
+            return sp.Popen([python_exe, '-m', 'yt_dlp'] + args, **kwargs)
+        elif python_exe and not use_popen:
+            # Verwende subprocess.run
+            import subprocess as sp
+            return sp.run([python_exe, '-m', 'yt_dlp'] + args, **kwargs)
+        else:
+            # Fallback: Direkte API (kein Prozessüberwachung möglich)
+            return run_ytdlp_direct(args, **kwargs)
     
     # Normale Python-Umgebung: Verwende subprocess
     cmd = get_ytdlp_command()
@@ -110,7 +126,12 @@ def run_ytdlp(args, **kwargs):
         # Fallback: Versuche System-Befehl
         cmd = ['yt-dlp'] if _check_ytdlp_system() else [sys.executable, '-m', 'yt_dlp']
     
-    return subprocess.run(cmd + args, **kwargs)
+    if use_popen:
+        import subprocess as sp
+        return sp.Popen(cmd + args, **kwargs)
+    else:
+        import subprocess as sp
+        return sp.run(cmd + args, **kwargs)
 
 
 def run_ytdlp_direct(args, **kwargs):

@@ -1402,19 +1402,13 @@ class VideoDownloader:
                     else:
                         self.log(f"⚠ Keine gültigen Cookies für {service} gefunden", "WARNING")
             
-            # Baue yt-dlp Kommando
-            from yt_dlp_helper import get_ytdlp_command
-            cmd = get_ytdlp_command()
-            
-            # Prüfe ob cmd None ist
-            if cmd is None:
-                error_msg = "yt-dlp Kommando konnte nicht erstellt werden"
-                self.log(error_msg, "ERROR")
-                return (False, None, error_msg)
+            # Baue yt-dlp Argumente (ohne Kommando selbst)
+            from yt_dlp_helper import run_ytdlp
+            yt_args = []
             
             # Füge Cookies hinzu falls vorhanden
             if cookies_file:
-                cmd.extend(['--cookies', cookies_file])
+                yt_args.extend(['--cookies', cookies_file])
             
             # Spezielle Optionen für ARD Plus
             if service == 'ARD Plus':
@@ -1430,121 +1424,112 @@ class VideoDownloader:
             if output_format == 'mp3':
                 # Für MP3: Konvertiere zu MP3
                 output_template = str(actual_output_dir / '%(title)s.%(ext)s')
-                cmd.extend(['-o', output_template])
-                cmd.extend(['-x', '--audio-format', 'mp3', '--audio-quality', '0'])  # Beste Audio-Qualität
+                yt_args.extend(['-o', output_template])
+                yt_args.extend(['-x', '--audio-format', 'mp3', '--audio-quality', '0'])  # Beste Audio-Qualität
             else:
                 # Für Video-Formate (MP4, etc.)
                 output_template = str(actual_output_dir / f'%(title)s.{output_format}')
-                cmd.extend(['-o', output_template])
-                cmd.extend(['--recode-video', output_format])
+                yt_args.extend(['-o', output_template])
+                yt_args.extend(['--recode-video', output_format])
             
             # Qualität/Format
             if output_format == 'mp3':
                 # Für MP3: Beste Audio-Qualität
-                cmd.append('-f')
-                cmd.append('bestaudio/best')
+                yt_args.extend(['-f', 'bestaudio/best'])
             elif quality == "best":
-                cmd.append('-f')
-                cmd.append('bestvideo+bestaudio/best')
+                yt_args.extend(['-f', 'bestvideo+bestaudio/best'])
             elif quality == "worst":
-                cmd.append('-f')
-                cmd.append('worstvideo+worstaudio/worst')
+                yt_args.extend(['-f', 'worstvideo+worstaudio/worst'])
             elif quality.endswith('p'):
                 # Spezifische Auflösung (z.B. "720p", "1080p")
                 resolution = quality[:-1]  # Entferne 'p'
-                cmd.append('-f')
-                cmd.append(f'bestvideo[height<={resolution}]+bestaudio/best[height<={resolution}]')
+                yt_args.extend(['-f', f'bestvideo[height<={resolution}]+bestaudio/best[height<={resolution}]'])
             else:
                 # Fallback zu best
-                cmd.append('-f')
-                cmd.append('bestvideo+bestaudio/best')
+                yt_args.extend(['-f', 'bestvideo+bestaudio/best'])
             
             # Playlist-Option
             # WICHTIG: Bei Serien/Staffeln immer --yes-playlist verwenden, wenn download_playlist=True
             # Aber wenn wir einzelne Episoden aus einer Serie herunterladen, verwenden wir die spezifische Episode-URL
             if is_series and download_playlist:
-                cmd.append('--yes-playlist')  # Lade gesamte Playlist/Staffel
+                yt_args.append('--yes-playlist')  # Lade gesamte Playlist/Staffel
             elif is_series and not download_playlist:
                 # Bei Serien, aber einzelne Episode: --no-playlist
-                cmd.append('--no-playlist')
+                yt_args.append('--no-playlist')
             elif not download_playlist:
-                cmd.append('--no-playlist')  # Nur einzelnes Video, keine Playlist
+                yt_args.append('--no-playlist')  # Nur einzelnes Video, keine Playlist
             else:
-                cmd.append('--yes-playlist')  # Lade gesamte Playlist
+                yt_args.append('--yes-playlist')  # Lade gesamte Playlist
             
             # Untertitel-Optionen
             if download_subtitles:
                 if subtitle_language == "all":
-                    cmd.append('--write-subs')
-                    cmd.append('--write-auto-subs')
-                    cmd.append('--sub-langs')
-                    cmd.append('all')
+                    yt_args.extend(['--write-subs', '--write-auto-subs', '--sub-langs', 'all'])
                 else:
-                    cmd.append('--write-subs')
-                    cmd.append('--write-auto-subs')
-                    cmd.append('--sub-langs')
-                    cmd.append(subtitle_language)
-                cmd.append('--convert-subs')
-                cmd.append('srt')
+                    yt_args.extend(['--write-subs', '--write-auto-subs', '--sub-langs', subtitle_language])
+                yt_args.extend(['--convert-subs', 'srt'])
             
             # Thumbnail-Download
             if download_thumbnail:
-                cmd.append('--write-thumbnail')
-                cmd.append('--convert-thumbnails')
-                cmd.append('jpg')
+                yt_args.extend(['--write-thumbnail', '--convert-thumbnails', 'jpg'])
             
             # Download-Resume
             if resume_download:
-                cmd.append('--continue')
+                yt_args.append('--continue')
             else:
-                cmd.append('--no-continue')
+                yt_args.append('--no-continue')
             
             # Geschwindigkeits-Limit
             if speed_limit and speed_limit > 0:
                 limit_bytes = int(speed_limit * 1024 * 1024)  # MB/s zu bytes/s
-                cmd.append('--limit-rate')
-                cmd.append(str(limit_bytes))
+                yt_args.extend(['--limit-rate', str(limit_bytes)])
             
             # Metadaten-Embedding
             if embed_metadata:
-                cmd.append('--embed-metadata')
-                cmd.append('--embed-info-json')
+                yt_args.extend(['--embed-metadata', '--embed-info-json'])
             
             # Weitere Optionen
-            cmd.extend([
+            yt_args.extend([
                 '--no-warnings',
                 '--progress',
                 '--newline',
             ])
             
             # URL hinzufügen
-            cmd.append(url)
+            yt_args.append(url)
             
-            self.log(f"Führe Kommando aus: {' '.join(cmd[:10])}...")
+            self.log(f"Führe yt-dlp aus mit {len(yt_args)} Argumenten...")
             
-            # Starte Download mit Prozessgruppe (für besseres Abbrechen)
-            # Auf Unix-Systemen (macOS/Linux) erstellen wir eine neue Prozessgruppe
-            # damit wir alle Kindprozesse beenden können
-            if sys.platform != 'win32':
-                process = subprocess.Popen(
-                    cmd,
+            # Verwende run_ytdlp() für den Download mit Popen für Prozessüberwachung
+            try:
+                # Für Prozessüberwachung und Abbruch-Funktionalität verwenden wir Popen
+                process = run_ytdlp(
+                    yt_args,
+                    use_popen=True,  # Wichtig: Verwende Popen für Prozessüberwachung
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     text=True,
                     bufsize=1,
                     universal_newlines=True,
-                    preexec_fn=os.setsid  # Neue Prozessgruppe auf Unix
+                    cwd=str(actual_output_dir)
                 )
-            else:
-                process = subprocess.Popen(
-                    cmd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                    bufsize=1,
-                    universal_newlines=True,
-                    creationflags=subprocess.CREATE_NEW_PROCESS_GROUP  # Neue Prozessgruppe auf Windows
-                )
+                
+                # Prüfe ob process ein Popen-Objekt ist (für Prozessüberwachung)
+                if not hasattr(process, 'poll'):
+                    # Fallback: Direkte API wurde verwendet (kein Prozessüberwachung möglich)
+                    self.log("WARNING: Prozessüberwachung nicht verfügbar in .exe Build", "WARNING")
+                    # Führe Download synchron aus
+                    result = process
+                    if hasattr(result, 'returncode') and result.returncode != 0:
+                        error_msg = f"Download fehlgeschlagen: {result.stderr}"
+                        self.log(error_msg, "ERROR")
+                        return (False, None, error_msg)
+                    # Erfolgreich
+                    return (True, None, "")
+            except Exception as e:
+                error_msg = f"Fehler beim Starten von yt-dlp: {e}"
+                self.log(error_msg, "ERROR")
+                return (False, None, error_msg)
             
             # Verwende übergebene GUI-Instanz oder versuche sie aus dem Callback zu extrahieren
             if not gui_instance and progress_callback:
