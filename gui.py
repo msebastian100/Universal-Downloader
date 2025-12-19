@@ -4738,6 +4738,13 @@ Historie-Einträge: {len(self.video_download_history)}
         if not hasattr(self, '_dep_dialog') or not self._dep_dialog.winfo_exists():
             return
         
+        # Prüfe ob wir gerade nach einem Neustart sind (verhindere Endlosschleife)
+        restart_flag_file = Path(tempfile.gettempdir()) / "universal_downloader_restarting.flag"
+        if restart_flag_file.exists():
+            # Wir wurden gerade neu gestartet - frage nicht nach Neustart
+            self._dep_dialog.destroy()
+            return
+        
         result = messagebox.askyesno(
             "Abhängigkeiten installiert",
             "Die Abhängigkeiten wurden erfolgreich installiert.\n\n"

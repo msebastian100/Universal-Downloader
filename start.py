@@ -95,45 +95,98 @@ def install_ffmpeg_if_missing():
     return False
 
 if __name__ == "__main__":
+    import tempfile
+    from datetime import datetime
+    
+    # Debug-Logging Setup
+    def debug_log(message: str, level: str = "INFO"):
+        """Debug-Logging für start.py"""
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        level_tag = f"[{level}]" if level != "INFO" else "[INFO]"
+        print(f"{level_tag} [{timestamp}] {message}")
+        
+        # Schreibe auch in Log-Datei falls möglich
+        try:
+            log_dir = Path.home() / "Downloads" / "Universal Downloader" / "Logs"
+            log_dir.mkdir(parents=True, exist_ok=True)
+            log_file = log_dir / f"start_debug_{datetime.now().strftime('%Y-%m-%d')}.log"
+            with open(log_file, 'a', encoding='utf-8') as f:
+                f.write(f"{level_tag} [{timestamp}] {message}\n")
+        except Exception:
+            pass  # Ignoriere Fehler beim Log-Schreiben
+    
+    debug_log("=" * 60)
+    debug_log("Universal Downloader wird gestartet...")
+    debug_log(f"Python-Version: {sys.version}")
+    debug_log(f"Plattform: {sys.platform}")
+    debug_log(f"Executable: {sys.executable}")
+    debug_log(f"Frozen: {getattr(sys, 'frozen', False)}")
+    
+    # Prüfe auf Restart-Flag
+    restart_flag_file = Path(tempfile.gettempdir()) / "universal_downloader_restarting.flag"
+    if restart_flag_file.exists():
+        debug_log("Restart-Flag gefunden - lösche Flag und überspringe Abhängigkeits-Installation")
+        try:
+            restart_flag_file.unlink(missing_ok=True)
+        except Exception as e:
+            debug_log(f"Fehler beim Löschen des Restart-Flags: {e}", "WARNING")
+    else:
+        debug_log("Kein Restart-Flag gefunden - normaler Start")
+    
     # Schnelle Prüfung der wichtigsten Abhängigkeiten (nicht blockierend)
     try:
+        debug_log("Importiere auto_install_dependencies...")
         from auto_install_dependencies import check_ytdlp, check_ffmpeg, get_app_dir
         
-        # Schnelle Prüfung ohne Updates/Installation
-        ytdlp_ok, _ = check_ytdlp()
-        ffmpeg_ok, _ = check_ffmpeg()
+        debug_log("Prüfe yt-dlp...")
+        ytdlp_ok, ytdlp_version = check_ytdlp()
+        debug_log(f"yt-dlp Status: {'OK' if ytdlp_ok else 'FEHLT'} (Version: {ytdlp_version or 'N/A'})")
+        
+        debug_log("Prüfe ffmpeg...")
+        ffmpeg_ok, ffmpeg_version = check_ffmpeg()
+        debug_log(f"ffmpeg Status: {'OK' if ffmpeg_ok else 'FEHLT'} (Version: {ffmpeg_version or 'N/A'})")
         
         # Füge ffmpeg zum PATH hinzu (falls lokal installiert)
         if not ffmpeg_ok:
-            from pathlib import Path
             app_dir = get_app_dir()
             ffmpeg_bin = app_dir / "ffmpeg" / "bin"
+            debug_log(f"Prüfe lokales ffmpeg in: {ffmpeg_bin}")
             if ffmpeg_bin.exists():
+                debug_log(f"Lokales ffmpeg gefunden - füge zum PATH hinzu")
                 os.environ['PATH'] = str(ffmpeg_bin) + os.pathsep + os.environ.get('PATH', '')
                 # Prüfe nochmal
-                ffmpeg_ok, _ = check_ffmpeg()
+                ffmpeg_ok, ffmpeg_version = check_ffmpeg()
+                debug_log(f"ffmpeg Status nach PATH-Update: {'OK' if ffmpeg_ok else 'FEHLT'}")
         
         # Starte GUI sofort - Abhängigkeiten werden im Hintergrund geprüft/installiert
         if not ytdlp_ok or not ffmpeg_ok:
-            print("[INFO] Einige Abhängigkeiten fehlen - werden im Hintergrund installiert...")
+            debug_log("Einige Abhängigkeiten fehlen - werden im Hintergrund installiert", "WARNING")
+        else:
+            debug_log("Alle Abhängigkeiten vorhanden")
         
-    except ImportError:
+    except ImportError as e:
+        debug_log(f"ImportError bei auto_install_dependencies: {e}", "WARNING")
         # Fallback: Alte Methode
         missing = check_dependencies_quick()
         if missing:
-            print("⚠ Warnung: Einige Abhängigkeiten fehlen:")
+            debug_log("Warnung: Einige Abhängigkeiten fehlen:", "WARNING")
             for dep in missing:
-                print(f"  - {dep}")
-            print("\nVersuche trotzdem zu starten...\n")
+                debug_log(f"  - {dep}", "WARNING")
+            debug_log("Versuche trotzdem zu starten...")
     except Exception as e:
         # Fehler bei Abhängigkeitsprüfung sind nicht kritisch - starte trotzdem
-        print(f"[INFO] Abhängigkeitsprüfung übersprungen: {e}")
+        debug_log(f"Fehler bei Abhängigkeitsprüfung: {e}", "ERROR")
+        import traceback
+        debug_log(f"Traceback: {traceback.format_exc()}", "ERROR")
     
     try:
+        debug_log("Importiere gui...")
         from gui import main
         
+        debug_log("Starte GUI...")
         main()
     except ImportError as e:
+        debug_log(f"Fehler beim Importieren der Module: {e}", "ERROR")
         print(f"✗ Fehler beim Importieren der Module: {e}")
         print("\nBitte installieren Sie die Abhängigkeiten:")
         print("  pip install -r requirements.txt")
@@ -141,8 +194,10 @@ if __name__ == "__main__":
         print("  python check_dependencies.py")
         sys.exit(1)
     except Exception as e:
-        print(f"✗ Fehler beim Starten der Anwendung: {e}")
+        debug_log(f"Fehler beim Starten der Anwendung: {e}", "ERROR")
         import traceback
+        debug_log(f"Traceback: {traceback.format_exc()}", "ERROR")
+        print(f"✗ Fehler beim Starten der Anwendung: {e}")
         traceback.print_exc()
         sys.exit(1)
 
