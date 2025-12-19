@@ -296,8 +296,73 @@ End If
 ' Verwende CreateObject("WScript.Shell").Run mit WindowStyle=0 (versteckt)
 WriteLog "[INFO] Starte Anwendung mit: " & pythonExe & " " & pythonScript
 WshShell.CurrentDirectory = scriptPath
+
+' Prüfe ob pythonExe ein vollständiger Pfad ist oder nur ein Befehl
+Dim fullPythonPath
+If InStr(pythonExe, "\") > 0 Then
+    ' Vollständiger Pfad
+    fullPythonPath = pythonExe
+Else
+    ' Nur Befehl - finde vollständigen Pfad
+    On Error Resume Next
+    Dim pythonCheckPath
+    Set pythonCheckPath = WshShell.Exec(pythonExe & " --version")
+    pythonCheckPath.StdOut.ReadAll
+    pythonCheckPath.WaitOnReturn = True
+    If pythonCheckPath.ExitCode = 0 Then
+        ' Versuche vollständigen Pfad zu finden
+        Dim whereResult
+        Set whereResult = WshShell.Exec("where " & pythonExe)
+        whereResult.StdOut.ReadAll
+        whereResult.WaitOnReturn = True
+        If whereResult.ExitCode = 0 Then
+            fullPythonPath = Trim(whereResult.StdOut.ReadAll)
+        Else
+            fullPythonPath = pythonExe
+        End If
+    Else
+        fullPythonPath = pythonExe
+    End If
+    On Error Goto 0
+End If
+
+WriteLog "[INFO] Vollständiger Python-Pfad: " & fullPythonPath
+WriteLog "[INFO] Arbeitsverzeichnis: " & scriptPath
+WriteLog "[INFO] Python-Skript: " & pythonScript
+
+' Starte mit vollständigem Pfad und explizitem Arbeitsverzeichnis
+Dim startCmd
+startCmd = Chr(34) & fullPythonPath & Chr(34) & " " & Chr(34) & pythonScript & Chr(34)
+WriteLog "[INFO] Start-Befehl: " & startCmd
+
 Dim startResult
-startResult = WshShell.Run(pythonExe & " """ & pythonScript & """", 0, False)
+startResult = WshShell.Run(startCmd, 0, False)
 WriteLog "[INFO] Start-Befehl ausgeführt, Exit-Code: " & startResult
+
+' Prüfe ob Prozess gestartet wurde (warte kurz)
+WScript.Sleep 1000
+Dim processCheck
+On Error Resume Next
+Set processCheck = WshShell.Exec("tasklist /FI ""IMAGENAME eq " & fso.GetBaseName(fullPythonPath) & ".exe"" /FO CSV /NH")
+processCheck.StdOut.ReadAll
+processCheck.WaitOnReturn = True
+If processCheck.ExitCode = 0 Then
+    Dim processOutput
+    processOutput = processCheck.StdOut.ReadAll
+    If InStr(processOutput, fso.GetBaseName(fullPythonPath) & ".exe") > 0 Then
+        WriteLog "[OK] Python-Prozess läuft"
+    Else
+        WriteLog "[WARNING] Python-Prozess scheint nicht zu laufen"
+    End If
+Else
+    WriteLog "[WARNING] Konnte Python-Prozess-Status nicht prüfen"
+End If
+On Error Goto 0
+
 WriteLog "[OK] Launcher beendet erfolgreich"
-logStream.Close
+On Error Resume Next
+If Not logStream Is Nothing Then
+    logStream.Close
+    Set logStream = Nothing
+End If
+On Error Goto 0
