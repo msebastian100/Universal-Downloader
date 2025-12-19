@@ -19,9 +19,9 @@ echo "============================================================"
 if [[ "$OSTYPE" != "linux-gnu"* ]]; then
     # In GitHub Actions automatisch fortfahren
     if [[ "$GITHUB_ACTIONS" == "true" ]]; then
-        echo "⚠ Warnung: Läuft in GitHub Actions, fortfahren..."
+        echo "[WARNING] Laeuft in GitHub Actions, fortfahren..."
     else
-        echo "⚠ Warnung: Dieses Script ist für Linux gedacht."
+        echo "[WARNING] Dieses Script ist fuer Linux gedacht."
         read -p "Fortfahren? (j/n): " response
         if [[ ! "$response" =~ ^[jJ]$ ]]; then
             exit 1
@@ -31,7 +31,7 @@ fi
 
 # Prüfe ob dpkg-deb vorhanden ist
 if ! command -v dpkg-deb &> /dev/null; then
-    echo "✗ dpkg-deb nicht gefunden. Bitte installieren Sie:"
+    echo "[ERROR] dpkg-deb nicht gefunden. Bitte installieren Sie:"
     echo "  sudo apt-get install dpkg-dev"
     exit 1
 fi
@@ -132,19 +132,19 @@ chmod +x "$BUILD_DIR/DEBIAN/prerm"
 echo ""
 echo "Erstelle .deb Paket..."
 if ! dpkg-deb --build "$BUILD_DIR" "$DEB_DIR/${APP_NAME}_${VERSION}_all.deb"; then
-    echo "✗ Fehler beim Erstellen des .deb Pakets"
+    echo "[ERROR] Fehler beim Erstellen des .deb Pakets"
     exit 1
 fi
 
 # Prüfe ob .deb erstellt wurde
 if [ ! -f "$DEB_DIR/${APP_NAME}_${VERSION}_all.deb" ]; then
-    echo "✗ .deb Datei wurde nicht erstellt"
+    echo "[ERROR] .deb Datei wurde nicht erstellt"
     exit 1
 fi
 
 echo ""
 echo "============================================================"
-echo "✓ Build erfolgreich!"
+echo "[OK] Build erfolgreich!"
 echo "============================================================"
 echo ""
 echo "Das .deb Paket befindet sich in:"

@@ -10,6 +10,12 @@ import subprocess
 import shutil
 from pathlib import Path
 
+# Fix encoding für Windows
+if sys.platform == 'win32':
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+
 # Für PyInstaller spec-Datei
 if __name__ != "__main__":
     import os
@@ -100,7 +106,7 @@ def build_exe():
     try:
         result = subprocess.run(pyinstaller_cmd, check=True, capture_output=False)
         print("\n" + "=" * 70)
-        print("✓ Build erfolgreich!")
+        print("[OK] Build erfolgreich!")
         print("=" * 70)
         
         # Prüfe ob .exe erstellt wurde
@@ -108,19 +114,19 @@ def build_exe():
         if exe_path.exists():
             print(f"\nDie .exe Datei befindet sich in: {dist_dir.absolute()}")
             print(f"Dateiname: UniversalDownloader.exe")
-            print(f"Größe: {exe_path.stat().st_size / (1024*1024):.2f} MB")
+            print(f"Groesse: {exe_path.stat().st_size / (1024*1024):.2f} MB")
             return True
         else:
-            print(f"\n⚠ Warnung: .exe Datei nicht gefunden in {dist_dir}")
+            print(f"\n[WARNING] .exe Datei nicht gefunden in {dist_dir}")
             return False
     except subprocess.CalledProcessError as e:
-        print(f"\n✗ Build fehlgeschlagen: {e}")
+        print(f"\n[ERROR] Build fehlgeschlagen: {e}")
         print(f"Returncode: {e.returncode}")
         if hasattr(e, 'stderr') and e.stderr:
             print(f"Fehlerausgabe: {e.stderr.decode()}")
         return False
     except Exception as e:
-        print(f"\n✗ Unerwarteter Fehler: {e}")
+        print(f"\n[ERROR] Unerwarteter Fehler: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -132,8 +138,8 @@ if __name__ == "__main__":
         success = build_exe()
         sys.exit(0 if success else 1)
     elif sys.platform != "win32":
-        print("⚠ Warnung: Dieses Script ist für Windows gedacht.")
-        print("Sie können es trotzdem ausführen, aber die .exe wird nur auf Windows funktionieren.")
+        print("[WARNING] Dieses Script ist fuer Windows gedacht.")
+        print("Sie koennen es trotzdem ausfuehren, aber die .exe wird nur auf Windows funktionieren.")
         response = input("Fortfahren? (j/n): ")
         if response.lower() != 'j':
             sys.exit(0)
