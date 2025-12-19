@@ -1,22 +1,40 @@
-bat
-Der Befehl "Universal" ist entweder falsch geschrieben oder
-konnte nicht gefunden werden.
-Der Befehl "Konsolen-Fenster" ist entweder falsch geschrieben oder
-konnte nicht gefunden werden.
-Der Befehl "zeichnis" ist entweder falsch geschrieben oder
-konnte nicht gefunden werden.
-Der Befehl "Log-Datei" ist entweder falsch geschrieben oder
-konnte nicht gefunden werden.
-
-vbs
-Windows Script Host
-Skript:
-D:Wsers\basti\DownloadsWniversal-Downloader-main\start_l
-auncher.vbs
-Zeile:
-17
-Zeichen: 5
-Fehler. Das Objekt unterstützt diese Eigenschaft oder
-Methode nicht.: 'logStream.Flussh
-Code: 800A01B6
-Quelle: Laufzeitfehler in Microsoft VBScript
+[2025/12/19 23:39:45] ==========================================
+[2025/12/19 23:39:45] Launcher gestartet: D:\Users\basti\Downloads\Universal-Downloader\start_launcher.vbs
+[2025/12/19 23:39:45] Verzeichnis: D:\Users\basti\Downloads\Universal-Downloader
+[2025/12/19 23:39:45] [OK] start.py gefunden: D:\Users\basti\Downloads\Universal-Downloader\start.py
+[2025/12/19 23:39:45] [INFO] Starte Python-Suche...
+[2025/12/19 23:39:45] [INFO] Methode 1: Prüfe pythonw.exe im PATH...
+[2025/12/19 23:39:45] [OK] Python gefunden (Methode 1): pythonw.exe im PATH
+[2025/12/19 23:39:45] [INFO] Starte Anwendung mit: pythonw.exe D:\Users\basti\Downloads\Universal-Downloader\start.py
+[2025/12/19 23:39:45] [INFO] Start-Befehl ausgeführt, Exit-Code: 0
+[2025/12/19 23:39:45] [OK] Launcher beendet erfolgreich
+[2025/12/19 23:54:14] ==========================================
+[2025/12/19 23:54:14] Launcher gestartet: D:\Users\basti\Downloads\Universal-Downloader\Universal-Downloader-main\start_launcher.vbs
+[2025/12/19 23:54:14] Verzeichnis: D:\Users\basti\Downloads\Universal-Downloader\Universal-Downloader-main
+[2025/12/19 23:54:14] [OK] start.py gefunden: D:\Users\basti\Downloads\Universal-Downloader\Universal-Downloader-main\start.py
+[2025/12/19 23:54:14] [INFO] Starte Python-Suche...
+[2025/12/19 23:54:14] [INFO] Methode 1: Prüfe pythonw.exe im PATH...
+[2025/12/19 23:54:14] [OK] Python gefunden (Methode 1): pythonw.exe im PATH
+[2025/12/19 23:54:14] [INFO] Starte Anwendung mit: pythonw.exe D:\Users\basti\Downloads\Universal-Downloader\Universal-Downloader-main\start.py
+[2025/12/19 23:54:15] [INFO] Vollständiger Python-Pfad: C:\Users\basti\AppData\Local\Programs\Python\Python310\pythonw.exe
+[2025/12/19 23:54:15] [INFO] Arbeitsverzeichnis: D:\Users\basti\Downloads\Universal-Downloader\Universal-Downloader-main
+[2025/12/19 23:54:15] [INFO] Python-Skript: D:\Users\basti\Downloads\Universal-Downloader\Universal-Downloader-main\start.py
+[2025/12/19 23:54:15] [INFO] Start-Befehl: "C:\Users\basti\AppData\Local\Programs\Python\Python310\pythonw.exe" "D:\Users\basti\Downloads\Universal-Downloader\Universal-Downloader-main\start.py"
+[2025/12/19 23:54:15] [INFO] Start-Befehl ausgeführt (ShellExecute), Exit-Code: 0
+[2025/12/19 23:54:16] [WARNING] Python-Prozess scheint nicht zu laufen
+[2025/12/19 23:54:16] [OK] Launcher beendet erfolgreich
+[2025/12/19 23:56:13] ==========================================
+[2025/12/19 23:56:13] Launcher gestartet: D:\Users\basti\Downloads\Universal-Downloader\Universal-Downloader-main\start_launcher.vbs
+[2025/12/19 23:56:13] Verzeichnis: D:\Users\basti\Downloads\Universal-Downloader\Universal-Downloader-main
+[2025/12/19 23:56:13] [OK] start.py gefunden: D:\Users\basti\Downloads\Universal-Downloader\Universal-Downloader-main\start.py
+[2025/12/19 23:56:13] [INFO] Starte Python-Suche...
+[2025/12/19 23:56:13] [INFO] Methode 1: Prüfe pythonw.exe im PATH...
+[2025/12/19 23:56:13] [OK] Python gefunden (Methode 1): pythonw.exe im PATH
+[2025/12/19 23:56:13] [INFO] Starte Anwendung mit: pythonw.exe D:\Users\basti\Downloads\Universal-Downloader\Universal-Downloader-main\start.py
+[2025/12/19 23:56:14] [INFO] Vollständiger Python-Pfad: C:\Users\basti\AppData\Local\Programs\Python\Python310\pythonw.exe
+[2025/12/19 23:56:14] [INFO] Arbeitsverzeichnis: D:\Users\basti\Downloads\Universal-Downloader\Universal-Downloader-main
+[2025/12/19 23:56:14] [INFO] Python-Skript: D:\Users\basti\Downloads\Universal-Downloader\Universal-Downloader-main\start.py
+[2025/12/19 23:56:14] [INFO] Start-Befehl: "C:\Users\basti\AppData\Local\Programs\Python\Python310\pythonw.exe" "D:\Users\basti\Downloads\Universal-Downloader\Universal-Downloader-main\start.py"
+[2025/12/19 23:56:14] [INFO] Start-Befehl ausgeführt (ShellExecute), Exit-Code: 0
+[2025/12/19 23:56:15] [WARNING] Python-Prozess scheint nicht zu laufen
+[2025/12/19 23:56:15] [OK] Launcher beendet erfolgreich
