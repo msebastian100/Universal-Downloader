@@ -282,10 +282,17 @@ class DeezerDownloaderGUI:
                                         if hicon:
                                             # Setze Icon für große und kleine Icons
                                             # WM_SETICON: 0x0080 (ICON_BIG), 0x0081 (ICON_SMALL)
-                                            hwnd = self.root.winfo_id()
-                                            user32.SendMessageW(hwnd, 0x0080, hicon, 0)  # ICON_BIG
-                                            user32.SendMessageW(hwnd, 0x0081, hicon, 0)  # ICON_SMALL
-                                            self._safe_log(f"[ICON] Prozess-Icon gesetzt: {icon_path.name}")
+                                            # Warte kurz, damit das Fenster vollständig initialisiert ist
+                                            try:
+                                                hwnd = self.root.winfo_id()
+                                                if hwnd:
+                                                    user32.SendMessageW(hwnd, 0x0080, hicon, 0)  # ICON_BIG
+                                                    user32.SendMessageW(hwnd, 0x0081, hicon, 0)  # ICON_SMALL
+                                                    self._safe_log(f"[ICON] Prozess-Icon gesetzt: {icon_path.name}")
+                                            except Exception as e2:
+                                                # Versuche es später nochmal
+                                                self.root.after(500, lambda p=icon_path: self._set_process_icon(p))
+                                                self._safe_log(f"[ICON] Versuche Prozess-Icon später zu setzen: {e2}")
                                     except Exception as e:
                                         # Fehler beim Setzen des Prozess-Icons ist nicht kritisch
                                         self._safe_log(f"[ICON] Konnte Prozess-Icon nicht setzen: {e}")
