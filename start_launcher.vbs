@@ -14,7 +14,8 @@ Sub WriteLog(message)
     Dim timestamp
     timestamp = Now()
     logStream.WriteLine "[" & timestamp & "] " & message
-    logStream.Flush
+    ' Flush ist nicht für alle TextStream-Objekte verfügbar, daher verwenden wir Close/Reopen nicht
+    ' Stattdessen schreiben wir direkt und schließen am Ende
 End Sub
 
 WriteLog "=========================================="
