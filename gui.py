@@ -1077,15 +1077,32 @@ class DeezerDownloaderGUI:
         if self.spotify_downloader:
             self.spotify_downloader.download_path = str(self.music_download_path)
     
-    def music_log(self, message: str):
+    def music_log(self, message: str, level: str = "INFO"):
         """Fügt eine Nachricht zum Musik-Log hinzu"""
-        if hasattr(self, 'music_log_text'):
+        # Bestimme Level basierend auf Nachricht
+        if "[DEBUG]" in message:
+            level = "DEBUG"
+        elif "[WARNING]" in message or "⚠" in message:
+            level = "WARNING"
+        elif "[ERROR]" in message or "✗" in message:
+            level = "ERROR"
+        
+        # Prüfe Log-Level-Einstellung
+        log_level_setting = self.settings.get('log_level', 'debug')
+        
+        # In normalem Modus: Überspringe DEBUG-Logs in GUI
+        show_in_gui = True
+        if log_level_setting == 'normal' and level == 'DEBUG':
+            show_in_gui = False
+        
+        if show_in_gui and hasattr(self, 'music_log_text'):
             self.music_log_text.config(state=tk.NORMAL)
-            self.music_log_text.insert(tk.END, message + "\n")
+            level_prefix = f"[{level}] " if level != "INFO" else ""
+            self.music_log_text.insert(tk.END, f"{level_prefix}{message}\n")
             self.music_log_text.see(tk.END)
             self.music_log_text.config(state=tk.DISABLED)
-        # Auch in Log-Datei schreiben
-        self._write_to_log_file(f"[MUSIK] {message}")
+        # Auch in Log-Datei schreiben (immer, aber mit Level-Filterung)
+        self._write_to_log_file(f"[MUSIK] {message}", level)
     
     def start_music_download(self):
         """Startet den Musik-Download (Deezer oder Spotify)"""
@@ -5419,6 +5436,7 @@ Copyright (c) 2025 Universal Downloader Contributors
             self.settings['log_cleanup_days'] = int(log_cleanup_days_var.get())
             self.settings['log_cleanup_on_exit'] = log_cleanup_on_exit_var.get()
             self.settings['auto_check_updates'] = auto_check_updates_var.get()
+            self.settings['log_level'] = log_level_var.get()
             
             self._save_settings()
             
