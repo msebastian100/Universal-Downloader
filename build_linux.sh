@@ -7,8 +7,20 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 APP_NAME="universal-downloader"
-VERSION="2.0.0"
 DEB_DIR="deb_build"
+
+# Lese Versionsnummer aus version.py
+if [ -f "version.py" ]; then
+    VERSION=$(grep -E "^__version__\s*=\s*['\"]" version.py | sed -E "s/^__version__\s*=\s*['\"]([^'\"]+)['\"].*/\1/")
+    if [ -z "$VERSION" ]; then
+        echo "[WARNING] Konnte Versionsnummer nicht aus version.py lesen, verwende 2.0.0"
+        VERSION="2.0.0"
+    fi
+else
+    echo "[WARNING] version.py nicht gefunden, verwende 2.0.0"
+    VERSION="2.0.0"
+fi
+
 BUILD_DIR="$DEB_DIR/$APP_NAME-$VERSION"
 
 echo "============================================================"
@@ -131,13 +143,14 @@ chmod +x "$BUILD_DIR/DEBIAN/prerm"
 # Erstelle .deb Paket
 echo ""
 echo "Erstelle .deb Paket..."
-if ! dpkg-deb --build "$BUILD_DIR" "$DEB_DIR/${APP_NAME}_${VERSION}_all.deb"; then
+DEB_FILENAME="${APP_NAME}_v${VERSION}_all.deb"
+if ! dpkg-deb --build "$BUILD_DIR" "$DEB_DIR/$DEB_FILENAME"; then
     echo "[ERROR] Fehler beim Erstellen des .deb Pakets"
     exit 1
 fi
 
 # Prüfe ob .deb erstellt wurde
-if [ ! -f "$DEB_DIR/${APP_NAME}_${VERSION}_all.deb" ]; then
+if [ ! -f "$DEB_DIR/$DEB_FILENAME" ]; then
     echo "[ERROR] .deb Datei wurde nicht erstellt"
     exit 1
 fi
@@ -148,9 +161,9 @@ echo "[OK] Build erfolgreich!"
 echo "============================================================"
 echo ""
 echo "Das .deb Paket befindet sich in:"
-echo "  $DEB_DIR/${APP_NAME}_${VERSION}_all.deb"
+echo "  $DEB_DIR/$DEB_FILENAME"
 echo ""
 echo "Installation:"
-echo "  sudo dpkg -i $DEB_DIR/${APP_NAME}_${VERSION}_all.deb"
+echo "  sudo dpkg -i $DEB_DIR/$DEB_FILENAME"
 echo "  sudo apt-get install -f  # Falls Abhängigkeiten fehlen"
 echo ""

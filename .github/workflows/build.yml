@@ -41,18 +41,23 @@ jobs:
         run: |
           python build_windows.py
       
+      - name: Get version from version.py
+        id: get_version
+        run: |
+          python -c "import re; content = open('version.py').read(); match = re.search(r\"__version__\s*=\s*['\\\"]([^'\\\"]+)['\\\"]\", content); print('version=' + match.group(1) if match else 'version=unknown')" >> $GITHUB_OUTPUT
+      
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
           name: windows-exe
-          path: dist/UniversalDownloader.exe
+          path: dist/universal-downloader_v*.exe
           retention-days: 30
       
       - name: Upload to Release (if release event)
         if: github.event_name == 'release'
         uses: softprops/action-gh-release@v1
         with:
-          files: dist/UniversalDownloader.exe
+          files: dist/universal-downloader_v*.exe
           draft: false
           prerelease: false
         env:
@@ -62,7 +67,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v1
         with:
-          files: dist/UniversalDownloader.exe
+          files: dist/universal-downloader_v*.exe
           tag_name: ${{ github.ref_name }}
           name: Release ${{ github.ref_name }}
           draft: false
@@ -75,7 +80,7 @@ jobs:
         if: github.event_name == 'workflow_dispatch' && github.event.inputs.tag != ''
         uses: softprops/action-gh-release@v1
         with:
-          files: dist/UniversalDownloader.exe
+          files: dist/universal-downloader_v*.exe
           tag_name: ${{ github.event.inputs.tag }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

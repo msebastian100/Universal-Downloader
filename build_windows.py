@@ -41,10 +41,25 @@ Build-Script fuer Windows .exe mit PyInstaller
 import subprocess
 import shutil
 from pathlib import Path
+import re
 
 # Fuer PyInstaller spec-Datei
 if __name__ != "__main__":
     import os
+
+def get_version():
+    """Liest die Versionsnummer aus version.py"""
+    try:
+        version_file = Path("version.py")
+        if version_file.exists():
+            content = version_file.read_text(encoding='utf-8')
+            # Suche nach __version__ = "2.0.2"
+            match = re.search(r'__version__\s*=\s*["\']([^"\']+)["\']', content)
+            if match:
+                return match.group(1)
+    except Exception as e:
+        print(f"[WARNING] Konnte Versionsnummer nicht lesen: {e}")
+    return "unknown"
 
 def check_pyinstaller():
     """Prueft ob PyInstaller installiert ist"""
@@ -138,9 +153,17 @@ def build_exe():
         # Pruefe ob .exe erstellt wurde
         exe_path = dist_dir / "UniversalDownloader.exe"
         if exe_path.exists():
+            # Lese Versionsnummer und benenne Datei um
+            version = get_version()
+            new_exe_name = f"universal-downloader_v{version}.exe"
+            new_exe_path = dist_dir / new_exe_name
+            
+            # Benenne um
+            exe_path.rename(new_exe_path)
+            
             print(f"\nDie .exe Datei befindet sich in: {dist_dir.absolute()}")
-            print(f"Dateiname: UniversalDownloader.exe")
-            print(f"Groesse: {exe_path.stat().st_size / (1024*1024):.2f} MB")
+            print(f"Dateiname: {new_exe_name}")
+            print(f"Groesse: {new_exe_path.stat().st_size / (1024*1024):.2f} MB")
             return True
         else:
             print(f"\n[WARNING] .exe Datei nicht gefunden in {dist_dir}")
