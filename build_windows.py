@@ -2,17 +2,36 @@
 # -*- coding: utf-8 -*-
 
 # Fix encoding fuer Windows - MUSS direkt nach encoding-Kommentar kommen!
+# Diese Fix muss VOR allen anderen Imports und print-Statements kommen!
 import os
 import sys
 
+# Setze UTF-8 Encoding fuer stdout/stderr BEVOR irgendetwas anderes passiert
 if sys.platform == 'win32' or os.getenv('GITHUB_ACTIONS') == 'true':
     import io
     try:
+        # Force UTF-8 encoding for stdout
         if hasattr(sys.stdout, 'buffer'):
-            sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace', line_buffering=True)
+            sys.stdout = io.TextIOWrapper(
+                sys.stdout.buffer, 
+                encoding='utf-8', 
+                errors='replace', 
+                line_buffering=True
+            )
+        # Force UTF-8 encoding for stderr
         if hasattr(sys.stderr, 'buffer'):
-            sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace', line_buffering=True)
-    except:
+            sys.stderr = io.TextIOWrapper(
+                sys.stderr.buffer, 
+                encoding='utf-8', 
+                errors='replace', 
+                line_buffering=True
+            )
+        # Setze auch die default encoding
+        if hasattr(sys, 'setdefaultencoding'):
+            sys.setdefaultencoding('utf-8')
+    except Exception:
+        # Falls die Encoding-Fix fehlschlaegt, ignoriere den Fehler
+        # aber verwende trotzdem nur ASCII-kompatible Zeichen
         pass
 
 """
