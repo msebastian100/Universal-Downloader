@@ -32,24 +32,26 @@ Else
     Else
         ' Methode 3: Suche in typischen Python-Installationspfaden
         Err.Clear
-        Dim commonPaths
-        commonPaths = Array( _
-            WshShell.ExpandEnvironmentStrings("%LOCALAPPDATA%\Programs\Python\Python3*\pythonw.exe"), _
-            WshShell.ExpandEnvironmentStrings("%LOCALAPPDATA%\Microsoft\WindowsApps\pythonw.exe"), _
-            WshShell.ExpandEnvironmentStrings("%PROGRAMFILES%\Python3*\pythonw.exe"), _
-            WshShell.ExpandEnvironmentStrings("%PROGRAMFILES(X86)%\Python3*\pythonw.exe") _
+        Dim searchPaths, searchPath, folder, file, subfolder
+        searchPaths = Array( _
+            WshShell.ExpandEnvironmentStrings("%LOCALAPPDATA%\Programs\Python"), _
+            WshShell.ExpandEnvironmentStrings("%LOCALAPPDATA%\Microsoft\WindowsApps"), _
+            WshShell.ExpandEnvironmentStrings("%PROGRAMFILES%\Python"), _
+            WshShell.ExpandEnvironmentStrings("%PROGRAMFILES(X86)%\Python") _
         )
         
-        For Each pathPattern In commonPaths
-            ' Versuche Wildcard-Pfade zu finden
-            Dim searchPath
-            searchPath = Left(pathPattern, InStrRev(pathPattern, "\"))
+        For Each searchPath In searchPaths
             If fso.FolderExists(searchPath) Then
-                Dim folder, file
                 Set folder = fso.GetFolder(searchPath)
-                For Each file In folder.Files
-                    If LCase(file.Name) = "pythonw.exe" Then
-                        pythonExe = file.Path
+                ' Suche direkt nach pythonw.exe
+                If fso.FileExists(searchPath & "\pythonw.exe") Then
+                    pythonExe = searchPath & "\pythonw.exe"
+                    Exit For
+                End If
+                ' Suche in Unterordnern (z.B. Python3.11, Python3.12)
+                For Each subfolder In folder.SubFolders
+                    If fso.FileExists(subfolder.Path & "\pythonw.exe") Then
+                        pythonExe = subfolder.Path & "\pythonw.exe"
                         Exit For
                     End If
                 Next
