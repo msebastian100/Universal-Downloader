@@ -4,11 +4,16 @@ on:
   release:
     types: [created]
   workflow_dispatch:  # Manuell auslösbar
+    inputs:
+      tag:
+        description: 'Tag name (z.B. v.2.0.0) - leer lassen fuer normalen Build'
+        required: false
+        type: string
   push:
     branches:
       - main
     tags:
-      - 'v*'  # Ausloesen bei Tags wie v2.0.0
+      - 'v*'  # Ausloesen bei Tags wie v2.0.0 oder v.2.0.0
 
 jobs:
   build-windows:
@@ -60,8 +65,18 @@ jobs:
           files: dist/UniversalDownloader.exe
           tag_name: ${{ github.ref_name }}
           name: Release ${{ github.ref_name }}
-          draft: true  # Als Draft, damit du es vorher pruefen kannst
+          draft: false
           prerelease: false
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Upload to Existing Release (workflow_dispatch with tag)
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.tag != ''
+        uses: softprops/action-gh-release@v1
+        with:
+          files: dist/UniversalDownloader.exe
+          tag_name: ${{ github.event.inputs.tag }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -119,7 +134,17 @@ jobs:
           files: deb_build/*.deb
           tag_name: ${{ github.ref_name }}
           name: Release ${{ github.ref_name }}
-          draft: true  # Als Draft, damit du es vorher pruefen kannst
+          draft: false
           prerelease: false
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Upload to Existing Release (workflow_dispatch with tag)
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.tag != ''
+        uses: softprops/action-gh-release@v1
+        with:
+          files: deb_build/*.deb
+          tag_name: ${{ github.event.inputs.tag }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
