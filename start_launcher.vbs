@@ -146,41 +146,36 @@ If pythonExe = "" Then
                    "https://www.python.org/downloads/", vbCritical, "Fehler"
             WScript.Quit
         End If
-            
-            ' Installiere Python im Silent-Modus
-            ' /quiet = Silent installation
-            ' /prependpath = Füge Python zum PATH hinzu
-            ' InstallAllUsers = 1 = Für alle Benutzer
-            Dim installCmd
-            installCmd = installerPath & " /quiet InstallAllUsers=1 PrependPath=1 Include_test=0"
-            
-            ' Prüfe ob Administrator-Rechte vorhanden sind
-            Dim isAdmin
-            isAdmin = False
-            On Error Resume Next
-            CreateObject("Shell.Application").ShellExecute "cmd.exe", "/c echo test", "", "runas", 0
-            If Err.Number = 0 Then
-                isAdmin = True
-            End If
-            On Error Goto 0
-            
-            If isAdmin Then
-                ' Führe Installation mit Administrator-Rechten aus
-                WshShell.Run "powershell.exe -Command ""Start-Process -FilePath '" & installerPath & "' -ArgumentList '/quiet InstallAllUsers=1 PrependPath=1 Include_test=0' -Verb RunAs -Wait""", 1, True
-            Else
-                ' Versuche normale Installation
-                WshShell.Run installCmd, 1, True
-            End If
-            
-            ' Warte kurz und prüfe ob Python jetzt verfügbar ist
-            WScript.Sleep 3000
-            
-            ' Prüfe erneut
-            Set pythonCheck = WshShell.Exec("python.exe --version")
-            pythonCheck.StdOut.ReadAll
-            pythonCheck.WaitOnReturn = True
-            If pythonCheck.ExitCode = 0 Then
-                pythonExe = "python.exe"
+        
+        ' Installiere Python im Silent-Modus
+        ' /quiet = Silent installation
+        ' /prependpath = Füge Python zum PATH hinzu
+        ' InstallAllUsers = 1 = Für alle Benutzer
+        Dim installCmd
+        installCmd = installerPath & " /quiet InstallAllUsers=1 PrependPath=1 Include_test=0"
+        
+        ' Führe Installation mit Administrator-Rechten aus
+        WshShell.Run "powershell.exe -Command ""Start-Process -FilePath '" & installerPath & "' -ArgumentList '/quiet InstallAllUsers=1 PrependPath=1 Include_test=0' -Verb RunAs -Wait""", 1, True
+        
+        ' Warte kurz und prüfe ob Python jetzt verfügbar ist
+        WScript.Sleep 3000
+        
+        ' Prüfe erneut (auch mit erweiterten Suchmethoden)
+        On Error Resume Next
+        Set pythonCheck = WshShell.Exec("python.exe --version")
+        pythonCheck.StdOut.ReadAll
+        pythonCheck.WaitOnReturn = True
+        If pythonCheck.ExitCode = 0 Then
+            pythonExe = "python.exe"
+            MsgBox "Python wurde erfolgreich installiert!" & vbCrLf & _
+                   "Die Anwendung wird jetzt gestartet.", vbInformation, "Erfolg"
+        Else
+            ' Versuche pythonw.exe
+            Set pythonCheck2 = WshShell.Exec("pythonw.exe --version")
+            pythonCheck2.StdOut.ReadAll
+            pythonCheck2.WaitOnReturn = True
+            If pythonCheck2.ExitCode = 0 Then
+                pythonExe = "pythonw.exe"
                 MsgBox "Python wurde erfolgreich installiert!" & vbCrLf & _
                        "Die Anwendung wird jetzt gestartet.", vbInformation, "Erfolg"
             Else
@@ -193,16 +188,11 @@ If pythonExe = "" Then
                 If fso.FileExists(installerPath) Then fso.DeleteFile installerPath
                 WScript.Quit
             End If
-            
-            ' Lösche Installer
-            If fso.FileExists(installerPath) Then fso.DeleteFile installerPath
-        Else
-            MsgBox "Konnte Python-Installer nicht herunterladen." & vbCrLf & vbCrLf & _
-                   "Bitte installieren Sie Python manuell von:" & vbCrLf & _
-                   "https://www.python.org/downloads/", vbCritical, "Fehler"
-            WScript.Quit
         End If
         On Error Goto 0
+        
+        ' Lösche Installer
+        If fso.FileExists(installerPath) Then fso.DeleteFile installerPath
     Else
         ' Benutzer hat abgelehnt
         MsgBox "Python ist erforderlich, um die Anwendung zu starten." & vbCrLf & vbCrLf & _
