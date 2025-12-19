@@ -386,7 +386,9 @@ def ensure_dependencies():
         status = ""
         
         if system == 'Windows':
-            success, status = install_ffmpeg_windows()
+            # Verwende Progress-Callback falls vorhanden
+            progress_callback = getattr(ensure_dependencies, '_progress_callback', None)
+            success, status = install_ffmpeg_windows(progress_callback=progress_callback)
         elif system == 'Linux':
             success, status = install_ffmpeg_linux()
         elif system == 'Darwin':
