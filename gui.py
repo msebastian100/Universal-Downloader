@@ -4692,7 +4692,7 @@ Historie-Einträge: {len(self.video_download_history)}
             self._download_update(update_info)
     
     def _download_update(self, update_info, parent_window=None):
-        """Lädt ein Update herunter"""
+        """Lädt ein Update herunter und installiert es automatisch"""
         if not update_info.get('download_url'):
             # Zeige detaillierte Fehlermeldung
             assets_info = ""
@@ -4709,15 +4709,11 @@ Historie-Einträge: {len(self.video_download_history)}
             )
             return
         
-        # Wähle Speicherort
-        save_path = filedialog.asksaveasfilename(
-            title="Update speichern",
-            defaultextension=".exe" if sys.platform == "win32" else ".deb",
-            filetypes=[("Executable", "*.exe"), ("Debian Package", "*.deb"), ("All files", "*.*")]
-        )
-        
-        if not save_path:
-            return
+        # Automatischer Speicherort (Temp-Ordner)
+        import tempfile
+        temp_dir = Path(tempfile.gettempdir())
+        extension = ".exe" if sys.platform == "win32" else ".deb"
+        save_path = temp_dir / f"UniversalDownloader_Update_{update_info['version']}{extension}"
         
         # Download-Dialog
         download_window = tk.Toplevel(parent_window or self.root)
@@ -4745,15 +4741,28 @@ Historie-Einträge: {len(self.video_download_history)}
                 def update_ui():
                     progress.stop()
                     if success:
-                        status_label.config(text="✓ Download erfolgreich!")
-                        messagebox.showinfo(
-                            "Erfolg",
-                            f"Update erfolgreich heruntergeladen:\n{save_path}\n\n"
-                            "Bitte installieren Sie das Update manuell."
-                        )
-                        download_window.destroy()
-                        if parent_window:
-                            parent_window.destroy()
+                        status_label.config(text="✓ Download erfolgreich! Installiere Update...")
+                        self.root.update()
+                        
+                        # Installiere Update (ersetze alte .exe)
+                        install_success = self._install_update(Path(save_path), update_info['version'])
+                        
+                        if install_success:
+                            status_label.config(text="✓ Update installiert! Starte Programm neu...")
+                            self.root.update()
+                            
+                            # Starte Programm neu
+                            self._restart_application(Path(save_path))
+                        else:
+                            status_label.config(text="⚠ Installation fehlgeschlagen")
+                            messagebox.showwarning(
+                                "Warnung",
+                                f"Update wurde heruntergeladen, aber die Installation ist fehlgeschlagen.\n\n"
+                                f"Bitte installieren Sie das Update manuell:\n{save_path}"
+                            )
+                            download_window.destroy()
+                            if parent_window:
+                                parent_window.destroy()
                     else:
                         status_label.config(text="✗ Download fehlgeschlagen")
                         messagebox.showerror("Fehler", "Download fehlgeschlagen. Bitte versuchen Sie es erneut.")
@@ -4767,6 +4776,106 @@ Historie-Einträge: {len(self.video_download_history)}
                 self.root.after(0, show_error)
         
         threading.Thread(target=download_thread, daemon=True).start()
+    
+    def _install_update(self, update_file: Path, new_version: str) -> bool:
+        """
+        Installiert das Update, indem die alte .exe ersetzt wird
+        
+        Args:
+            update_file: Pfad zur neuen .exe/.deb Datei
+            new_version: Neue Versionsnummer
+            
+        Returns:
+            True bei Erfolg, False sonst
+        """
+        try:
+            if sys.platform == "win32":
+                # Windows: Ersetze die aktuelle .exe
+                current_exe = Path(sys.executable)
+                
+                # Prüfe ob wir in einer .exe sind
+                if not getattr(sys, 'frozen', False):
+                    # Normale Python-Umgebung - kann nicht automatisch installieren
+                    return False
+                
+                # Erstelle Backup der alten .exe
+                backup_path = current_exe.parent / f"{current_exe.stem}_backup_{get_version()}.exe"
+                if current_exe.exists():
+                    import shutil
+                    shutil.copy2(current_exe, backup_path)
+                
+                # Ersetze die .exe
+                import shutil
+                shutil.copy2(update_file, current_exe)
+                
+                # Lösche Update-Datei aus Temp
+                update_file.unlink(missing_ok=True)
+                
+                return True
+            elif sys.platform == "linux":
+                # Linux: Installiere .deb Paket
+                import subprocess
+                result = subprocess.run(
+                    ['sudo', 'dpkg', '-i', str(update_file)],
+                    capture_output=True,
+                    text=True
+                )
+                return result.returncode == 0
+            else:
+                # macOS: Kann nicht automatisch installieren
+                return False
+                
+        except Exception as e:
+            print(f"[ERROR] Fehler bei Update-Installation: {e}")
+            return False
+    
+    def _restart_application(self, update_file: Path):
+        """
+        Startet die Anwendung neu nach einem Update
+        
+        Args:
+            update_file: Pfad zur neuen .exe (wird nicht mehr benötigt, da bereits installiert)
+        """
+        try:
+            if sys.platform == "win32":
+                # Windows: Starte die neue .exe
+                current_exe = Path(sys.executable)
+                
+                # Starte neue Version
+                import subprocess
+                subprocess.Popen([str(current_exe)], shell=True)
+                
+                # Schließe aktuelle Instanz
+                self.root.quit()
+                self.root.destroy()
+                sys.exit(0)
+            elif sys.platform == "linux":
+                # Linux: Starte die Anwendung neu
+                import subprocess
+                # Versuche die Anwendung neu zu starten
+                # (abhängig davon, wie sie installiert wurde)
+                subprocess.Popen(['universal-downloader'], shell=True)
+                self.root.quit()
+                self.root.destroy()
+                sys.exit(0)
+            else:
+                # macOS: Zeige Hinweis
+                messagebox.showinfo(
+                    "Update installiert",
+                    "Das Update wurde installiert. Bitte starten Sie die Anwendung manuell neu."
+                )
+                self.root.quit()
+                self.root.destroy()
+                sys.exit(0)
+        except Exception as e:
+            print(f"[ERROR] Fehler beim Neustart: {e}")
+            messagebox.showinfo(
+                "Update installiert",
+                "Das Update wurde installiert. Bitte starten Sie die Anwendung manuell neu."
+            )
+            self.root.quit()
+            self.root.destroy()
+            sys.exit(0)
     
     def show_about_dialog(self):
         """Zeigt Info-Dialog über die Anwendung"""
@@ -5024,6 +5133,16 @@ Copyright (c) 2025 Universal Downloader Contributors
         # Allgemeine Einstellungen
         general_frame = ttk.LabelFrame(scrollable_frame, text="⚙️ Allgemeine Einstellungen", padding="10")
         general_frame.pack(fill=tk.X, pady=5, padx=5)
+        
+        # Versionsinformationen
+        version_frame = ttk.Frame(general_frame)
+        version_frame.pack(fill=tk.X, pady=(0, 10))
+        ttk.Label(version_frame, text="Version:", font=("Arial", 9, "bold")).pack(side=tk.LEFT, padx=(0, 5))
+        version_text = get_version_string()
+        ttk.Label(version_frame, text=version_text, font=("Arial", 9)).pack(side=tk.LEFT)
+        
+        # Separator
+        ttk.Separator(general_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=10)
         
         # Automatisch Ordner öffnen
         auto_open_var = tk.BooleanVar(value=self.settings.get('auto_open_folder', False))
