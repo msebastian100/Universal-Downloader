@@ -18,11 +18,13 @@ End If
 On Error Goto 0
 
 Sub WriteLog(message)
+    On Error Resume Next
     Dim timestamp
     timestamp = Now()
-    logStream.WriteLine "[" & timestamp & "] " & message
-    ' Flush ist nicht für alle TextStream-Objekte verfügbar, daher verwenden wir Close/Reopen nicht
-    ' Stattdessen schreiben wir direkt und schließen am Ende
+    If Not logStream Is Nothing Then
+        logStream.WriteLine "[" & timestamp & "] " & message
+    End If
+    On Error Goto 0
 End Sub
 
 WriteLog "=========================================="
