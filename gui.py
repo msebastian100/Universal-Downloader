@@ -4733,15 +4733,14 @@ Historie-Einträge: {len(self.video_download_history)}
                     self._write_to_log_file("[DEBUG] Restart-Flag gefunden - überspringe Abhängigkeits-Installation", "DEBUG")
                     return
                 
-                from auto_install_dependencies import check_ytdlp, check_ffmpeg
+                from auto_install_dependencies import check_ffmpeg
                 
-                # Schnelle Prüfung ob Installation nötig ist
-                ytdlp_ok, _ = check_ytdlp()
+                # Schnelle Prüfung ob Installation nötig ist (nur ffmpeg, yt-dlp wird automatisch installiert)
                 ffmpeg_ok, _ = check_ffmpeg()
                 
-                self._write_to_log_file(f"[DEBUG] Abhängigkeits-Prüfung: yt-dlp={ytdlp_ok}, ffmpeg={ffmpeg_ok}", "DEBUG")
+                self._write_to_log_file(f"[DEBUG] Abhängigkeits-Prüfung: ffmpeg={ffmpeg_ok}", "DEBUG")
                 
-                # Installiere Abhängigkeiten mit Progress-Callback
+                # Installiere nur ffmpeg (yt-dlp wird automatisch über requirements.txt installiert)
                 from auto_install_dependencies import ensure_dependencies
                 
                 # Setze Progress-Callback für Abhängigkeits-Installation
@@ -4752,20 +4751,26 @@ Historie-Einträge: {len(self.video_download_history)}
                 # Setze Callback für ensure_dependencies
                 ensure_dependencies._progress_callback = update_progress
                 
-                # Zeige Installations-Dialog (auch wenn Updates durchgeführt werden)
-                self.root.after(0, self._show_dependency_installation_dialog)
+                # Zeige Installations-Dialog nur wenn ffmpeg fehlt
+                if not ffmpeg_ok:
+                    self.root.after(0, self._show_dependency_installation_dialog)
                 
                 try:
+                    # ensure_dependencies installiert yt-dlp automatisch, aber wir zeigen nur ffmpeg im Dialog
                     ytdlp_ok, ffmpeg_ok, messages, has_updates = ensure_dependencies()
+                    
+                    # Filtere yt-dlp Meldungen aus (wird automatisch installiert)
+                    filtered_messages = [msg for msg in messages if "yt-dlp" not in msg.lower() and "ytdlp" not in msg.lower()]
                 finally:
                     # Entferne Callback
                     if hasattr(ensure_dependencies, '_progress_callback'):
                         delattr(ensure_dependencies, '_progress_callback')
                 
-                self._write_to_log_file(f"[DEBUG] Abhängigkeits-Installation abgeschlossen: yt-dlp={ytdlp_ok}, ffmpeg={ffmpeg_ok}, updates={has_updates}", "DEBUG")
+                self._write_to_log_file(f"[DEBUG] Abhängigkeits-Installation abgeschlossen: ffmpeg={ffmpeg_ok}, updates={has_updates}", "DEBUG")
                 
-                # Aktualisiere Dialog mit Ergebnissen (auch wenn nur Updates durchgeführt wurden)
-                self.root.after(0, lambda: self._update_dependency_dialog(ytdlp_ok, ffmpeg_ok, messages, has_updates))
+                # Aktualisiere Dialog mit Ergebnissen (nur ffmpeg)
+                if not ffmpeg_ok:
+                    self.root.after(0, lambda: self._update_dependency_dialog(True, ffmpeg_ok, filtered_messages, has_updates))
                 
             except Exception as e:
                 # Zeige Fehler im Dialog
@@ -4862,7 +4867,9 @@ Historie-Einträge: {len(self.video_download_history)}
             self._dep_status_text.see(tk.END)
     
     def _update_dependency_dialog(self, ytdlp_ok, ffmpeg_ok, messages, has_updates=False):
-        """Aktualisiert den Installations-Dialog mit Ergebnissen"""
+        """Aktualisiert den Installations-Dialog mit Ergebnissen
+        Hinweis: ytdlp_ok wird ignoriert, da yt-dlp automatisch installiert wird
+        """
         if not hasattr(self, '_dep_dialog') or not self._dep_dialog.winfo_exists():
             return
         
@@ -4872,7 +4879,7 @@ Historie-Einträge: {len(self.video_download_history)}
         # Stoppe Progress Bar
         self._dep_progress.stop()
         
-        # Zeige alle Meldungen
+        # Zeige alle Meldungen (nur ffmpeg, yt-dlp wird automatisch installiert)
         self._dep_status_text.config(state=tk.NORMAL)
         for msg in messages:
             self._dep_status_text.insert(tk.END, msg + "\n")
@@ -4887,18 +4894,22 @@ Historie-Einträge: {len(self.video_download_history)}
         
         # Zeige Erfolgsmeldung und frage nach Neustart
         # Frage nach Neustart wenn Updates durchgeführt wurden oder Installation nötig war
-        if has_updates or not (ytdlp_ok and ffmpeg_ok):
+        if has_updates or not ffmpeg_ok:
             self._dep_status_text.config(state=tk.NORMAL)
-            self._dep_status_text.insert(tk.END, "\n[OK] Alle Abhängigkeiten wurden erfolgreich installiert!\n")
+            if ffmpeg_ok:
+                self._dep_status_text.insert(tk.END, "\n[OK] Alle Abhängigkeiten wurden erfolgreich installiert!\n")
+            else:
+                self._dep_status_text.insert(tk.END, "\n[WARNING] ffmpeg konnte nicht installiert werden.\n")
+                self._dep_status_text.insert(tk.END, "Die Anwendung kann möglicherweise nicht vollständig funktionieren.\n")
             self._dep_status_text.config(state=tk.DISABLED)
             self._dep_status_text.see(tk.END)
             
-            # Frage nach Neustart
-            self.root.after(500, lambda: self._ask_restart_after_dependency_install())
+            # Frage nach Neustart nur wenn ffmpeg installiert wurde
+            if ffmpeg_ok:
+                self.root.after(500, lambda: self._ask_restart_after_dependency_install())
         else:
             self._dep_status_text.config(state=tk.NORMAL)
-            self._dep_status_text.insert(tk.END, "\n[WARNING] Einige Abhängigkeiten konnten nicht installiert werden.\n")
-            self._dep_status_text.insert(tk.END, "Die Anwendung kann möglicherweise nicht vollständig funktionieren.\n")
+            self._dep_status_text.insert(tk.END, "\n[OK] Alle Abhängigkeiten sind vorhanden.\n")
             self._dep_status_text.config(state=tk.DISABLED)
             self._dep_status_text.see(tk.END)
     

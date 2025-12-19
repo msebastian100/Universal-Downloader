@@ -18,6 +18,15 @@ if sys.platform == "win32":
         import ctypes
         from ctypes import wintypes
         
+        # Setze App User Model ID (für Windows 7+ Taskleiste)
+        # Dies hilft Windows, die Anwendung korrekt zu identifizieren und das Icon anzuzeigen
+        try:
+            shell32 = ctypes.windll.shell32
+            app_id = "UniversalDownloader.UniversalDownloader.1.0"
+            shell32.SetCurrentProcessExplicitAppUserModelID(app_id)
+        except Exception:
+            pass
+        
         # Finde Icon-Datei
         script_dir = Path(__file__).parent.absolute()
         icon_paths = [
@@ -31,18 +40,8 @@ if sys.platform == "win32":
                 icon_path = path
                 break
         
-        if icon_path:
-            try:
-                # Setze Icon für den Prozess
-                # LoadIcon und SetClassLongPtr sind veraltet, verwende stattdessen:
-                # Für moderne Windows-Versionen: Setze das Icon über die Window-Klasse
-                # Das wird in gui.py gemacht, aber hier können wir es auch für den Prozess versuchen
-                
-                # Alternative: Verwende LoadImage um das Icon zu laden
-                # Dies funktioniert nur wenn ein Fenster existiert, daher machen wir es in gui.py
-                pass  # Wird in gui.py gemacht
-            except Exception:
-                pass
+        # Das Icon wird in gui.py für das Fenster gesetzt
+        # Hier setzen wir nur die App User Model ID für die Taskleiste
     except Exception:
         pass
 
