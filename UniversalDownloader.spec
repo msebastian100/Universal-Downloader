@@ -7,7 +7,9 @@ block_cipher = None
 
 # Icon-Daten hinzufügen falls vorhanden
 datas_list = []
-if os.path.exists('icon.png'):
+if os.path.exists('icon.ico'):
+    datas_list.append(('icon.ico', '.'))
+elif os.path.exists('icon.png'):
     datas_list.append(('icon.png', '.'))
 
 a = Analysis(
@@ -67,5 +69,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='icon.png' if os.path.exists('icon.png') else None,
+    icon='icon.ico' if os.path.exists('icon.ico') else ('icon.png' if os.path.exists('icon.png') else None),
 )
