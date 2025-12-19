@@ -44,3 +44,6 @@ Thumbs.db
 
 # Audible Activator (separates Repository)
 audible-activator/
+
+# Dokumentation (lokal behalten, aber nicht ins Repository)
+*.md
