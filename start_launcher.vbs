@@ -5,6 +5,7 @@ Set objShell = CreateObject("Shell.Application")
 ' Hole das Verzeichnis der .vbs Datei
 scriptPath = fso.GetParentFolderName(WScript.ScriptFullName)
 pythonScript = scriptPath & "\start.py"
+updateScript = scriptPath & "\update_from_github.py"
 
 ' Finde Icon-Datei (icon.ico oder icon.png)
 Dim iconPath
@@ -75,6 +76,87 @@ If fso.FileExists(requirementsFile) Then
     WriteLog "[OK] requirements.txt gefunden: " & requirementsFile
 Else
     WriteLog "[WARNING] requirements.txt nicht gefunden: " & requirementsFile
+End If
+
+' Prüfe auf Updates (nur wenn nicht --no-update Parameter übergeben wurde)
+If WScript.Arguments.Count = 0 Or WScript.Arguments(0) <> "--no-update" Then
+    WriteLog "[INFO] Prüfe auf Updates..."
+    
+    ' Prüfe ob update_from_github.py existiert
+    If fso.FileExists(updateScript) Then
+        WriteLog "[INFO] Starte Update-Check..."
+        
+        ' Finde Python für Update-Check (vereinfachte Suche)
+        Dim pythonExeUpdate, fullPythonPathUpdate
+        pythonExeUpdate = "pythonw.exe"
+        fullPythonPathUpdate = ""
+        
+        ' Methode 1: Prüfe pythonw.exe im PATH
+        On Error Resume Next
+        Dim whereResultUpdate
+        Set whereResultUpdate = WshShell.Exec("where " & pythonExeUpdate)
+        whereResultUpdate.StdOut.ReadLine
+        whereResultUpdate.StdOut.SkipLine
+        Dim whereOutputUpdate
+        whereOutputUpdate = whereResultUpdate.StdOut.ReadAll
+        whereResultUpdate.StdOut.Close
+        whereResultUpdate.WaitOnReturn = True
+        
+        If whereResultUpdate.ExitCode = 0 And Len(whereOutputUpdate) > 0 Then
+            Dim whereLinesUpdate
+            whereLinesUpdate = Split(whereOutputUpdate, vbCrLf)
+            If UBound(whereLinesUpdate) >= 0 Then
+                fullPythonPathUpdate = Trim(whereLinesUpdate(0))
+            End If
+        End If
+        On Error Goto 0
+        
+        ' Methode 2: Prüfe typische Installationspfade
+        If Len(fullPythonPathUpdate) = 0 Then
+            Dim commonPathsUpdate
+            commonPathsUpdate = Array( _
+                WshShell.ExpandEnvironmentStrings("%LOCALAPPDATA%\Programs\Python\Python*\pythonw.exe"), _
+                WshShell.ExpandEnvironmentStrings("%PROGRAMFILES%\Python*\pythonw.exe"), _
+                WshShell.ExpandEnvironmentStrings("%PROGRAMFILES(X86)%\Python*\pythonw.exe"), _
+                "C:\Python*\pythonw.exe", _
+                "D:\Python*\pythonw.exe" _
+            )
+            
+            Dim pathUpdate, foundUpdate
+            foundUpdate = False
+            For Each pathUpdate In commonPathsUpdate
+                Dim matchesUpdate
+                Set matchesUpdate = fso.GetFolder(fso.GetParentFolderName(pathUpdate)).GetFiles(fso.GetFileName(pathUpdate))
+                If matchesUpdate.Count > 0 Then
+                    fullPythonPathUpdate = matchesUpdate(0).Path
+                    foundUpdate = True
+                    Exit For
+                End If
+            Next
+        End If
+        
+        ' Methode 3: Fallback zu pythonw.exe
+        If Len(fullPythonPathUpdate) = 0 Then
+            fullPythonPathUpdate = pythonExeUpdate
+        End If
+        
+        WriteLog "[INFO] Python für Update-Check: " & fullPythonPathUpdate
+        
+        ' Führe Update-Check aus
+        Dim updateResult
+        On Error Resume Next
+        updateResult = WshShell.Run("""" & fullPythonPathUpdate & """ """ & updateScript & """", 0, True)
+        On Error Goto 0
+        
+        If updateResult = 0 Then
+            WriteLog "[OK] Update-Check abgeschlossen"
+        Else
+            WriteLog "[WARNING] Update-Check fehlgeschlagen oder keine Updates verfügbar (Exit-Code: " & updateResult & ")"
+        End If
+    Else
+        WriteLog "[WARNING] update_from_github.py nicht gefunden - überspringe Update-Check"
+    End If
+    WriteLog ""
 End If
 
 ' Versuche Python zu finden (auf allen Laufwerken)

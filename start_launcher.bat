@@ -1,6 +1,6 @@
 @echo off
 REM Launcher für Universal Downloader
-REM Versteckt das Konsolen-Fenster und startet die Anwendung
+REM Prüft auf Updates, installiert Abhängigkeiten und startet die Anwendung
 
 REM Hole das Verzeichnis der .bat Datei
 cd /d "%~dp0"
@@ -40,6 +40,63 @@ if exist "icon.ico" (
     echo [%date% %time%] [INFO] Icon gefunden: icon.png >> "%LOG_FILE%"
 ) else (
     echo [%date% %time%] [WARNING] Kein Icon gefunden >> "%LOG_FILE%"
+)
+
+REM Prüfe auf Updates (nur wenn nicht --no-update Parameter übergeben wurde)
+if not "%1"=="--no-update" (
+    echo [%date% %time%] [INFO] Pruefe auf Updates... >> "%LOG_FILE%"
+    
+    REM Prüfe ob update_from_github.py existiert
+    if exist "update_from_github.py" (
+        echo [%date% %time%] [INFO] Starte Update-Check... >> "%LOG_FILE%"
+        
+        REM Finde Python für Update-Check (vereinfachte Suche)
+        set "FULL_PYTHON_PATH_UPDATE="
+        
+        REM Methode 1: Prüfe pythonw.exe im PATH
+        where pythonw.exe >nul 2>&1
+        if !errorlevel! equ 0 (
+            for /f "delims=" %%i in ('where pythonw.exe') do (
+                set "FULL_PYTHON_PATH_UPDATE=%%i"
+                goto :python_found_update
+            )
+        )
+        
+        REM Methode 2: Prüfe typische Installationspfade
+        for %%d in (C D E F G H) do (
+            if exist "%%d:\Python*\pythonw.exe" (
+                for /f "delims=" %%i in ('dir /b /s "%%d:\Python*\pythonw.exe" 2^>nul') do (
+                    set "FULL_PYTHON_PATH_UPDATE=%%i"
+                    goto :python_found_update
+                )
+            )
+        )
+        
+        REM Methode 3: Prüfe Microsoft Store Python
+        if exist "%LOCALAPPDATA%\Microsoft\WindowsApps\pythonw.exe" (
+            set "FULL_PYTHON_PATH_UPDATE=%LOCALAPPDATA%\Microsoft\WindowsApps\pythonw.exe"
+            goto :python_found_update
+        )
+        
+        REM Methode 4: Fallback zu pythonw.exe
+        set "FULL_PYTHON_PATH_UPDATE=pythonw.exe"
+        
+        :python_found_update
+        echo [%date% %time%] [INFO] Python für Update-Check: !FULL_PYTHON_PATH_UPDATE! >> "%LOG_FILE%"
+        
+        REM Führe Update-Check aus
+        "!FULL_PYTHON_PATH_UPDATE!" "update_from_github.py" >> "%LOG_FILE%" 2>&1
+        set UPDATE_RESULT=!errorlevel!
+        
+        if !UPDATE_RESULT! equ 0 (
+            echo [%date% %time%] [OK] Update-Check abgeschlossen >> "%LOG_FILE%"
+        ) else (
+            echo [%date% %time%] [WARNING] Update-Check fehlgeschlagen oder keine Updates verfuegbar (Exit-Code: !UPDATE_RESULT!) >> "%LOG_FILE%"
+        )
+    ) else (
+        echo [%date% %time%] [WARNING] update_from_github.py nicht gefunden - ueberspringe Update-Check >> "%LOG_FILE%"
+    )
+    echo. >> "%LOG_FILE%"
 )
 
 REM Versuche Python zu finden (auf allen Laufwerken)
