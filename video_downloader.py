@@ -441,6 +441,88 @@ class VideoDownloader:
             self.log(f"✗ Fehler: {e}", "ERROR")
             return None
     
+    def _extract_available_qualities(self, video_info: Dict) -> List[str]:
+        """
+        Extrahiert verfügbare Qualitäten aus Video-Informationen
+        
+        Args:
+            video_info: Dictionary mit Video-Informationen von yt-dlp
+            
+        Returns:
+            Liste von verfügbaren Qualitäten (z.B. ['best', '1080p', '720p', 'niedrigste'])
+        """
+        qualities = set()
+        
+        try:
+            formats = video_info.get('formats', [])
+            if not formats:
+                return ['best', 'niedrigste']
+            
+            for fmt in formats:
+                # Prüfe Höhe (height) für Video-Formate
+                height = fmt.get('height')
+                if height and isinstance(height, (int, float)):
+                    height_int = int(height)
+                    if height_int >= 2160:
+                        qualities.add('2160p')
+                    elif height_int >= 1440:
+                        qualities.add('1440p')
+                    elif height_int >= 1080:
+                        qualities.add('1080p')
+                    elif height_int >= 720:
+                        qualities.add('720p')
+                    elif height_int >= 480:
+                        qualities.add('480p')
+                    elif height_int >= 360:
+                        qualities.add('360p')
+                    elif height_int >= 240:
+                        qualities.add('240p')
+                    elif height_int >= 144:
+                        qualities.add('144p')
+                
+                # Prüfe auch format_note für zusätzliche Informationen
+                format_note = fmt.get('format_note', '').lower()
+                if format_note:
+                    # Extrahiere Auflösung aus format_note (z.B. "1080p", "720p")
+                    import re
+                    match = re.search(r'(\d+)p?', format_note)
+                    if match:
+                        res = int(match.group(1))
+                        if res >= 2160:
+                            qualities.add('2160p')
+                        elif res >= 1440:
+                            qualities.add('1440p')
+                        elif res >= 1080:
+                            qualities.add('1080p')
+                        elif res >= 720:
+                            qualities.add('720p')
+                        elif res >= 480:
+                            qualities.add('480p')
+                        elif res >= 360:
+                            qualities.add('360p')
+                        elif res >= 240:
+                            qualities.add('240p')
+                        elif res >= 144:
+                            qualities.add('144p')
+            
+            # Sortiere Qualitäten von hoch nach niedrig
+            quality_order = ['2160p', '1440p', '1080p', '720p', '480p', '360p', '240p', '144p']
+            sorted_qualities = []
+            for q in quality_order:
+                if q in qualities:
+                    sorted_qualities.append(q)
+            
+            # Füge "best" und "niedrigste" immer hinzu
+            result = ['best']
+            result.extend(sorted_qualities)
+            result.append('niedrigste')
+            
+            return result
+            
+        except Exception as e:
+            self.log(f"Fehler beim Extrahieren der Qualitäten: {e}", "WARNING")
+            return ['best', 'niedrigste']  # Fallback
+    
     def is_series_or_season(self, url: str) -> bool:
         """
         Prüft ob die URL eine Serie oder Staffel ist
