@@ -242,9 +242,16 @@ if %errorlevel% == 0 (
 
 :no_install
 echo.
+echo ========================================
+echo Python ist erforderlich!
+echo ========================================
+echo.
 echo Python ist erforderlich, um die Anwendung zu starten.
 echo Bitte installieren Sie Python 3.8 oder hoeher von: https://www.python.org/downloads/
-timeout /t 5 >nul 2>&1
+echo.
+echo Log-Datei: %LOG_FILE%
+echo.
+pause
 exit /b 1
 
 :found_python
