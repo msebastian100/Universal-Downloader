@@ -359,21 +359,27 @@ def check_and_update(repo_path: Optional[Path] = None,
             # Ein vollständiges Repository hat einen HEAD oder einen refs/heads Branch
             has_valid_repo = False
             if git_dir.exists():
-                # Prüfe ob HEAD existiert oder ein Branch existiert
-                head_file = git_dir / 'HEAD'
-                refs_dir = git_dir / 'refs' / 'heads'
-                if head_file.exists() or (refs_dir.exists() and any(refs_dir.iterdir())):
-                    # Prüfe ob HEAD auf einen gültigen Commit zeigt
-                    head_check = subprocess.run(
-                        ['git', 'rev-parse', '--verify', 'HEAD'],
-                        cwd=repo_path,
-                        capture_output=True,
-                        text=True,
-                        timeout=5
-                    )
-                    has_valid_repo = (head_check.returncode == 0)
+                # Prüfe ob HEAD auf einen gültigen Commit zeigt
+                head_check_pre = subprocess.run(
+                    ['git', 'rev-parse', '--verify', 'HEAD'],
+                    cwd=repo_path,
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                has_valid_repo = (head_check_pre.returncode == 0)
+                print(f"[DEBUG] Git-Verzeichnis existiert: {git_dir.exists()}, has_valid_repo: {has_valid_repo}")
             
             if not git_dir.exists() or not has_valid_repo:
+                if not has_valid_repo and git_dir.exists():
+                    print("[INFO] Git-Repository ist unvollständig - initialisiere neu...")
+                    # Lösche unvollständiges .git Verzeichnis
+                    import shutil
+                    try:
+                        shutil.rmtree(git_dir)
+                    except Exception as e:
+                        print(f"[WARNING] Konnte .git nicht löschen: {e}")
+                
                 print("[INFO] Initialisiere Git-Repository...")
                 if not git_dir.exists():
                     subprocess.run(['git', 'init'], cwd=repo_path, check=True, timeout=10)
@@ -393,6 +399,7 @@ def check_and_update(repo_path: Optional[Path] = None,
                     subprocess.run(['git', 'remote', 'set-url', 'origin', repo_url], 
                                   cwd=repo_path, check=True, timeout=10)
                 is_new_repo = True
+                print(f"[DEBUG] is_new_repo gesetzt auf: {is_new_repo}")
             
             # Hole neueste Änderungen
             print("[INFO] Hole neueste Änderungen von GitHub...")
