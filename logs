@@ -1,106 +1,50 @@
-[INFO] Prüfe Abhängigkeiten...
-[INFO] Lade ffmpeg für Windows herunter...
-[INFO] Lade ffmpeg herunter (dies kann einige Minuten dauern)...
-[INFO] Download Fortschritt: 0% (0MB / 101MB)
-[INFO] Download Fortschritt: 1% (1MB / 101MB)
-[INFO] Download Fortschritt: 2% (2MB / 101MB)
-[INFO] Download Fortschritt: 3% (3MB / 101MB)
-[INFO] Download Fortschritt: 4% (4MB / 101MB)
-[INFO] Download Fortschritt: 5% (5MB / 101MB)
-[INFO] Download Fortschritt: 6% (6MB / 101MB)
-[INFO] Download Fortschritt: 7% (7MB / 101MB)
-[INFO] Download Fortschritt: 8% (8MB / 101MB)
-[INFO] Download Fortschritt: 9% (9MB / 101MB)
-[INFO] Download Fortschritt: 10% (10MB / 101MB)
-[INFO] Download Fortschritt: 11% (11MB / 101MB)
-[INFO] Download Fortschritt: 12% (12MB / 101MB)
-[INFO] Download Fortschritt: 13% (13MB / 101MB)
-[INFO] Download Fortschritt: 14% (14MB / 101MB)
-[INFO] Download Fortschritt: 15% (15MB / 101MB)
-[INFO] Download Fortschritt: 16% (16MB / 101MB)
-[INFO] Download Fortschritt: 17% (17MB / 101MB)
-[INFO] Download Fortschritt: 18% (18MB / 101MB)
-[INFO] Download Fortschritt: 19% (19MB / 101MB)
-[INFO] Download Fortschritt: 20% (20MB / 101MB)
-[INFO] Download Fortschritt: 21% (21MB / 101MB)
-[INFO] Download Fortschritt: 22% (22MB / 101MB)
-[INFO] Download Fortschritt: 23% (23MB / 101MB)
-[INFO] Download Fortschritt: 24% (24MB / 101MB)
-[INFO] Download Fortschritt: 25% (25MB / 101MB)
-[INFO] Download Fortschritt: 26% (26MB / 101MB)
-[INFO] Download Fortschritt: 27% (27MB / 101MB)
-[INFO] Download Fortschritt: 28% (28MB / 101MB)
-[INFO] Download Fortschritt: 29% (29MB / 101MB)
-[INFO] Download Fortschritt: 30% (30MB / 101MB)
-[INFO] Download Fortschritt: 31% (31MB / 101MB)
-[INFO] Download Fortschritt: 32% (32MB / 101MB)
-[INFO] Download Fortschritt: 33% (33MB / 101MB)
-[INFO] Download Fortschritt: 34% (34MB / 101MB)
-[INFO] Download Fortschritt: 35% (35MB / 101MB)
-[INFO] Download Fortschritt: 36% (36MB / 101MB)
-[INFO] Download Fortschritt: 37% (37MB / 101MB)
-[INFO] Download Fortschritt: 38% (38MB / 101MB)
-[INFO] Download Fortschritt: 39% (39MB / 101MB)
-[INFO] Download Fortschritt: 40% (40MB / 101MB)
-[INFO] Download Fortschritt: 41% (41MB / 101MB)
-[INFO] Download Fortschritt: 42% (42MB / 101MB)
-[INFO] Download Fortschritt: 43% (43MB / 101MB)
-[INFO] Download Fortschritt: 44% (44MB / 101MB)
-[INFO] Download Fortschritt: 45% (45MB / 101MB)
-[INFO] Download Fortschritt: 46% (46MB / 101MB)
-[INFO] Download Fortschritt: 47% (47MB / 101MB)
-[INFO] Download Fortschritt: 48% (48MB / 101MB)
-[INFO] Download Fortschritt: 49% (49MB / 101MB)
-[INFO] Download Fortschritt: 50% (50MB / 101MB)
-[INFO] Download Fortschritt: 51% (51MB / 101MB)
-[INFO] Download Fortschritt: 52% (52MB / 101MB)
-[INFO] Download Fortschritt: 53% (53MB / 101MB)
-[INFO] Download Fortschritt: 54% (54MB / 101MB)
-[INFO] Download Fortschritt: 55% (55MB / 101MB)
-[INFO] Download Fortschritt: 56% (56MB / 101MB)
-[INFO] Download Fortschritt: 57% (57MB / 101MB)
-[INFO] Download Fortschritt: 58% (58MB / 101MB)
-[INFO] Download Fortschritt: 59% (59MB / 101MB)
-[INFO] Download Fortschritt: 60% (60MB / 101MB)
-[INFO] Download Fortschritt: 61% (61MB / 101MB)
-[INFO] Download Fortschritt: 62% (62MB / 101MB)
-[INFO] Download Fortschritt: 63% (63MB / 101MB)
-[INFO] Download Fortschritt: 64% (64MB / 101MB)
-[INFO] Download Fortschritt: 65% (65MB / 101MB)
-[INFO] Download Fortschritt: 66% (66MB / 101MB)
-[INFO] Download Fortschritt: 67% (67MB / 101MB)
-[INFO] Download Fortschritt: 68% (68MB / 101MB)
-[INFO] Download Fortschritt: 69% (69MB / 101MB)
-[INFO] Download Fortschritt: 70% (70MB / 101MB)
-[INFO] Download Fortschritt: 71% (71MB / 101MB)
-[INFO] Download Fortschritt: 72% (72MB / 101MB)
-[INFO] Download Fortschritt: 73% (73MB / 101MB)
-[INFO] Download Fortschritt: 74% (74MB / 101MB)
-[INFO] Download Fortschritt: 75% (76MB / 101MB)
-[INFO] Download Fortschritt: 76% (77MB / 101MB)
-[INFO] Download Fortschritt: 77% (78MB / 101MB)
-[INFO] Download Fortschritt: 78% (79MB / 101MB)
-[INFO] Download Fortschritt: 79% (80MB / 101MB)
-[INFO] Download Fortschritt: 80% (81MB / 101MB)
-[INFO] Download Fortschritt: 81% (82MB / 101MB)
-[INFO] Download Fortschritt: 82% (83MB / 101MB)
-[INFO] Download Fortschritt: 83% (84MB / 101MB)
-[INFO] Download Fortschritt: 84% (85MB / 101MB)
-[INFO] Download Fortschritt: 85% (86MB / 101MB)
-[INFO] Download Fortschritt: 86% (87MB / 101MB)
-[INFO] Download Fortschritt: 87% (88MB / 101MB)
-[INFO] Download Fortschritt: 88% (89MB / 101MB)
-[INFO] Download Fortschritt: 89% (90MB / 101MB)
-[INFO] Download Fortschritt: 90% (91MB / 101MB)
-[INFO] Download Fortschritt: 91% (92MB / 101MB)
-[INFO] Download Fortschritt: 92% (93MB / 101MB)
-[INFO] Download Fortschritt: 93% (94MB / 101MB)
-[INFO] Download Fortschritt: 94% (95MB / 101MB)
-[INFO] Download Fortschritt: 95% (96MB / 101MB)
-[INFO] Download Fortschritt: 96% (97MB / 101MB)
-[INFO] Download Fortschritt: 97% (98MB / 101MB)
-[INFO] Download Fortschritt: 98% (99MB / 101MB)
-[INFO] Download Fortschritt: 99% (100MB / 101MB)
-[INFO] Download Fortschritt: 100% (101MB / 101MB)
-[INFO] Prüfe ffmpeg Installation...
-[OK] ffmpeg erfolgreich installiert: ffmpeg version 8.0.1-essentials_build-www.gyan.dev Copyright (c) 2000-2025 the FFmpeg developers
+Bat log:
+
+Der Befehl "ür" ist entweder falsch geschrieben oder
+konnte nicht gefunden werden.
+Der Befehl "f" ist entweder falsch geschrieben oder
+konnte nicht gefunden werden.
+Der Befehl "as" ist entweder falsch geschrieben oder
+konnte nicht gefunden werden.
+Der Befehl "0"" ist entweder falsch geschrieben oder
+konnte nicht gefunden werden.
+Der Befehl "tei" ist entweder falsch geschrieben oder
+konnte nicht gefunden werden.
+Der Befehl "LE" ist entweder falsch geschrieben oder
+konnte nicht gefunden werden.
+Der Befehl "timeLOG_FILE"" ist entweder falsch geschrieben oder
+konnte nicht gefunden werden.
+Das System kann den angegebenen Pfad nicht finden.
+Das System kann den angegebenen Pfad nicht finden.
+Der Befehl "ob" ist entweder falsch geschrieben oder
+konnte nicht gefunden werden.
+Der Befehl "t" ist entweder falsch geschrieben oder
+konnte nicht gefunden werden.
+Der Befehl "G_FILE" ist entweder falsch geschrieben oder
+konnte nicht gefunden werden.
+Der Befehl "datetimeLOG_FILE"" ist entweder falsch geschrieben oder
+konnte nicht gefunden werden.
+Das System kann den angegebenen Pfad nicht finden.
+Das System kann den angegebenen Pfad nicht finden.
+Das System kann den angegebenen Pfad nicht finden.
+Der Befehl "fe" ist entweder falsch geschrieben oder
+konnte nicht gefunden werden.
+Der Befehl "st" ist entweder falsch geschrieben oder
+konnte nicht gefunden werden.
+Das System kann den angegebenen Pfad nicht finden.
+FEHLER: start.py nicht gefunden in: D:\Users\basti\Downloads\Universal-Downloader\
+Log-Datei:
+Drücken Sie eine beliebige Taste . . .
+--
+
+VBS log
+
+Skript:
+D:\Users\basti\Downloads\Universal-Downloader start launc
+herbs
+Zeile: 82
+Zeichen: 1
+Fehler: Index außerhalb des gültigen Bereichs
+‚Code: 80040009
+Quelle: Laufzeitfehler in Microsoft VBScript
+
