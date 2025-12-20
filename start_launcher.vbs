@@ -344,8 +344,9 @@ WriteLog "[INFO] Arbeitsverzeichnis: " & scriptPath
 WriteLog "[INFO] =========================================="
 
 ' Erstelle/aktualisiere Shortcut (.lnk) mit Icon für Taskleiste
-' WICHTIG: Shortcut zeigt direkt auf pythonw.exe mit start.py als Argument
-' Das verhindert, dass Windows es als VBS erkennt und zeigt "pythonw.exe" in den Eigenschaften
+' WICHTIG: Shortcut zeigt auf die VBS-Datei, nicht direkt auf pythonw.exe
+' Die VBS startet dann pythonw.exe, und start.py setzt die App User Model ID
+' Das verhindert, dass Windows die .lnk-Datei als "pythonw.exe" erkennt
 Dim shortcutNeedsUpdate
 shortcutNeedsUpdate = True
 
@@ -354,11 +355,10 @@ If fso.FileExists(shortcutPath) Then
     On Error Resume Next
     Dim existingShortcut
     Set existingShortcut = WshShell.CreateShortcut(shortcutPath)
-    ' Prüfe ob Shortcut auf die richtige Datei zeigt (pythonw.exe oder python.exe)
-    If (InStr(existingShortcut.TargetPath, "pythonw.exe") > 0 Or InStr(existingShortcut.TargetPath, "python.exe") > 0) And _
-       InStr(existingShortcut.Arguments, "start.py") > 0 Then
+    ' Prüfe ob Shortcut auf die VBS-Datei zeigt (nicht auf pythonw.exe)
+    If InStr(LCase(existingShortcut.TargetPath), "start_launcher.vbs") > 0 Then
         shortcutNeedsUpdate = False
-        WriteLog "[INFO] Shortcut existiert bereits und zeigt korrekt auf Python"
+        WriteLog "[INFO] Shortcut existiert bereits und zeigt korrekt auf VBS"
     End If
     On Error Goto 0
 End If
@@ -369,10 +369,10 @@ If shortcutNeedsUpdate Then
     On Error Resume Next
     Dim shortcut
     Set shortcut = WshShell.CreateShortcut(shortcutPath)
-    ' WICHTIG: Shortcut zeigt direkt auf pythonw.exe mit start.py als Argument
-    ' Das verhindert, dass Windows es als VBS erkennt
-    shortcut.TargetPath = fullPythonPath
-    shortcut.Arguments = Chr(34) & pythonScript & Chr(34)
+    ' WICHTIG: Shortcut zeigt auf die VBS-Datei, nicht auf pythonw.exe
+    ' Die VBS startet dann pythonw.exe mit start.py
+    ' start.py setzt die App User Model ID, damit Windows die Anwendung korrekt erkennt
+    shortcut.TargetPath = WScript.ScriptFullName
     shortcut.WorkingDirectory = scriptPath
     shortcut.Description = "Universal Downloader"
     If iconPath <> "" Then
@@ -383,7 +383,8 @@ If shortcutNeedsUpdate Then
     shortcut.Save
     If Err.Number = 0 Then
         WriteLog "[OK] Shortcut erstellt: " & shortcutPath
-        WriteLog "[INFO] Shortcut zeigt auf: " & fullPythonPath & " " & pythonScript
+        WriteLog "[INFO] Shortcut zeigt auf: " & WScript.ScriptFullName
+        WriteLog "[INFO] VBS startet dann: " & fullPythonPath & " " & pythonScript
         If iconPath <> "" Then
             WriteLog "[INFO] Shortcut Icon: " & iconPath
         End If
