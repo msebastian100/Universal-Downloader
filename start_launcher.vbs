@@ -250,18 +250,12 @@ If checkUpdates Then
         Dim updateOutputLower
         updateOutputLower = LCase(updateStdOut & " " & updateStdErr)
         
-        ' Debug: Schreibe Exit-Code und Ausgabe-Status
-        WriteLog "[DEBUG] Update-Check Exit-Code: " & updateResult
-        WriteLog "[DEBUG] Update-Ausgabe Länge: " & Len(updateOutputLower)
-        
         ' Prüfe ob "keine Updates verfügbar" oder "bereits auf dem neuesten Stand" in der Ausgabe steht
         Dim noUpdateAvailable
         noUpdateAvailable = (InStr(updateOutputLower, "keine updates") > 0 Or _
                            InStr(updateOutputLower, "bereits auf dem neuesten stand") > 0 Or _
                            InStr(updateOutputLower, "no updates available") > 0 Or _
                            InStr(updateOutputLower, "already up to date") > 0)
-        
-        WriteLog "[DEBUG] noUpdateAvailable: " & noUpdateAvailable
         
         ' Prüfe ob Update installiert wurde (Exit-Code 0 + entsprechende Meldung)
         If updateResult = 0 Then
