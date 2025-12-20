@@ -38,12 +38,24 @@ echo ""
 echo "Prüfe System-Abhängigkeiten..."
 echo ""
 
-# Prüfe yt-dlp
-if command -v yt-dlp &> /dev/null; then
+# Prüfe yt-dlp (als Python-Modul, da es über pip installiert wird)
+echo "Prüfe yt-dlp..."
+if python3 -c "import yt_dlp; print(yt_dlp.version.__version__)" 2>/dev/null; then
+    YTDLP_VERSION=$(python3 -c "import yt_dlp; print(yt_dlp.version.__version__)" 2>/dev/null)
+    echo "✓ yt-dlp installiert (Python-Modul): $YTDLP_VERSION"
+elif command -v yt-dlp &> /dev/null; then
     YTDLP_VERSION=$(yt-dlp --version)
-    echo "✓ yt-dlp installiert: $YTDLP_VERSION"
+    echo "✓ yt-dlp installiert (System-Befehl): $YTDLP_VERSION"
 else
-    echo "⚠ yt-dlp nicht gefunden (sollte über pip installiert sein)"
+    echo "⚠ yt-dlp nicht gefunden"
+    echo "  Versuche Installation über pip..."
+    pip install --upgrade yt-dlp
+    if python3 -c "import yt_dlp" 2>/dev/null; then
+        YTDLP_VERSION=$(python3 -c "import yt_dlp; print(yt_dlp.version.__version__)" 2>/dev/null)
+        echo "✓ yt-dlp erfolgreich installiert: $YTDLP_VERSION"
+    else
+        echo "❌ yt-dlp Installation fehlgeschlagen"
+    fi
 fi
 
 # Prüfe und installiere ffmpeg falls nötig
@@ -117,12 +129,75 @@ fi
 
 echo ""
 echo "=========================================="
-echo "Installation abgeschlossen!"
+echo "Installations-Status"
 echo "=========================================="
 echo ""
-echo "Starten Sie die Anwendung mit:"
-echo "  python3 start.py"
+
+# Prüfe alle Abhängigkeiten und zeige Status
+ALL_OK=true
+
+# Prüfe requirements.txt Pakete
+echo "Python-Pakete aus requirements.txt:"
+for package in requests mutagen Pillow deezer-python yt-dlp beautifulsoup4 selenium audible browser-cookie3; do
+    if [ "$package" = "Pillow" ]; then
+        import_name="PIL"
+    elif [ "$package" = "beautifulsoup4" ]; then
+        import_name="bs4"
+    elif [ "$package" = "deezer-python" ]; then
+        import_name="deezer"
+    elif [ "$package" = "browser-cookie3" ]; then
+        import_name="browser_cookie3"
+    elif [ "$package" = "yt-dlp" ]; then
+        import_name="yt_dlp"
+    else
+        import_name=$(echo "$package" | sed 's/-/_/g')
+    fi
+    
+    if python3 -c "import $import_name" 2>/dev/null; then
+        echo "  ✓ $package"
+    else
+        echo "  ✗ $package"
+        ALL_OK=false
+    fi
+done
+
 echo ""
-echo "Oder prüfen Sie die Abhängigkeiten mit:"
-echo "  python3 check_dependencies.py"
+echo "System-Abhängigkeiten:"
+
+# Prüfe ffmpeg
+if command -v ffmpeg &> /dev/null; then
+    echo "  ✓ ffmpeg"
+else
+    echo "  ✗ ffmpeg"
+    ALL_OK=false
+fi
+
+# Prüfe yt-dlp (als Python-Modul oder System-Befehl)
+if python3 -c "import yt_dlp" 2>/dev/null || command -v yt-dlp &> /dev/null; then
+    echo "  ✓ yt-dlp"
+else
+    echo "  ✗ yt-dlp"
+    ALL_OK=false
+fi
+
+echo ""
+echo "=========================================="
+if [ "$ALL_OK" = true ]; then
+    echo "✓ Alle Abhängigkeiten sind installiert!"
+    echo "=========================================="
+    echo ""
+    echo "Starten Sie die Anwendung mit:"
+    echo "  source venv/bin/activate"
+    echo "  python3 start.py"
+else
+    echo "⚠ Einige Abhängigkeiten fehlen!"
+    echo "=========================================="
+    echo ""
+    echo "Bitte installieren Sie fehlende Pakete:"
+    echo "  source venv/bin/activate"
+    echo "  pip install -r requirements.txt"
+    echo ""
+    echo "Oder prüfen Sie die Abhängigkeiten mit:"
+    echo "  python3 check_dependencies.py"
+fi
 echo ""
