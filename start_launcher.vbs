@@ -276,11 +276,9 @@ If checkUpdates Then
             End If
         End If
         
-        ' Behandle Exit-Code 1 als "keine Updates verfügbar" wenn entsprechende Meldung vorhanden
-        If updateResult = 1 And noUpdateAvailable Then
-            ' Exit-Code 1 bedeutet "keine Updates verfügbar" - das ist normal, kein Fehler
-            WriteLog "[OK] Update-Check abgeschlossen - Bereits auf dem neuesten Stand"
-        ElseIf updateResult = 0 Then
+        ' Behandle verschiedene Exit-Codes
+        If updateResult = 0 Then
+            ' Exit-Code 0: Erfolg
             If updateInstalled Then
                 WriteLog "[OK] Update-Check abgeschlossen - Update wurde installiert"
                 ' Zeige Meldung an Benutzer
@@ -297,9 +295,10 @@ If checkUpdates Then
                 WriteLog "[OK] Update-Check abgeschlossen - Bereits auf dem neuesten Stand"
             End If
         ElseIf updateResult = 1 And noUpdateAvailable Then
-            ' Exit-Code 1 mit "keine Updates verfügbar" ist normal
+            ' Exit-Code 1 mit "keine Updates verfügbar" ist normal, kein Fehler
             WriteLog "[OK] Update-Check abgeschlossen - Bereits auf dem neuesten Stand"
         Else
+            ' Andere Exit-Codes sind Fehler
             WriteLog "[WARNING] Update-Check fehlgeschlagen (Exit-Code: " & updateResult & ")"
         End If
     Else
