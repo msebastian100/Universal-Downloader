@@ -147,16 +147,65 @@ If checkUpdates Then
         
         WriteLog "[INFO] Python für Update-Check: " & fullPythonPathUpdate
         
-        ' Führe Update-Check aus
-        Dim updateResult
+        ' Führe Update-Check aus und erfasse Ausgabe
+        Dim updateResult, updateOutput, updateDetected, updateInstalled
+        updateDetected = False
+        updateInstalled = False
+        
         On Error Resume Next
-        updateResult = WshShell.Run("""" & fullPythonPathUpdate & """ """ & updateScript & """", 0, True)
+        Dim updateProcess
+        Set updateProcess = WshShell.Exec("""" & fullPythonPathUpdate & """ """ & updateScript & """")
+        Dim updateStdOut, updateStdErr
+        updateStdOut = updateProcess.StdOut.ReadAll
+        updateStdErr = updateProcess.StdErr.ReadAll
+        updateProcess.WaitOnReturn = True
+        updateResult = updateProcess.ExitCode
         On Error Goto 0
         
+        ' Schreibe Ausgabe ins Log
+        If Len(updateStdOut) > 0 Then
+            WriteLog "[INFO] Update-Skript Ausgabe: " & updateStdOut
+        End If
+        If Len(updateStdErr) > 0 Then
+            WriteLog "[WARNING] Update-Skript Fehler: " & updateStdErr
+        End If
+        
+        ' Prüfe ob Update erkannt wurde (verschiedene Muster)
+        Dim updateOutputLower
+        updateOutputLower = LCase(updateStdOut)
+        If InStr(updateOutputLower, "update verfügbar") > 0 Or InStr(updateOutputLower, "update available") > 0 Or _
+           InStr(updateOutputLower, "version") > 0 And InStr(updateOutputLower, "→") > 0 Or _
+           InStr(updateOutputLower, "commits_behind") > 0 And InStr(updateOutputLower, "0") = 0 Then
+            updateDetected = True
+            WriteLog "[INFO] Update wurde erkannt!"
+        End If
+        
+        ' Prüfe ob Update installiert wurde (verschiedene Muster)
+        If InStr(updateOutputLower, "erfolgreich aktualisiert") > 0 Or InStr(updateOutputLower, "successfully updated") > 0 Or _
+           InStr(updateOutputLower, "update erfolgreich") > 0 Or InStr(updateOutputLower, "update erfolgreich abgeschlossen") > 0 Or _
+           InStr(updateOutputLower, "update abgeschlossen") > 0 Or InStr(updateOutputLower, "update completed") > 0 Then
+            updateInstalled = True
+            WriteLog "[OK] Update wurde erfolgreich installiert!"
+        End If
+        
         If updateResult = 0 Then
-            WriteLog "[OK] Update-Check abgeschlossen"
+            If updateInstalled Then
+                WriteLog "[OK] Update-Check abgeschlossen - Update wurde installiert"
+                ' Zeige Meldung an Benutzer
+                Dim updateMsg
+                updateMsg = "Update wurde erkannt und erfolgreich installiert!" & vbCrLf & vbCrLf & _
+                           "Die Anwendung wird jetzt neu gestartet, um die Änderungen zu übernehmen." & vbCrLf & vbCrLf & _
+                           "Bitte warten Sie einen Moment..."
+                MsgBox updateMsg, vbInformation, "Update installiert"
+            ElseIf updateDetected Then
+                WriteLog "[INFO] Update wurde erkannt, aber nicht installiert"
+                MsgBox "Ein Update wurde erkannt, konnte aber nicht automatisch installiert werden." & vbCrLf & vbCrLf & _
+                       "Bitte aktualisieren Sie manuell über Git oder laden Sie die neueste Version herunter.", vbInformation, "Update erkannt"
+            Else
+                WriteLog "[OK] Update-Check abgeschlossen - Bereits auf dem neuesten Stand"
+            End If
         Else
-            WriteLog "[WARNING] Update-Check fehlgeschlagen oder keine Updates verfügbar (Exit-Code: " & updateResult & ")"
+            WriteLog "[WARNING] Update-Check fehlgeschlagen (Exit-Code: " & updateResult & ")"
         End If
     Else
         WriteLog "[WARNING] update_from_github.py nicht gefunden - überspringe Update-Check"
