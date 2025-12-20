@@ -24,31 +24,31 @@ if ! command -v python3 &> /dev/null; then
             # Prüfe ob apt-get verfügbar ist (Debian/Ubuntu/Mint)
             if command -v apt-get &> /dev/null; then
                 echo "  Installiere Python3 über apt-get..."
-                if sudo apt-get update && sudo apt-get install -y python3 python3-pip python3-venv; then
-                    echo "✓ Python3 erfolgreich installiert"
+                if sudo apt-get update && sudo apt-get install -y python3 python3-pip python3-venv python3-tk; then
+                    echo "✓ Python3 erfolgreich installiert (inkl. tkinter)"
                 else
                     echo "❌ Fehler bei der Installation von Python3"
-                    echo "  Bitte installieren Sie Python3 manuell: sudo apt-get install python3 python3-pip python3-venv"
+                    echo "  Bitte installieren Sie Python3 manuell: sudo apt-get install python3 python3-pip python3-venv python3-tk"
                     exit 1
                 fi
             # Prüfe ob dnf verfügbar ist (Fedora/RHEL)
             elif command -v dnf &> /dev/null; then
                 echo "  Installiere Python3 über dnf..."
-                if sudo dnf install -y python3 python3-pip; then
-                    echo "✓ Python3 erfolgreich installiert"
+                if sudo dnf install -y python3 python3-pip python3-tkinter; then
+                    echo "✓ Python3 erfolgreich installiert (inkl. tkinter)"
                 else
                     echo "❌ Fehler bei der Installation von Python3"
-                    echo "  Bitte installieren Sie Python3 manuell: sudo dnf install python3 python3-pip"
+                    echo "  Bitte installieren Sie Python3 manuell: sudo dnf install python3 python3-pip python3-tkinter"
                     exit 1
                 fi
             # Prüfe ob pacman verfügbar ist (Arch Linux)
             elif command -v pacman &> /dev/null; then
                 echo "  Installiere Python3 über pacman..."
-                if sudo pacman -S --noconfirm python python-pip; then
-                    echo "✓ Python3 erfolgreich installiert"
+                if sudo pacman -S --noconfirm python python-pip tk; then
+                    echo "✓ Python3 erfolgreich installiert (inkl. tkinter)"
                 else
                     echo "❌ Fehler bei der Installation von Python3"
-                    echo "  Bitte installieren Sie Python3 manuell: sudo pacman -S python python-pip"
+                    echo "  Bitte installieren Sie Python3 manuell: sudo pacman -S python python-pip tk"
                     exit 1
                 fi
             else
@@ -321,6 +321,18 @@ done
 
 echo ""
 echo "System-Abhängigkeiten:"
+
+# Prüfe tkinter (GUI-Bibliothek)
+if python3 -c "import tkinter" 2>/dev/null; then
+    echo "  ✓ tkinter (GUI-Bibliothek)"
+else
+    echo "  ✗ tkinter (GUI-Bibliothek) - FEHLT!"
+    echo "    Installieren Sie es mit:"
+    echo "      Ubuntu/Debian/Mint: sudo apt-get install python3-tk"
+    echo "      Fedora/RHEL: sudo dnf install python3-tkinter"
+    echo "      Arch Linux: sudo pacman -S tk"
+    ALL_OK=false
+fi
 
 # Prüfe ffmpeg
 if command -v ffmpeg &> /dev/null; then

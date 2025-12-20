@@ -176,6 +176,14 @@ def main():
     # System-Befehle
     print(f"\n{Colors.BOLD}System-Abhängigkeiten:{Colors.END}")
     
+    # Prüfe tkinter (GUI-Bibliothek)
+    tkinter_ok = check_python_package('tkinter', 'tkinter')
+    if not tkinter_ok:
+        print(f"{Colors.YELLOW}  Hinweis: tkinter muss als System-Paket installiert werden:{Colors.END}")
+        print(f"    Ubuntu/Debian/Mint: sudo apt-get install python3-tk")
+        print(f"    Fedora/RHEL: sudo dnf install python3-tkinter")
+        print(f"    Arch Linux: sudo pacman -S tk")
+    
     # Prüfe ffmpeg
     ffmpeg_ok = check_system_command('ffmpeg', 'ffmpeg')
     
@@ -192,7 +200,7 @@ def main():
         else:
             print(f"{Colors.RED}✗{Colors.END} {'yt-dlp':20s} NICHT installiert")
     
-    system_ok = ffmpeg_ok and ytdlp_ok
+    system_ok = tkinter_ok and ffmpeg_ok and ytdlp_ok
     
     # Zusammenfassung
     print_header("Zusammenfassung")
