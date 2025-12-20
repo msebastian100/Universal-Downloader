@@ -1,27 +1,20 @@
 @echo off
-REM Launcher für Universal Downloader
-REM Prüft auf Updates, installiert Abhängigkeiten und startet die Anwendung
-
-REM Hole das Verzeichnis der .bat Datei
+setlocal enabledelayedexpansion
 cd /d "%~dp0"
 
-REM Log-Datei Setup
-setlocal enabledelayedexpansion
 set "LOG_FILE=%~dp0bat.log.txt"
-REM Erstelle datetime-String
+set "datetime="
 for /f "tokens=2 delims==" %%I in ('wmic os get localdatetime /value 2^>nul') do set "datetime=%%I"
-if not defined datetime (
-    REM Fallback wenn wmic nicht verfügbar ist
-    for /f "tokens=1-3 delims=/ " %%a in ("%date%") do set "datetime=%%c-%%b-%%a"
-    for /f "tokens=1-2 delims=: " %%a in ("%time%") do set "datetime=!datetime! %%a:%%b:00"
+if "!datetime!"=="" (
+    set "datetime=%date% %time%"
 ) else (
     set "datetime=!datetime:~0,4!-!datetime:~4,2!-!datetime:~6,2! !datetime:~8,2!:!datetime:~10,2!:!datetime:~12,2!"
 )
+
 echo [!datetime!] ========================================== >> "%LOG_FILE%"
 echo [!datetime!] Launcher gestartet: %~f0 >> "%LOG_FILE%"
 echo [!datetime!] Verzeichnis: %~dp0 >> "%LOG_FILE%"
 
-REM Pruefe ob Log geschrieben werden kann
 if not exist "%LOG_FILE%" (
     set "LOG_FILE=%TEMP%\bat.log.txt"
     echo [!datetime!] ========================================== >> "%LOG_FILE%"
@@ -30,7 +23,6 @@ if not exist "%LOG_FILE%" (
     echo [!datetime!] Log-Datei: %LOG_FILE% (Fallback) >> "%LOG_FILE%"
 )
 
-REM Prüfe ob start.py existiert
 if not exist "start.py" (
     echo [!datetime!] [ERROR] start.py nicht gefunden in: %~dp0 >> "%LOG_FILE%"
     echo.
@@ -43,7 +35,6 @@ if not exist "start.py" (
 )
 echo [!datetime!] [OK] start.py gefunden >> "%LOG_FILE%"
 
-REM Prüfe ob Icon existiert
 if exist "icon.ico" (
     echo [!datetime!] [INFO] Icon gefunden: icon.ico >> "%LOG_FILE%"
 ) else if exist "icon.png" (
@@ -52,18 +43,11 @@ if exist "icon.ico" (
     echo [!datetime!] [WARNING] Kein Icon gefunden >> "%LOG_FILE%"
 )
 
-REM Prüfe auf Updates (nur wenn nicht --no-update Parameter übergeben wurde)
 if not "%1"=="--no-update" (
     echo [!datetime!] [INFO] Pruefe auf Updates... >> "%LOG_FILE%"
-    
-    REM Prüfe ob update_from_github.py existiert
     if exist "update_from_github.py" (
         echo [!datetime!] [INFO] Starte Update-Check... >> "%LOG_FILE%"
-        
-        REM Finde Python für Update-Check (vereinfachte Suche)
         set "FULL_PYTHON_PATH_UPDATE="
-        
-        REM Methode 1: Prüfe pythonw.exe im PATH
         where pythonw.exe >nul 2>&1
         if !errorlevel! equ 0 (
             for /f "delims=" %%i in ('where pythonw.exe') do (
@@ -71,8 +55,6 @@ if not "%1"=="--no-update" (
                 goto :python_found_update
             )
         )
-        
-        REM Methode 2: Prüfe typische Installationspfade
         for %%d in (C D E F G H) do (
             if exist "%%d:\Python*\pythonw.exe" (
                 for /f "delims=" %%i in ('dir /b /s "%%d:\Python*\pythonw.exe" 2^>nul') do (
@@ -81,40 +63,29 @@ if not "%1"=="--no-update" (
                 )
             )
         )
-        
-        REM Methode 3: Prüfe Microsoft Store Python
         if exist "%LOCALAPPDATA%\Microsoft\WindowsApps\pythonw.exe" (
             set "FULL_PYTHON_PATH_UPDATE=%LOCALAPPDATA%\Microsoft\WindowsApps\pythonw.exe"
             goto :python_found_update
         )
-        
-        REM Methode 4: Fallback zu pythonw.exe
         set "FULL_PYTHON_PATH_UPDATE=pythonw.exe"
-        
         :python_found_update
-        echo [!datetime!] [INFO] Python für Update-Check: !FULL_PYTHON_PATH_UPDATE! >> "%LOG_FILE%"
-        
-        REM Führe Update-Check aus
+        echo [!datetime!] [INFO] Python fuer Update-Check: !FULL_PYTHON_PATH_UPDATE! >> "%LOG_FILE%"
         "!FULL_PYTHON_PATH_UPDATE!" "update_from_github.py" >> "%LOG_FILE%" 2>&1
         set UPDATE_RESULT=!errorlevel!
-        
         if !UPDATE_RESULT! equ 0 (
             echo [!datetime!] [OK] Update-Check abgeschlossen >> "%LOG_FILE%"
         ) else (
-            echo [!datetime!] [WARNING] Update-Check fehlgeschlagen oder keine Updates verfuegbar (Exit-Code: !UPDATE_RESULT!) >> "%LOG_FILE%"
+            echo [!datetime!] [WARNING] Update-Check fehlgeschlagen (Exit-Code: !UPDATE_RESULT!) >> "%LOG_FILE%"
         )
     ) else (
-        echo [!datetime!] [WARNING] update_from_github.py nicht gefunden - ueberspringe Update-Check >> "%LOG_FILE%"
+        echo [!datetime!] [WARNING] update_from_github.py nicht gefunden >> "%LOG_FILE%"
     )
     echo. >> "%LOG_FILE%"
 )
 
-REM Versuche Python zu finden (auf allen Laufwerken)
 set PYTHON_EXE=
+echo [!datetime!] [INFO] Starte Python-Suche... >> "%LOG_FILE%"
 
-echo [!datetime!] [INFO] Starte Python-Suche auf allen Laufwerken... >> "%LOG_FILE%"
-
-REM Methode 1: PATH
 echo [!datetime!] [INFO] Methode 1: Pruefe pythonw.exe im PATH... >> "%LOG_FILE%"
 where pythonw.exe >nul 2>&1
 if %errorlevel% == 0 (
@@ -123,8 +94,6 @@ if %errorlevel% == 0 (
     goto :found_python
 )
 
-REM Methode 2: python.exe im PATH
-echo [!datetime!] [INFO] pythonw.exe nicht im PATH gefunden >> "%LOG_FILE%"
 echo [!datetime!] [INFO] Methode 2: Pruefe python.exe im PATH... >> "%LOG_FILE%"
 where python.exe >nul 2>&1
 if %errorlevel% == 0 (
@@ -133,8 +102,6 @@ if %errorlevel% == 0 (
     goto :found_python
 )
 
-REM Methode 3: Microsoft Store Python
-echo [!datetime!] [INFO] python.exe nicht im PATH gefunden >> "%LOG_FILE%"
 echo [!datetime!] [INFO] Methode 3: Pruefe Microsoft Store Python... >> "%LOG_FILE%"
 if exist "%LOCALAPPDATA%\Microsoft\WindowsApps\pythonw.exe" (
     set PYTHON_EXE=%LOCALAPPDATA%\Microsoft\WindowsApps\pythonw.exe
@@ -142,7 +109,6 @@ if exist "%LOCALAPPDATA%\Microsoft\WindowsApps\pythonw.exe" (
     goto :found_python
 )
 
-REM Methode 4: Typische Installationspfade
 echo [!datetime!] [INFO] Methode 4: Suche in typischen Installationspfaden... >> "%LOG_FILE%"
 if exist "%LOCALAPPDATA%\Programs\Python\Python3*\pythonw.exe" (
     for %%P in ("%LOCALAPPDATA%\Programs\Python\Python3*\pythonw.exe") do (
@@ -160,7 +126,6 @@ if exist "%PROGRAMFILES%\Python3*\pythonw.exe" (
     if defined PYTHON_EXE goto :found_python
 )
 
-REM Methode 5: Registry
 echo [!datetime!] [INFO] Methode 5: Pruefe Registry... >> "%LOG_FILE%"
 for /f "tokens=2*" %%A in ('reg query "HKLM\SOFTWARE\Python\PythonCore" /s /v "ExecutablePath" 2^>nul ^| findstr /i "ExecutablePath"') do (
     set REG_PATH=%%B
@@ -175,12 +140,10 @@ for /f "tokens=2*" %%A in ('reg query "HKLM\SOFTWARE\Python\PythonCore" /s /v "E
     )
 )
 
-REM Methode 6: Suche auf ALLEN Laufwerken (C:, D:, E:, etc.)
 echo [!datetime!] [INFO] Methode 6: Suche auf allen Laufwerken... >> "%LOG_FILE%"
 for %%D in (C D E F G H I J K L M N O P Q R S T U V W X Y Z) do (
     if exist "%%D:\" (
         echo [!datetime!] [INFO] Pruefe Laufwerk: %%D:\ >> "%LOG_FILE%"
-        REM Suche in typischen Pfaden
         if exist "%%D:\Program Files\Python3*\pythonw.exe" (
             for %%P in ("%%D:\Program Files\Python3*\pythonw.exe") do (
                 set PYTHON_EXE=%%~fP
@@ -220,7 +183,6 @@ for %%D in (C D E F G H I J K L M N O P Q R S T U V W X Y Z) do (
     )
 )
 
-REM Python nicht gefunden - versuche Installation
 echo [!datetime!] [WARNING] Python nicht gefunden nach allen Suchmethoden >> "%LOG_FILE%"
 echo.
 echo ========================================
@@ -321,7 +283,6 @@ pause
 exit /b 1
 
 :found_python
-REM Finde vollständigen Python-Pfad
 set "FULL_PYTHON_PATH=%PYTHON_EXE%"
 if not exist "%PYTHON_EXE%" (
     where "%PYTHON_EXE%" >nul 2>&1
@@ -340,23 +301,20 @@ echo [!datetime!] [INFO] Python gefunden: !FULL_PYTHON_PATH! >> "%LOG_FILE%"
 echo [!datetime!] [INFO] Arbeitsverzeichnis: %~dp0 >> "%LOG_FILE%"
 echo [!datetime!] [INFO] ========================================== >> "%LOG_FILE%"
 
-REM Prüfe und installiere requirements.txt
 if exist "requirements.txt" (
     echo [!datetime!] [INFO] ========================================== >> "%LOG_FILE%"
     echo [!datetime!] [INFO] Pruefe requirements.txt... >> "%LOG_FILE%"
     echo [!datetime!] [INFO] ========================================== >> "%LOG_FILE%"
-    REM Prüfe ob pip verfügbar ist
     echo [!datetime!] [INFO] Pruefe pip-Verfuegbarkeit... >> "%LOG_FILE%"
     !FULL_PYTHON_PATH! -m pip --version >> "%LOG_FILE%" 2>&1
     set PIP_CHECK_RESULT=%errorlevel%
     echo [!datetime!] [INFO] pip --version Exit-Code: !PIP_CHECK_RESULT! >> "%LOG_FILE%"
     if !PIP_CHECK_RESULT! == 0 (
-        echo [!datetime!] [OK] pip verfügbar >> "%LOG_FILE%"
+        echo [!datetime!] [OK] pip verfuegbar >> "%LOG_FILE%"
         echo [!datetime!] [INFO] ========================================== >> "%LOG_FILE%"
         echo [!datetime!] [INFO] Starte requirements.txt Installation... >> "%LOG_FILE%"
         echo [!datetime!] [INFO] Befehl: !FULL_PYTHON_PATH! -m pip install --upgrade -r "requirements.txt" >> "%LOG_FILE%"
         echo [!datetime!] [INFO] ========================================== >> "%LOG_FILE%"
-        REM Führe Installation aus und leite Ausgabe ins Log um
         !FULL_PYTHON_PATH! -m pip install --upgrade -r "requirements.txt" >> "%LOG_FILE%" 2>&1
         set PIP_RESULT=%errorlevel%
         echo [!datetime!] [INFO] pip install Exit-Code: !PIP_RESULT! >> "%LOG_FILE%"
@@ -366,13 +324,12 @@ if exist "requirements.txt" (
             echo [!datetime!] [WARNING] requirements.txt Installation fehlgeschlagen (Exit-Code: !PIP_RESULT!) >> "%LOG_FILE%"
         )
     ) else (
-        echo [!datetime!] [WARNING] pip nicht verfügbar - überspringe requirements.txt Installation >> "%LOG_FILE%"
+        echo [!datetime!] [WARNING] pip nicht verfuegbar - ueberspringe requirements.txt Installation >> "%LOG_FILE%"
     )
 ) else (
     echo [!datetime!] [WARNING] requirements.txt nicht gefunden >> "%LOG_FILE%"
 )
 
-REM Starte start.py
 cd /d "%~dp0"
 echo [!datetime!] [INFO] ========================================== >> "%LOG_FILE%"
 echo [!datetime!] [INFO] Starte Anwendung... >> "%LOG_FILE%"
@@ -383,7 +340,6 @@ start "" /B /MIN "!FULL_PYTHON_PATH!" "start.py"
 set START_RESULT=%errorlevel%
 echo [!datetime!] [INFO] Start-Befehl ausgefuehrt, Exit-Code: !START_RESULT! >> "%LOG_FILE%"
 
-REM Warte kurz und pruefe ob Prozess laeuft
 timeout /t 2 >nul 2>&1
 for %%F in ("!FULL_PYTHON_PATH!") do set "PYTHON_EXE_NAME=%%~nxF"
 echo [!datetime!] [INFO] Pruefe ob Python-Prozess laeuft: !PYTHON_EXE_NAME! >> "%LOG_FILE%"
@@ -393,7 +349,6 @@ if %errorlevel% == 0 (
     echo [!datetime!] [OK] Python-Prozess laeuft (!PYTHON_EXE_NAME!) >> "%LOG_FILE%"
 ) else (
     echo [!datetime!] [WARNING] Python-Prozess scheint nicht zu laufen >> "%LOG_FILE%"
-    REM Pruefe auch python.exe
     tasklist /FI "IMAGENAME eq python.exe" /FO CSV /NH >> "%LOG_FILE%" 2>&1
     tasklist /FI "IMAGENAME eq python.exe" /FO CSV /NH 2>nul | find /i "python.exe" >nul 2>&1
     if %errorlevel% == 0 (
