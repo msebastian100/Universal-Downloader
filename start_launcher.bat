@@ -8,8 +8,15 @@ cd /d "%~dp0"
 REM Log-Datei Setup
 setlocal enabledelayedexpansion
 set "LOG_FILE=%~dp0bat.log.txt"
-for /f "tokens=2 delims==" %%I in ('wmic os get localdatetime /value') do set "datetime=%%I"
-set "datetime=!datetime:~0,4!-!datetime:~4,2!-!datetime:~6,2! !datetime:~8,2!:!datetime:~10,2!:!datetime:~12,2!"
+REM Erstelle datetime-String
+for /f "tokens=2 delims==" %%I in ('wmic os get localdatetime /value 2^>nul') do set "datetime=%%I"
+if not defined datetime (
+    REM Fallback wenn wmic nicht verfügbar ist
+    for /f "tokens=1-3 delims=/ " %%a in ("%date%") do set "datetime=%%c-%%b-%%a"
+    for /f "tokens=1-2 delims=: " %%a in ("%time%") do set "datetime=!datetime! %%a:%%b:00"
+) else (
+    set "datetime=!datetime:~0,4!-!datetime:~4,2!-!datetime:~6,2! !datetime:~8,2!:!datetime:~10,2!:!datetime:~12,2!"
+)
 echo [!datetime!] ========================================== >> "%LOG_FILE%"
 echo [!datetime!] Launcher gestartet: %~f0 >> "%LOG_FILE%"
 echo [!datetime!] Verzeichnis: %~dp0 >> "%LOG_FILE%"
