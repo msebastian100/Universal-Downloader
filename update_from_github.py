@@ -299,7 +299,47 @@ def check_and_update(repo_path: Optional[Path] = None,
     print(f"[INFO] Repository-Pfad: {repo_path}")
     print(f"[INFO] Repository-URL: {repo_url}")
     
-    # Prüfe auf Updates über Version
+    # Prüfe zuerst auf Git-Commits (unabhängig von Releases)
+    # Das ermöglicht Updates auch ohne neue Release-Version
+    update_needed = False
+    version_update_info = None
+    
+    if check_git_available():
+        print("[INFO] Prüfe auf Git-Commits...")
+        try:
+            # Initialisiere Git-Repository falls nötig
+            git_dir = repo_path / '.git'
+            if not git_dir.exists():
+                subprocess.run(['git', 'init'], cwd=repo_path, check=True, timeout=10)
+                subprocess.run(['git', 'remote', 'add', 'origin', repo_url], 
+                              cwd=repo_path, check=True, timeout=10)
+            
+            # Hole neueste Änderungen
+            subprocess.run(['git', 'fetch', 'origin', 'main'], 
+                          cwd=repo_path, 
+                          check=True, 
+                          timeout=60)
+            
+            # Prüfe ob neue Commits verfügbar sind
+            result = subprocess.run(
+                ['git', 'rev-list', 'HEAD..origin/main', '--count'],
+                cwd=repo_path,
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            
+            if result.returncode == 0:
+                commits_behind = int(result.stdout.strip())
+                if commits_behind > 0:
+                    update_needed = True
+                    print(f"[INFO] {commits_behind} neue Commit(s) verfügbar")
+                else:
+                    print("[INFO] Keine neuen Commits verfügbar")
+        except Exception as e:
+            print(f"[WARNING] Konnte Git-Status nicht prüfen: {e}")
+    
+    # Prüfe zusätzlich auf Version-Updates (als Information)
     try:
         checker = UpdateChecker()
         available, info = checker.check_for_updates()
@@ -307,17 +347,19 @@ def check_and_update(repo_path: Optional[Path] = None,
         if available and info:
             latest_version = info.get('version', '')
             current_version = get_version()
-            print(f"[INFO] Update verfügbar: {current_version} → {latest_version}")
-        elif not force:
-            print("[INFO] Keine Updates verfügbar")
-            return False, "Bereits auf dem neuesten Stand"
+            version_update_info = f"{current_version} → {latest_version}"
+            print(f"[INFO] Version-Update verfügbar: {current_version} → {latest_version}")
+            if not update_needed:
+                update_needed = True
     except Exception as e:
         print(f"[WARNING] Konnte Version nicht prüfen: {e}")
-        if not force:
-            # Wenn wir die Version nicht prüfen können, aber force=False, überspringe Update
-            return False, "Konnte Version nicht prüfen"
     
-    # Prüfe ob Git verfügbar ist
+    # Wenn kein Update benötigt wird und force=False, beende
+    if not update_needed and not force:
+        print("[INFO] Keine Updates verfügbar")
+        return False, "Bereits auf dem neuesten Stand"
+    
+    # Führe Update durch
     if check_git_available():
         print("[INFO] Verwende Git für Update...")
         success, message = update_via_git(repo_path, repo_url)
