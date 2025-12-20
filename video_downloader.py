@@ -522,6 +522,97 @@ class VideoDownloader:
             self.log(f"Fehler beim Extrahieren der Qualitäten: {e}", "WARNING")
             return ['best', 'niedrigste']  # Fallback
     
+    def _get_actual_resolution(self, video_info: Dict, quality: str) -> Optional[str]:
+        """
+        Bestimmt die tatsächlich verwendete Auflösung basierend auf der ausgewählten Qualität
+        
+        Args:
+            video_info: Dictionary mit Video-Informationen von yt-dlp
+            quality: Ausgewählte Qualität ('best', 'niedrigste', '1080p', '720p', etc.)
+            
+        Returns:
+            Tatsächlich verwendete Auflösung (z.B. '1080p', '720p') oder None
+        """
+        try:
+            if quality == "best":
+                # Finde die höchste verfügbare Auflösung
+                formats = video_info.get('formats', [])
+                if not formats:
+                    return None
+                
+                max_height = 0
+                for fmt in formats:
+                    height = fmt.get('height')
+                    if height and isinstance(height, (int, float)):
+                        height_int = int(height)
+                        if height_int > max_height:
+                            max_height = height_int
+                
+                if max_height > 0:
+                    # Konvertiere Höhe zu Auflösungs-String
+                    if max_height >= 2160:
+                        return '2160p'
+                    elif max_height >= 1440:
+                        return '1440p'
+                    elif max_height >= 1080:
+                        return '1080p'
+                    elif max_height >= 720:
+                        return '720p'
+                    elif max_height >= 480:
+                        return '480p'
+                    elif max_height >= 360:
+                        return '360p'
+                    elif max_height >= 240:
+                        return '240p'
+                    elif max_height >= 144:
+                        return '144p'
+                    else:
+                        return f'{max_height}p'
+                return None
+            elif quality == "niedrigste" or quality == "worst":
+                # Finde die niedrigste verfügbare Auflösung
+                formats = video_info.get('formats', [])
+                if not formats:
+                    return None
+                
+                min_height = float('inf')
+                for fmt in formats:
+                    height = fmt.get('height')
+                    if height and isinstance(height, (int, float)):
+                        height_int = int(height)
+                        if height_int > 0 and height_int < min_height:
+                            min_height = height_int
+                
+                if min_height != float('inf'):
+                    # Konvertiere Höhe zu Auflösungs-String
+                    if min_height >= 2160:
+                        return '2160p'
+                    elif min_height >= 1440:
+                        return '1440p'
+                    elif min_height >= 1080:
+                        return '1080p'
+                    elif min_height >= 720:
+                        return '720p'
+                    elif min_height >= 480:
+                        return '480p'
+                    elif min_height >= 360:
+                        return '360p'
+                    elif min_height >= 240:
+                        return '240p'
+                    elif min_height >= 144:
+                        return '144p'
+                    else:
+                        return f'{int(min_height)}p'
+                return None
+            elif quality.endswith('p'):
+                # Spezifische Auflösung wurde ausgewählt
+                return quality
+            else:
+                return None
+        except Exception as e:
+            self.log(f"Fehler beim Bestimmen der Auflösung: {e}", "WARNING")
+            return None
+    
     def is_series_or_season(self, url: str) -> bool:
         """
         Prüft ob die URL eine Serie oder Staffel ist

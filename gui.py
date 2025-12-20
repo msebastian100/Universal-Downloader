@@ -2652,27 +2652,16 @@ class DeezerDownloaderGUI:
                 self.video_log(f"  Dauer: {duration_str}")
                 self.video_log(f"  Uploader: {video_info.get('uploader', 'Unbekannt')}")
                 
-                # Zeige verfügbare Qualitäten an
-                available_qualities = video_info.get('available_qualities', [])
-                if available_qualities:
-                    # Filtere nur die relevanten Qualitäten (best, 1080p, 720p, niedrigste)
-                    relevant_qualities = []
-                    for q in ['best', '1080p', '720p', 'niedrigste']:
-                        if q in available_qualities:
-                            relevant_qualities.append(q)
-                    
-                    # Wenn keine relevanten Qualitäten gefunden, zeige alle gefundenen an (ohne best/niedrigste)
-                    if not relevant_qualities:
-                        # Zeige alle gefundenen Qualitäten (außer best/niedrigste, die sind immer dabei)
-                        other_qualities = [q for q in available_qualities if q not in ['best', 'niedrigste']]
-                        if other_qualities:
-                            relevant_qualities = ['best'] + other_qualities[:4] + ['niedrigste']  # Zeige max. 4 zusätzliche
-                        else:
-                            relevant_qualities = ['best', 'niedrigste']
-                    
-                    if relevant_qualities:
-                        qualities_str = ", ".join(relevant_qualities)
-                        self.video_log(f"  Verfügbare Qualitäten: {qualities_str}")
+                # Zeige tatsächlich verwendete Auflösung basierend auf ausgewählter Qualität
+                selected_quality = self.video_quality_var.get()
+                actual_resolution = self.video_downloader._get_actual_resolution(video_info, selected_quality)
+                if actual_resolution:
+                    quality_display = selected_quality
+                    if selected_quality == "best":
+                        quality_display = "Beste"
+                    elif selected_quality == "niedrigste":
+                        quality_display = "Niedrigste"
+                    self.video_log(f"  Qualität: {quality_display} → {actual_resolution}")
             
             # Starte Download mit Fortschritts-Callback
             self.video_log("\nStarte Download...")
