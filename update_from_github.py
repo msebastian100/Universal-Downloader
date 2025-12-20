@@ -119,9 +119,14 @@ def update_via_git(repo_path: Path, repo_url: str) -> Tuple[bool, str]:
             timeout=5
         )
         
-        if head_check.returncode != 0 or is_new_repo:
+        has_local_head = (head_check.returncode == 0)
+        
+        if not has_local_head or is_new_repo:
             # Kein lokaler HEAD -> Update definitiv nötig
             print("[INFO] Lokales Repository hat noch keinen Commit - Update erforderlich")
+            # Setze HEAD auf origin/main für den Reset
+            subprocess.run(['git', 'branch', '--set-upstream-to=origin/main', 'main'], 
+                          cwd=repo_path, check=False, timeout=5)
         else:
             # Prüfe ob Updates verfügbar sind
             result = subprocess.run(
@@ -380,7 +385,9 @@ def check_and_update(repo_path: Optional[Path] = None,
                     timeout=5
                 )
                 
-                if head_check.returncode != 0 or is_new_repo:
+                has_local_head = (head_check.returncode == 0)
+                
+                if not has_local_head or is_new_repo:
                     # Kein lokaler HEAD oder neues Repository -> Update definitiv nötig
                     print("[INFO] Lokales Repository hat noch keinen Commit - Update erforderlich")
                     update_needed = True
@@ -424,6 +431,12 @@ def check_and_update(repo_path: Optional[Path] = None,
                                 print("[INFO] Lokaler und Remote-Commit unterscheiden sich - Update erforderlich")
                             else:
                                 print("[INFO] Bereits auf dem neuesten Stand")
+                        else:
+                            # Wenn wir den Remote-Hash nicht bekommen können, aber HEAD existiert, 
+                            # nehmen wir an, dass ein Update nötig ist (sicherer Fall)
+                            if remote_hash.returncode != 0:
+                                print("[WARNING] Konnte Remote-Hash nicht ermitteln - Update wird durchgeführt")
+                                update_needed = True
         except Exception as e:
             print(f"[WARNING] Konnte Git-Status nicht prüfen: {e}")
             import traceback
