@@ -344,9 +344,28 @@ WriteLog "[INFO] Arbeitsverzeichnis: " & scriptPath
 WriteLog "[INFO] =========================================="
 
 ' Erstelle/aktualisiere Shortcut (.lnk) mit Icon für Taskleiste
-' Jetzt wo wir Python gefunden haben, können wir den Shortcut richtig erstellen
-If shortcutNeedsUpdate And iconPath <> "" Then
-    WriteLog "[INFO] Erstelle/aktualisiere Shortcut mit Icon: " & shortcutPath
+' WICHTIG: Shortcut zeigt direkt auf pythonw.exe mit start.py als Argument
+' Das verhindert, dass Windows es als VBS erkennt und zeigt "pythonw.exe" in den Eigenschaften
+Dim shortcutNeedsUpdate
+shortcutNeedsUpdate = True
+
+' Prüfe ob Shortcut bereits existiert und korrekt ist
+If fso.FileExists(shortcutPath) Then
+    On Error Resume Next
+    Dim existingShortcut
+    Set existingShortcut = WshShell.CreateShortcut(shortcutPath)
+    ' Prüfe ob Shortcut auf die richtige Datei zeigt (pythonw.exe oder python.exe)
+    If (InStr(existingShortcut.TargetPath, "pythonw.exe") > 0 Or InStr(existingShortcut.TargetPath, "python.exe") > 0) And _
+       InStr(existingShortcut.Arguments, "start.py") > 0 Then
+        shortcutNeedsUpdate = False
+        WriteLog "[INFO] Shortcut existiert bereits und zeigt korrekt auf Python"
+    End If
+    On Error Goto 0
+End If
+
+' Erstelle/aktualisiere Shortcut nur wenn nötig
+If shortcutNeedsUpdate Then
+    WriteLog "[INFO] Erstelle/aktualisiere Shortcut: " & shortcutPath
     On Error Resume Next
     Dim shortcut
     Set shortcut = WshShell.CreateShortcut(shortcutPath)
@@ -356,30 +375,20 @@ If shortcutNeedsUpdate And iconPath <> "" Then
     shortcut.Arguments = Chr(34) & pythonScript & Chr(34)
     shortcut.WorkingDirectory = scriptPath
     shortcut.Description = "Universal Downloader"
-    shortcut.IconLocation = iconPath & ",0"
+    If iconPath <> "" Then
+        shortcut.IconLocation = iconPath & ",0"
+    End If
     ' Setze WindowStyle auf Minimized (7) damit kein Konsolen-Fenster erscheint
     shortcut.WindowStyle = 7
     shortcut.Save
     If Err.Number = 0 Then
         WriteLog "[OK] Shortcut erstellt: " & shortcutPath
         WriteLog "[INFO] Shortcut zeigt auf: " & fullPythonPath & " " & pythonScript
+        If iconPath <> "" Then
+            WriteLog "[INFO] Shortcut Icon: " & iconPath
+        End If
     Else
         WriteLog "[WARNING] Konnte Shortcut nicht erstellen: " & Err.Description
-    End If
-    On Error Goto 0
-ElseIf shortcutNeedsUpdate Then
-    WriteLog "[WARNING] Kein Icon gefunden - Shortcut wird ohne Icon erstellt"
-    On Error Resume Next
-    Dim shortcutNoIcon
-    Set shortcutNoIcon = WshShell.CreateShortcut(shortcutPath)
-    shortcutNoIcon.TargetPath = fullPythonPath
-    shortcutNoIcon.Arguments = Chr(34) & pythonScript & Chr(34)
-    shortcutNoIcon.WorkingDirectory = scriptPath
-    shortcutNoIcon.Description = "Universal Downloader"
-    shortcutNoIcon.WindowStyle = 7
-    shortcutNoIcon.Save
-    If Err.Number = 0 Then
-        WriteLog "[OK] Shortcut erstellt (ohne Icon): " & shortcutPath
     End If
     On Error Goto 0
 End If
