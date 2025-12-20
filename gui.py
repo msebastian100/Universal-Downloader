@@ -4769,7 +4769,8 @@ Historie-Einträge: {len(self.video_download_history)}
                 self._write_to_log_file(f"[DEBUG] Abhängigkeits-Installation abgeschlossen: ffmpeg={ffmpeg_ok}, updates={has_updates}", "DEBUG")
                 
                 # Aktualisiere Dialog mit Ergebnissen (nur ffmpeg)
-                if not ffmpeg_ok:
+                # Zeige Dialog immer, wenn ffmpeg installiert wurde oder wenn es fehlt
+                if not ffmpeg_ok or has_updates:
                     self.root.after(0, lambda: self._update_dependency_dialog(True, ffmpeg_ok, filtered_messages, has_updates))
                 
             except Exception as e:
@@ -4898,6 +4899,7 @@ Historie-Einträge: {len(self.video_download_history)}
             self._dep_status_text.config(state=tk.NORMAL)
             if ffmpeg_ok:
                 self._dep_status_text.insert(tk.END, "\n[OK] Alle Abhängigkeiten wurden erfolgreich installiert!\n")
+                self._dep_status_text.insert(tk.END, "\nDie Anwendung wird automatisch neu gestartet...\n")
             else:
                 self._dep_status_text.insert(tk.END, "\n[WARNING] ffmpeg konnte nicht installiert werden.\n")
                 self._dep_status_text.insert(tk.END, "Die Anwendung kann möglicherweise nicht vollständig funktionieren.\n")
@@ -4906,12 +4908,15 @@ Historie-Einträge: {len(self.video_download_history)}
             
             # Frage nach Neustart nur wenn ffmpeg installiert wurde
             if ffmpeg_ok:
-                self.root.after(500, lambda: self._ask_restart_after_dependency_install())
+                # Warte 2 Sekunden, dann automatisch Neustart fragen
+                self.root.after(2000, lambda: self._ask_restart_after_dependency_install())
         else:
             self._dep_status_text.config(state=tk.NORMAL)
             self._dep_status_text.insert(tk.END, "\n[OK] Alle Abhängigkeiten sind vorhanden.\n")
             self._dep_status_text.config(state=tk.DISABLED)
             self._dep_status_text.see(tk.END)
+            # Schließe Dialog automatisch nach 2 Sekunden wenn alles OK ist
+            self.root.after(2000, self._dep_dialog.destroy)
     
     def _ask_restart_after_dependency_install(self):
         """Fragt ob die Anwendung nach Abhängigkeits-Installation neu gestartet werden soll"""

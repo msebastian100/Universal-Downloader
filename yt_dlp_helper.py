@@ -8,6 +8,7 @@ Unterstützt sowohl System-Befehle als auch Python-Modul-Aufrufe
 import sys
 import subprocess
 import os
+import platform
 
 
 def is_frozen():
@@ -104,6 +105,12 @@ def run_ytdlp(args, **kwargs):
     # Prüfe ob Popen gewünscht ist (für Prozessüberwachung)
     use_popen = kwargs.pop('use_popen', False)
     
+    # Verstecke Konsolen-Fenster auf Windows
+    creation_flags = 0
+    if platform.system() == 'Windows':
+        # CREATE_NO_WINDOW = 0x08000000 - verhindert Konsolen-Fenster
+        creation_flags = subprocess.CREATE_NO_WINDOW
+    
     # In .exe Builds: Versuche zuerst subprocess, falls Python verfügbar
     if is_frozen():
         # Versuche Python zu finden für subprocess
@@ -111,11 +118,17 @@ def run_ytdlp(args, **kwargs):
         if python_exe and use_popen:
             # Verwende subprocess.Popen für Prozessüberwachung
             import subprocess as sp
-            return sp.Popen([python_exe, '-m', 'yt_dlp'] + args, **kwargs)
+            kwargs_with_flags = kwargs.copy()
+            if creation_flags:
+                kwargs_with_flags['creationflags'] = creation_flags
+            return sp.Popen([python_exe, '-m', 'yt_dlp'] + args, **kwargs_with_flags)
         elif python_exe and not use_popen:
             # Verwende subprocess.run
             import subprocess as sp
-            return sp.run([python_exe, '-m', 'yt_dlp'] + args, **kwargs)
+            kwargs_with_flags = kwargs.copy()
+            if creation_flags:
+                kwargs_with_flags['creationflags'] = creation_flags
+            return sp.run([python_exe, '-m', 'yt_dlp'] + args, **kwargs_with_flags)
         else:
             # Fallback: Direkte API (kein Prozessüberwachung möglich)
             return run_ytdlp_direct(args, **kwargs)
@@ -128,10 +141,16 @@ def run_ytdlp(args, **kwargs):
     
     if use_popen:
         import subprocess as sp
-        return sp.Popen(cmd + args, **kwargs)
+        kwargs_with_flags = kwargs.copy()
+        if creation_flags:
+            kwargs_with_flags['creationflags'] = creation_flags
+        return sp.Popen(cmd + args, **kwargs_with_flags)
     else:
         import subprocess as sp
-        return sp.run(cmd + args, **kwargs)
+        kwargs_with_flags = kwargs.copy()
+        if creation_flags:
+            kwargs_with_flags['creationflags'] = creation_flags
+        return sp.run(cmd + args, **kwargs_with_flags)
 
 
 def run_ytdlp_direct(args, **kwargs):

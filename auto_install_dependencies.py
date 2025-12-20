@@ -313,10 +313,17 @@ def install_ffmpeg_windows(progress_callback=None):
         os.environ['PATH'] = str(ffmpeg_dir / "bin") + os.pathsep + os.environ.get('PATH', '')
         
         # Prüfe ob es jetzt funktioniert
-        if ffmpeg_exe.exists() or check_ffmpeg()[0]:
+        if progress_callback:
+            progress_callback("[INFO] Prüfe ffmpeg Installation...")
+        ffmpeg_ok, ffmpeg_version = check_ffmpeg()
+        if ffmpeg_ok:
+            if progress_callback:
+                progress_callback(f"[OK] ffmpeg erfolgreich installiert: {ffmpeg_version}")
             print("[OK] ffmpeg erfolgreich installiert")
             return True, "installiert"
         else:
+            if progress_callback:
+                progress_callback("[WARNING] ffmpeg wurde heruntergeladen, aber nicht gefunden")
             print("[WARNING] ffmpeg wurde heruntergeladen, aber nicht gefunden")
             return False, "nicht gefunden"
             

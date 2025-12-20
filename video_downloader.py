@@ -6,6 +6,7 @@ Verwendet yt-dlp für Downloads
 """
 
 import subprocess
+import platform
 import json
 import re
 from pathlib import Path
@@ -96,11 +97,16 @@ class VideoDownloader:
     def _check_ytdlp(self):
         """Prüft ob yt-dlp installiert ist"""
         try:
+            kwargs = {
+                'capture_output': True,
+                'text': True,
+                'timeout': 5
+            }
+            if platform.system() == 'Windows':
+                kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
             result = subprocess.run(
                 ['yt-dlp', '--version'],
-                capture_output=True,
-                text=True,
-                timeout=5
+                **kwargs
             )
             if result.returncode == 0:
                 self.log(f"yt-dlp Version: {result.stdout.strip()}")
@@ -114,11 +120,16 @@ class VideoDownloader:
     def _check_ffmpeg(self):
         """Prüft ob ffmpeg installiert ist (benötigt für MP3-Konvertierung)"""
         try:
+            kwargs = {
+                'capture_output': True,
+                'text': True,
+                'timeout': 5
+            }
+            if platform.system() == 'Windows':
+                kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
             result = subprocess.run(
                 ['ffmpeg', '-version'],
-                capture_output=True,
-                text=True,
-                timeout=5
+                **kwargs
             )
             if result.returncode == 0:
                 return True
@@ -367,12 +378,14 @@ class VideoDownloader:
             # URL hinzufügen
             cmd.append(url)
             
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=30
-            )
+            kwargs = {
+                'capture_output': True,
+                'text': True,
+                'timeout': 30
+            }
+            if platform.system() == 'Windows':
+                kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
+            result = subprocess.run(cmd, **kwargs)
             
             # Lösche temporäre Cookies-Datei falls vorhanden
             if cookies_file and os.path.exists(cookies_file):
@@ -717,12 +730,14 @@ class VideoDownloader:
                     series_url
                 ]
             
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=120
-            )
+            kwargs = {
+                'capture_output': True,
+                'text': True,
+                'timeout': 120
+            }
+            if platform.system() == 'Windows':
+                kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
+            result = subprocess.run(cmd, **kwargs)
             
             # Wenn der erste Versuch fehlschlägt und es eine ARD Sammlung ist, versuche alternative Methoden
             if result.returncode != 0 and 'ardmediathek.de' in series_url.lower():
@@ -738,12 +753,14 @@ class VideoDownloader:
                         '--playlist-end', '500',
                         series_url
                     ]
-                    result = subprocess.run(
-                        cmd_alt,
-                        capture_output=True,
-                        text=True,
-                        timeout=120
-                    )
+                    kwargs = {
+                        'capture_output': True,
+                        'text': True,
+                        'timeout': 120
+                    }
+                    if platform.system() == 'Windows':
+                        kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
+                    result = subprocess.run(cmd_alt, **kwargs)
                     
                     # Wenn das auch fehlschlägt, versuche die Seite direkt zu parsen
                     if result.returncode != 0:
@@ -992,12 +1009,14 @@ class VideoDownloader:
                 url
             ]
             
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=30
-            )
+            kwargs = {
+                'capture_output': True,
+                'text': True,
+                'timeout': 30
+            }
+            if platform.system() == 'Windows':
+                kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
+            result = subprocess.run(cmd, **kwargs)
             
             if result.returncode == 0:
                 formats = []
@@ -1255,13 +1274,15 @@ class VideoDownloader:
                     cmd.append(url)
                     
                     self.log(f"Lade Thumbnail herunter...")
-                    process = subprocess.run(
-                        cmd,
-                        cwd=str(actual_output_dir),
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.STDOUT,
-                        text=True
-                    )
+                    kwargs = {
+                        'cwd': str(actual_output_dir),
+                        'stdout': subprocess.PIPE,
+                        'stderr': subprocess.STDOUT,
+                        'text': True
+                    }
+                    if platform.system() == 'Windows':
+                        kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
+                    process = subprocess.run(cmd, **kwargs)
                     
                     if process.returncode == 0:
                         # Suche nach Thumbnail-Datei
@@ -1356,13 +1377,15 @@ class VideoDownloader:
                     cmd.append(url)
                     
                     self.log(f"Lade Thumbnail herunter...")
-                    process = subprocess.run(
-                        cmd,
-                        cwd=str(actual_output_dir),
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.STDOUT,
-                        text=True
-                    )
+                    kwargs = {
+                        'cwd': str(actual_output_dir),
+                        'stdout': subprocess.PIPE,
+                        'stderr': subprocess.STDOUT,
+                        'text': True
+                    }
+                    if platform.system() == 'Windows':
+                        kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
+                    process = subprocess.run(cmd, **kwargs)
                     
                     if process.returncode == 0:
                         # Suche nach Thumbnail-Datei
@@ -2212,12 +2235,14 @@ class VideoDownloader:
                         '--no-warnings',
                         url
                     ]
-                    result = subprocess.run(
-                        cmd,
-                        capture_output=True,
-                        text=True,
-                        timeout=15
-                    )
+                    kwargs = {
+                        'capture_output': True,
+                        'text': True,
+                        'timeout': 15
+                    }
+                    if platform.system() == 'Windows':
+                        kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
+                    result = subprocess.run(cmd, **kwargs)
                     if result.returncode == 0:
                         try:
                             info = json.loads(result.stdout.strip().split('\n')[0])
@@ -2261,12 +2286,14 @@ class VideoDownloader:
                 url
             ]
             
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=30
-            )
+            kwargs = {
+                'capture_output': True,
+                'text': True,
+                'timeout': 30
+            }
+            if platform.system() == 'Windows':
+                kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
+            result = subprocess.run(cmd, **kwargs)
             
             if result.returncode == 0:
                 # Parse JSON-Lines
