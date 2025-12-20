@@ -245,12 +245,18 @@ If checkUpdates Then
         Dim updateOutputLower
         updateOutputLower = LCase(updateStdOut & " " & updateStdErr)
         
+        ' Debug: Schreibe Exit-Code und Ausgabe-Status
+        WriteLog "[DEBUG] Update-Check Exit-Code: " & updateResult
+        WriteLog "[DEBUG] Update-Ausgabe Länge: " & Len(updateOutputLower)
+        
         ' Prüfe ob "keine Updates verfügbar" oder "bereits auf dem neuesten Stand" in der Ausgabe steht
         Dim noUpdateAvailable
-        noUpdateAvailable = (InStr(updateOutputLower, "keine updates verfügbar") > 0 Or _
+        noUpdateAvailable = (InStr(updateOutputLower, "keine updates") > 0 Or _
                            InStr(updateOutputLower, "bereits auf dem neuesten stand") > 0 Or _
                            InStr(updateOutputLower, "no updates available") > 0 Or _
                            InStr(updateOutputLower, "already up to date") > 0)
+        
+        WriteLog "[DEBUG] noUpdateAvailable: " & noUpdateAvailable
         
         ' Prüfe ob Update installiert wurde (Exit-Code 0 + entsprechende Meldung)
         If updateResult = 0 Then
@@ -268,12 +274,13 @@ If checkUpdates Then
                 updateDetected = True
                 WriteLog "[INFO] Update wurde erkannt!"
             End If
-        ElseIf updateResult = 1 And noUpdateAvailable Then
-            ' Exit-Code 1 bedeutet "keine Updates verfügbar" - das ist normal, kein Fehler
-            WriteLog "[OK] Update-Check abgeschlossen - Bereits auf dem neuesten Stand"
         End If
         
-        If updateResult = 0 Then
+        ' Behandle Exit-Code 1 als "keine Updates verfügbar" wenn entsprechende Meldung vorhanden
+        If updateResult = 1 And noUpdateAvailable Then
+            ' Exit-Code 1 bedeutet "keine Updates verfügbar" - das ist normal, kein Fehler
+            WriteLog "[OK] Update-Check abgeschlossen - Bereits auf dem neuesten Stand"
+        ElseIf updateResult = 0 Then
             If updateInstalled Then
                 WriteLog "[OK] Update-Check abgeschlossen - Update wurde installiert"
                 ' Zeige Meldung an Benutzer
