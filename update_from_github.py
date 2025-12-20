@@ -124,9 +124,20 @@ def update_via_git(repo_path: Path, repo_url: str) -> Tuple[bool, str]:
         if not has_local_head or is_new_repo:
             # Kein lokaler HEAD -> Update definitiv nötig
             print("[INFO] Lokales Repository hat noch keinen Commit - Update erforderlich")
-            # Setze HEAD auf origin/main für den Reset
-            subprocess.run(['git', 'branch', '--set-upstream-to=origin/main', 'main'], 
-                          cwd=repo_path, check=False, timeout=5)
+            # Erstelle lokalen Branch und setze auf origin/main
+            branch_check = subprocess.run(
+                ['git', 'branch', '--show-current'],
+                cwd=repo_path,
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if branch_check.returncode != 0 or not branch_check.stdout.strip():
+                # Kein lokaler Branch, erstelle main Branch
+                subprocess.run(['git', 'branch', 'main', 'origin/main'], 
+                              cwd=repo_path, check=False, timeout=5)
+                subprocess.run(['git', 'checkout', 'main'], 
+                              cwd=repo_path, check=False, timeout=5)
         else:
             # Prüfe ob Updates verfügbar sind
             result = subprocess.run(
