@@ -4751,16 +4751,20 @@ Historie-Einträge: {len(self.video_download_history)}
                 # Setze Callback für ensure_dependencies
                 ensure_dependencies._progress_callback = update_progress
                 
-                # Zeige Installations-Dialog nur wenn ffmpeg fehlt
-                if not ffmpeg_ok:
+                # Prüfe ob requirements.txt installiert werden muss
+                from auto_install_dependencies import check_requirements_txt
+                requirements_ok, missing_packages = check_requirements_txt()
+                
+                # Zeige Installations-Dialog wenn ffmpeg fehlt ODER requirements.txt nicht vollständig installiert ist
+                if not ffmpeg_ok or not requirements_ok:
                     self.root.after(0, self._show_dependency_installation_dialog)
                 
                 try:
-                    # ensure_dependencies installiert yt-dlp automatisch, aber wir zeigen nur ffmpeg im Dialog
+                    # ensure_dependencies installiert requirements.txt und ffmpeg automatisch
                     ytdlp_ok, ffmpeg_ok, messages, has_updates = ensure_dependencies()
                     
-                    # Filtere yt-dlp Meldungen aus (wird automatisch installiert)
-                    filtered_messages = [msg for msg in messages if "yt-dlp" not in msg.lower() and "ytdlp" not in msg.lower()]
+                    # Zeige alle Meldungen (inkl. requirements.txt)
+                    filtered_messages = messages
                 finally:
                     # Entferne Callback
                     if hasattr(ensure_dependencies, '_progress_callback'):
@@ -4874,7 +4878,7 @@ Historie-Einträge: {len(self.video_download_history)}
     
     def _update_dependency_dialog(self, ytdlp_ok, ffmpeg_ok, messages, has_updates=False):
         """Aktualisiert den Installations-Dialog mit Ergebnissen
-        Hinweis: ytdlp_ok wird ignoriert, da yt-dlp automatisch installiert wird
+        Zeigt Installation von requirements.txt und ffmpeg
         """
         if not hasattr(self, '_dep_dialog') or not self._dep_dialog.winfo_exists():
             return

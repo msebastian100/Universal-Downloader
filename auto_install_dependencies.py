@@ -375,6 +375,114 @@ def install_ffmpeg_macos():
         return False, str(e)
 
 
+def check_requirements_txt(progress_callback=None):
+    """
+    Prüft ob alle Pakete aus requirements.txt installiert sind
+    
+    Returns:
+        tuple: (all_installed: bool, missing_packages: list)
+    """
+    try:
+        requirements_file = get_app_dir() / "requirements.txt"
+        if not requirements_file.exists():
+            if progress_callback:
+                progress_callback("[WARNING] requirements.txt nicht gefunden")
+            return True, []  # Wenn keine requirements.txt, gehen wir davon aus, dass alles OK ist
+        
+        # Lese requirements.txt
+        missing_packages = []
+        with open(requirements_file, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
+                
+                # Parse Paketname (entferne Versionsangaben)
+                package_name = line.split('>=')[0].split('==')[0].split('<')[0].split(',')[0].strip()
+                if not package_name:
+                    continue
+                
+                # Prüfe ob Paket installiert ist
+                try:
+                    # Versuche Import
+                    if package_name == 'yt-dlp':
+                        import_name = 'yt_dlp'
+                    elif package_name == 'Pillow':
+                        import_name = 'PIL'
+                    elif package_name == 'beautifulsoup4':
+                        import_name = 'bs4'
+                    elif package_name == 'browser-cookie3':
+                        import_name = 'browser_cookie3'
+                    elif package_name == 'deezer-python':
+                        import_name = 'deezer'
+                    else:
+                        import_name = package_name.replace('-', '_')
+                    
+                    __import__(import_name)
+                except ImportError:
+                    missing_packages.append(package_name)
+        
+        if missing_packages:
+            if progress_callback:
+                progress_callback(f"[WARNING] Fehlende Pakete: {', '.join(missing_packages)}")
+            return False, missing_packages
+        else:
+            if progress_callback:
+                progress_callback("[OK] Alle Pakete aus requirements.txt sind installiert")
+            return True, []
+    except Exception as e:
+        if progress_callback:
+            progress_callback(f"[ERROR] Fehler beim Prüfen von requirements.txt: {e}")
+        return False, []
+
+
+def install_requirements_txt(progress_callback=None):
+    """
+    Installiert Pakete aus requirements.txt
+    
+    Returns:
+        tuple: (success: bool, message: str)
+    """
+    try:
+        requirements_file = get_app_dir() / "requirements.txt"
+        if not requirements_file.exists():
+            return False, "requirements.txt nicht gefunden"
+        
+        if progress_callback:
+            progress_callback("[INFO] Installiere Pakete aus requirements.txt...")
+        print("[INFO] Installiere Pakete aus requirements.txt...")
+        
+        # Führe pip install aus
+        result = subprocess.run(
+            [sys.executable, '-m', 'pip', 'install', '--upgrade', '-r', str(requirements_file)],
+            capture_output=True,
+            text=True,
+            timeout=600  # 10 Minuten Timeout
+        )
+        
+        if result.returncode == 0:
+            if progress_callback:
+                progress_callback("[OK] requirements.txt erfolgreich installiert")
+            print("[OK] requirements.txt erfolgreich installiert")
+            return True, "installiert"
+        else:
+            error_msg = result.stderr[:200] if result.stderr else "Unbekannter Fehler"
+            if progress_callback:
+                progress_callback(f"[ERROR] Installation fehlgeschlagen: {error_msg}")
+            print(f"[ERROR] Installation fehlgeschlagen: {error_msg}")
+            return False, error_msg
+    except subprocess.TimeoutExpired:
+        if progress_callback:
+            progress_callback("[ERROR] Installation-Timeout (über 10 Minuten)")
+        print("[ERROR] Installation-Timeout")
+        return False, "Timeout"
+    except Exception as e:
+        if progress_callback:
+            progress_callback(f"[ERROR] Fehler bei Installation: {e}")
+        print(f"[ERROR] Fehler bei Installation: {e}")
+        return False, str(e)
+
+
 def ensure_dependencies():
     """
     Stellt sicher, dass alle Abhängigkeiten vorhanden sind
@@ -384,6 +492,22 @@ def ensure_dependencies():
     ytdlp_ok = False
     ffmpeg_ok = False
     has_updates = False
+    
+    # Progress-Callback für alle Funktionen
+    progress_callback = getattr(ensure_dependencies, '_progress_callback', None)
+    
+    # Prüfe und installiere requirements.txt
+    requirements_ok, missing_packages = check_requirements_txt(progress_callback)
+    if not requirements_ok:
+        messages.append("[WARNING] Einige Pakete aus requirements.txt fehlen - versuche Installation...")
+        success, status = install_requirements_txt(progress_callback)
+        if success:
+            messages.append(f"[OK] requirements.txt Installation: {status}")
+            has_updates = True
+        else:
+            messages.append(f"[ERROR] requirements.txt Installation fehlgeschlagen: {status}")
+    else:
+        messages.append("[OK] Alle Pakete aus requirements.txt sind installiert")
     
     # Prüfe und aktualisiere yt-dlp
     ytdlp_ok, ytdlp_updated, ytdlp_message = check_and_update_ytdlp()
