@@ -225,86 +225,221 @@ def install_ffmpeg_windows(progress_callback=None):
         # Erstelle ffmpeg Verzeichnis
         ffmpeg_dir.mkdir(exist_ok=True)
         
-        # Download-URL für Windows ffmpeg (statische Builds von gyan.dev)
-        # Verwende eine stabile Version
-        ffmpeg_url = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
-        zip_path = ffmpeg_dir / "ffmpeg.zip"
+        # Alternative Download-URLs (versuche mehrere Quellen für bessere Geschwindigkeit)
+        # Priorität: BtbN (oft schneller) > Essentia > gyan.dev
+        ffmpeg_urls = [
+            {
+                "name": "BtbN Builds (GitHub)",
+                "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
+            },
+            {
+                "name": "Essentia Builds",
+                "url": "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
+            },
+            {
+                "name": "BtbN Builds (Alternative)",
+                "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl-shared.zip"
+            }
+        ]
         
-        # Download mit Progress-Tracking und sofortigem Schreiben
-        if progress_callback:
-            progress_callback("[INFO] Lade ffmpeg herunter (dies kann einige Minuten dauern)...")
-        print("[INFO] Lade ffmpeg herunter (dies kann einige Minuten dauern)...")
-        try:
-            import requests
+        zip_path = ffmpeg_dir / "ffmpeg.zip"
+        download_success = False
+        used_url = None
+        
+        # Versuche Download von verschiedenen Quellen
+        for url_info in ffmpeg_urls:
+            ffmpeg_url = url_info["url"]
+            url_name = url_info["name"]
             
-            # Download mit Progress-Tracking
-            response = requests.get(ffmpeg_url, stream=True, timeout=300)
-            response.raise_for_status()
-            
-            total_size = int(response.headers.get('content-length', 0))
-            downloaded = 0
-            last_percent = -1
-            
-            # Öffne Datei im Binary-Mode und schreibe direkt mit Flush
-            with open(zip_path, 'wb') as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    if chunk:
-                        f.write(chunk)
-                        f.flush()  # Wichtig: Sofort schreiben
-                        os.fsync(f.fileno())  # Force write to disk
-                        downloaded += len(chunk)
+            try:
+                if progress_callback:
+                    progress_callback(f"[INFO] Versuche Download von {url_name}...")
+                print(f"[INFO] Versuche Download von {url_name}...")
+                
+                # Download mit Progress-Tracking und Geschwindigkeitsanzeige
+                try:
+                    import requests
+                    import time
+                    
+                    # Download mit Progress-Tracking
+                    response = requests.get(ffmpeg_url, stream=True, timeout=300)
+                    response.raise_for_status()
+                    
+                    total_size = int(response.headers.get('content-length', 0))
+                    downloaded = 0
+                    last_percent = -1
+                    start_time = time.time()
+                    last_update_time = start_time
+                    last_downloaded = 0
+                    
+                    # Öffne Datei im Binary-Mode und schreibe direkt mit Flush
+                    with open(zip_path, 'wb') as f:
+                        for chunk in response.iter_content(chunk_size=8192 * 4):  # Größere Chunks für bessere Performance
+                            if chunk:
+                                f.write(chunk)
+                                f.flush()  # Wichtig: Sofort schreiben
+                                downloaded += len(chunk)
+                                
+                                # Berechne Geschwindigkeit alle 0.5 Sekunden
+                                current_time = time.time()
+                                time_diff = current_time - last_update_time
+                                
+                                if total_size > 0 and time_diff >= 0.5:
+                                    percent = (downloaded * 100) // total_size
+                                    downloaded_mb = downloaded / (1024*1024)
+                                    total_mb = total_size / (1024*1024)
+                                    
+                                    # Berechne Download-Geschwindigkeit
+                                    downloaded_since_last = downloaded - last_downloaded
+                                    speed_mbps = (downloaded_since_last / (1024*1024)) / time_diff if time_diff > 0 else 0
+                                    
+                                    # Geschätzte verbleibende Zeit
+                                    if speed_mbps > 0:
+                                        remaining_mb = (total_mb - downloaded_mb)
+                                        eta_seconds = remaining_mb / speed_mbps
+                                        eta_min = int(eta_seconds // 60)
+                                        eta_sec = int(eta_seconds % 60)
+                                        eta_str = f"{eta_min}:{eta_sec:02d}"
+                                    else:
+                                        eta_str = "??:??"
+                                    
+                                    # Aktualisiere Anzeige
+                                    if percent != last_percent or time_diff >= 1.0:
+                                        progress_msg = f"[INFO] Download: {percent}% ({downloaded_mb:.1f}MB / {total_mb:.1f}MB) - {speed_mbps:.2f} MB/s - ETA: {eta_str}"
+                                        print(f"\r{progress_msg}", end='', flush=True)
+                                        if progress_callback:
+                                            try:
+                                                progress_callback(progress_msg)
+                                            except:
+                                                pass
+                                        last_percent = percent
+                                        last_update_time = current_time
+                                        last_downloaded = downloaded
+                    
+                    # Finale Anzeige
+                    elapsed_time = time.time() - start_time
+                    avg_speed = (downloaded / (1024*1024)) / elapsed_time if elapsed_time > 0 else 0
+                    final_msg = f"[OK] Download abgeschlossen: {downloaded / (1024*1024):.1f}MB in {elapsed_time:.1f}s ({avg_speed:.2f} MB/s)"
+                    print(f"\r{final_msg}")
+                    if progress_callback:
+                        try:
+                            progress_callback(final_msg)
+                        except:
+                            pass
+                    
+                    download_success = True
+                    used_url = url_name
+                    break  # Erfolgreich, breche Schleife ab
+                    
+                except ImportError:
+                    # Fallback: Verwende urllib mit besserem Schreiben
+                    print("[INFO] Verwende Fallback-Download-Methode...")
+                    import time
+                    start_time = time.time()
+                    last_update_time = start_time
+                    last_downloaded = 0
+                    
+                    def reporthook(count, block_size, total_size):
+                        nonlocal last_update_time, last_downloaded
                         if total_size > 0:
-                            percent = (downloaded * 100) // total_size
-                            # Aktualisiere häufiger: alle 1% oder alle 1MB für bessere Echtzeit-Anzeige
-                            if percent != last_percent and (percent % 1 == 0 or downloaded % (1*1024*1024) == 0):
-                                downloaded_mb = downloaded // (1024*1024)
-                                total_mb = total_size // (1024*1024)
-                                progress_msg = f"[INFO] Download Fortschritt: {percent}% ({downloaded_mb}MB / {total_mb}MB)"
+                            current_time = time.time()
+                            time_diff = current_time - last_update_time
+                            
+                            downloaded = count * block_size
+                            percent = min(100, (downloaded * 100) // total_size)
+                            downloaded_mb = downloaded / (1024*1024)
+                            total_mb = total_size / (1024*1024)
+                            
+                            # Berechne Geschwindigkeit
+                            if time_diff >= 0.5:
+                                downloaded_since_last = downloaded - last_downloaded
+                                speed_mbps = (downloaded_since_last / (1024*1024)) / time_diff if time_diff > 0 else 0
+                                
+                                if speed_mbps > 0:
+                                    remaining_mb = (total_mb - downloaded_mb)
+                                    eta_seconds = remaining_mb / speed_mbps
+                                    eta_min = int(eta_seconds // 60)
+                                    eta_sec = int(eta_seconds % 60)
+                                    eta_str = f"{eta_min}:{eta_sec:02d}"
+                                else:
+                                    eta_str = "??:??"
+                                
+                                progress_msg = f"[INFO] Download: {percent}% ({downloaded_mb:.1f}MB / {total_mb:.1f}MB) - {speed_mbps:.2f} MB/s - ETA: {eta_str}"
                                 print(f"\r{progress_msg}", end='', flush=True)
                                 if progress_callback:
                                     try:
                                         progress_callback(progress_msg)
                                     except:
                                         pass
-                                last_percent = percent
-                print()  # Neue Zeile nach Progress
-        except ImportError:
-            # Fallback: Verwende urllib mit besserem Schreiben
-            print("[INFO] Verwende Fallback-Download-Methode...")
-            def reporthook(count, block_size, total_size):
-                if total_size > 0:
-                    percent = min(100, (count * block_size * 100) // total_size)
-                    downloaded_mb = (count * block_size) // (1024*1024)
-                    total_mb = total_size // (1024*1024)
-                    print(f"\r[INFO] Download Fortschritt: {percent}% ({downloaded_mb}MB / {total_mb}MB)", end='', flush=True)
-            
-            urllib.request.urlretrieve(ffmpeg_url, zip_path, reporthook=reporthook)
-            print()  # Neue Zeile nach Progress
-        except Exception as e:
-            print(f"[ERROR] Fehler beim Download: {e}")
-            raise
+                                last_update_time = current_time
+                                last_downloaded = downloaded
+                    
+                    urllib.request.urlretrieve(ffmpeg_url, zip_path, reporthook=reporthook)
+                    print()  # Neue Zeile nach Progress
+                    download_success = True
+                    used_url = url_name
+                    break  # Erfolgreich, breche Schleife ab
+                    
+            except Exception as e:
+                print(f"\n[WARNING] Download von {url_name} fehlgeschlagen: {e}")
+                if progress_callback:
+                    try:
+                        progress_callback(f"[WARNING] Download von {url_name} fehlgeschlagen, versuche nächste Quelle...")
+                    except:
+                        pass
+                # Lösche fehlerhafte Datei
+                if zip_path.exists():
+                    zip_path.unlink()
+                continue  # Versuche nächste URL
+        
+        if not download_success:
+            raise Exception("Alle Download-Quellen fehlgeschlagen")
+        
+        if progress_callback:
+            progress_callback(f"[OK] Erfolgreich von {used_url} heruntergeladen")
+        print(f"[OK] Erfolgreich von {used_url} heruntergeladen")
         
         # Entpacken
+        if progress_callback:
+            progress_callback("[INFO] Entpacke ffmpeg...")
         print("[INFO] Entpacke ffmpeg...")
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
             zip_ref.extractall(ffmpeg_dir)
         
-        # Finde das bin-Verzeichnis
+        # Finde das bin-Verzeichnis (unterstützt verschiedene Build-Strukturen)
+        target_bin = ffmpeg_dir / "bin"
+        target_bin.mkdir(exist_ok=True)
+        
+        ffmpeg_found = False
         for root, dirs, files in os.walk(ffmpeg_dir):
             if 'ffmpeg.exe' in files:
                 bin_dir = Path(root)
-                # Verschiebe alle Dateien eine Ebene nach oben, falls nötig
-                if bin_dir.parent.name != 'bin':
-                    # Erstelle bin-Verzeichnis
-                    target_bin = ffmpeg_dir / "bin"
-                    target_bin.mkdir(exist_ok=True)
-                    # Kopiere ffmpeg.exe
-                    shutil.copy2(bin_dir / "ffmpeg.exe", target_bin / "ffmpeg.exe")
-                    # Kopiere andere benötigte Dateien
-                    for file in files:
-                        if file.endswith(('.exe', '.dll')):
-                            shutil.copy2(bin_dir / file, target_bin / file)
-                break
+                ffmpeg_found = True
+                
+                # Kopiere alle benötigten Dateien ins target_bin Verzeichnis
+                for file in files:
+                    if file.endswith(('.exe', '.dll')):
+                        src_file = bin_dir / file
+                        dst_file = target_bin / file
+                        if not dst_file.exists() or src_file.stat().st_mtime > dst_file.stat().st_mtime:
+                            shutil.copy2(src_file, dst_file)
+                
+                # Wenn wir bereits im bin-Verzeichnis sind, sind wir fertig
+                if bin_dir.name == 'bin' and bin_dir.parent == ffmpeg_dir:
+                    break
+                
+                # Kopiere auch aus Unterverzeichnissen (z.B. für BtbN Builds)
+                for subdir in dirs:
+                    subdir_path = bin_dir / subdir
+                    if subdir_path.is_dir():
+                        for subfile in subdir_path.iterdir():
+                            if subfile.is_file() and subfile.suffix in ('.exe', '.dll'):
+                                dst_file = target_bin / subfile.name
+                                if not dst_file.exists():
+                                    shutil.copy2(subfile, dst_file)
+        
+        if not ffmpeg_found:
+            raise Exception("ffmpeg.exe nicht im heruntergeladenen Archiv gefunden")
         
         # Lösche ZIP-Datei
         zip_path.unlink(missing_ok=True)
