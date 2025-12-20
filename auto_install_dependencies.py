@@ -425,6 +425,9 @@ def ensure_dependencies():
         if success:
             ffmpeg_ok = True
             messages.append(f"[OK] ffmpeg Installation: {status}")
+            # Markiere als Update, wenn ffmpeg installiert wurde (nicht nur wenn es bereits vorhanden war)
+            if status == "installiert":
+                has_updates = True
         else:
             messages.append(f"[ERROR] ffmpeg Installation fehlgeschlagen: {status}")
             messages.append("[INFO] Bitte installieren Sie ffmpeg manuell:")

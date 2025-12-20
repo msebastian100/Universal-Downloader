@@ -4769,9 +4769,14 @@ Historie-Einträge: {len(self.video_download_history)}
                 self._write_to_log_file(f"[DEBUG] Abhängigkeits-Installation abgeschlossen: ffmpeg={ffmpeg_ok}, updates={has_updates}", "DEBUG")
                 
                 # Aktualisiere Dialog mit Ergebnissen (nur ffmpeg)
-                # Zeige Dialog immer, wenn ffmpeg installiert wurde oder wenn es fehlt
+                # Zeige Dialog immer, wenn der Dialog geöffnet wurde (d.h. wenn ffmpeg fehlte oder installiert wurde)
+                # Der Dialog wird automatisch aktualisiert, wenn er geöffnet ist
                 if not ffmpeg_ok or has_updates:
                     self.root.after(0, lambda: self._update_dependency_dialog(True, ffmpeg_ok, filtered_messages, has_updates))
+                elif ffmpeg_ok:
+                    # Auch wenn ffmpeg jetzt OK ist, aber der Dialog geöffnet wurde, aktualisiere ihn
+                    # (z.B. wenn es bereits vorhanden war)
+                    self.root.after(0, lambda: self._update_dependency_dialog(True, ffmpeg_ok, filtered_messages, False))
                 
             except Exception as e:
                 # Zeige Fehler im Dialog
