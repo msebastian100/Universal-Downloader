@@ -6,15 +6,171 @@ echo "Universal Downloader - Installation"
 echo "=========================================="
 echo ""
 
-# Prüfe Python
+# Erkenne Betriebssystem
+OS="$(uname -s)"
+ARCH="$(uname -m)"
+
+echo "Betriebssystem: $OS"
+echo "Architektur: $ARCH"
+echo ""
+
+# Prüfe und installiere Python3
+echo "Prüfe Python3..."
 if ! command -v python3 &> /dev/null; then
-    echo "❌ Python 3 ist nicht installiert!"
-    echo "Bitte installieren Sie Python 3.8 oder höher."
-    exit 1
+    echo "⚠ Python 3 nicht gefunden - versuche Installation..."
+    
+    case "${OS}" in
+        Linux*)
+            # Prüfe ob apt-get verfügbar ist (Debian/Ubuntu/Mint)
+            if command -v apt-get &> /dev/null; then
+                echo "  Installiere Python3 über apt-get..."
+                if sudo apt-get update && sudo apt-get install -y python3 python3-pip python3-venv; then
+                    echo "✓ Python3 erfolgreich installiert"
+                else
+                    echo "❌ Fehler bei der Installation von Python3"
+                    echo "  Bitte installieren Sie Python3 manuell: sudo apt-get install python3 python3-pip python3-venv"
+                    exit 1
+                fi
+            # Prüfe ob dnf verfügbar ist (Fedora/RHEL)
+            elif command -v dnf &> /dev/null; then
+                echo "  Installiere Python3 über dnf..."
+                if sudo dnf install -y python3 python3-pip; then
+                    echo "✓ Python3 erfolgreich installiert"
+                else
+                    echo "❌ Fehler bei der Installation von Python3"
+                    echo "  Bitte installieren Sie Python3 manuell: sudo dnf install python3 python3-pip"
+                    exit 1
+                fi
+            # Prüfe ob pacman verfügbar ist (Arch Linux)
+            elif command -v pacman &> /dev/null; then
+                echo "  Installiere Python3 über pacman..."
+                if sudo pacman -S --noconfirm python python-pip; then
+                    echo "✓ Python3 erfolgreich installiert"
+                else
+                    echo "❌ Fehler bei der Installation von Python3"
+                    echo "  Bitte installieren Sie Python3 manuell: sudo pacman -S python python-pip"
+                    exit 1
+                fi
+            else
+                echo "❌ Paket-Manager nicht erkannt"
+                echo "  Bitte installieren Sie Python3 manuell über Ihren Paket-Manager"
+                exit 1
+            fi
+            ;;
+        Darwin*)
+            echo "❌ Python3 nicht gefunden auf macOS"
+            echo "  Bitte installieren Sie Python3 über Homebrew: brew install python3"
+            echo "  Oder laden Sie es von https://www.python.org/downloads/"
+            exit 1
+            ;;
+        *)
+            echo "❌ Betriebssystem nicht unterstützt für automatische Python3-Installation"
+            echo "  Bitte installieren Sie Python3 manuell: https://www.python.org/downloads/"
+            exit 1
+            ;;
+    esac
 fi
 
 PYTHON_VERSION=$(python3 --version)
 echo "✓ Python gefunden: $PYTHON_VERSION"
+
+# Prüfe Python-Version (mindestens 3.8)
+PYTHON_MAJOR=$(python3 -c "import sys; print(sys.version_info.major)")
+PYTHON_MINOR=$(python3 -c "import sys; print(sys.version_info.minor)")
+if [ "$PYTHON_MAJOR" -lt 3 ] || ([ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -lt 8 ]); then
+    echo "❌ Python 3.8 oder höher ist erforderlich (gefunden: $PYTHON_VERSION)"
+    echo "  Bitte aktualisieren Sie Python3"
+    exit 1
+fi
+
+echo ""
+
+# Prüfe und installiere pip
+echo "Prüfe pip..."
+if ! python3 -m pip --version &> /dev/null; then
+    echo "⚠ pip nicht gefunden - versuche Installation..."
+    
+    case "${OS}" in
+        Linux*)
+            # Prüfe ob apt-get verfügbar ist (Debian/Ubuntu/Mint)
+            if command -v apt-get &> /dev/null; then
+                echo "  Installiere pip über apt-get..."
+                if sudo apt-get update && sudo apt-get install -y python3-pip; then
+                    echo "✓ pip erfolgreich installiert"
+                else
+                    echo "⚠ apt-get Installation fehlgeschlagen, versuche get-pip.py..."
+                    curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
+                    if python3 get-pip.py; then
+                        echo "✓ pip erfolgreich installiert"
+                        rm get-pip.py
+                    else
+                        echo "❌ Fehler bei der Installation von pip"
+                        echo "  Bitte installieren Sie pip manuell: sudo apt-get install python3-pip"
+                        exit 1
+                    fi
+                fi
+            # Prüfe ob dnf verfügbar ist (Fedora/RHEL)
+            elif command -v dnf &> /dev/null; then
+                echo "  Installiere pip über dnf..."
+                if sudo dnf install -y python3-pip; then
+                    echo "✓ pip erfolgreich installiert"
+                else
+                    echo "❌ Fehler bei der Installation von pip"
+                    echo "  Bitte installieren Sie pip manuell: sudo dnf install python3-pip"
+                    exit 1
+                fi
+            # Prüfe ob pacman verfügbar ist (Arch Linux)
+            elif command -v pacman &> /dev/null; then
+                echo "  Installiere pip über pacman..."
+                if sudo pacman -S --noconfirm python-pip; then
+                    echo "✓ pip erfolgreich installiert"
+                else
+                    echo "❌ Fehler bei der Installation von pip"
+                    echo "  Bitte installieren Sie pip manuell: sudo pacman -S python-pip"
+                    exit 1
+                fi
+            else
+                echo "⚠ Paket-Manager nicht erkannt, versuche get-pip.py..."
+                curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
+                if python3 get-pip.py; then
+                    echo "✓ pip erfolgreich installiert"
+                    rm get-pip.py
+                else
+                    echo "❌ Fehler bei der Installation von pip"
+                    echo "  Bitte installieren Sie pip manuell"
+                    exit 1
+                fi
+            fi
+            ;;
+        Darwin*)
+            echo "⚠ pip nicht gefunden auf macOS"
+            echo "  Versuche Installation über get-pip.py..."
+            curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
+            if python3 get-pip.py; then
+                echo "✓ pip erfolgreich installiert"
+                rm get-pip.py
+            else
+                echo "❌ Fehler bei der Installation von pip"
+                echo "  Bitte installieren Sie pip manuell: brew install python3"
+                exit 1
+            fi
+            ;;
+        *)
+            echo "⚠ pip nicht gefunden, versuche get-pip.py..."
+            curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
+            if python3 get-pip.py; then
+                echo "✓ pip erfolgreich installiert"
+                rm get-pip.py
+            else
+                echo "❌ Fehler bei der Installation von pip"
+                exit 1
+            fi
+            ;;
+    esac
+fi
+
+PIP_VERSION=$(python3 -m pip --version)
+echo "✓ pip gefunden: $PIP_VERSION"
 echo ""
 
 # Prüfe ob venv existiert
@@ -186,12 +342,24 @@ if [ "$ALL_OK" = true ]; then
     echo "✓ Alle Abhängigkeiten sind installiert!"
     echo "=========================================="
     echo ""
+    echo "System-Informationen:"
+    echo "  Betriebssystem: $OS"
+    echo "  Architektur: $ARCH"
+    echo "  Python: $PYTHON_VERSION"
+    echo "  pip: $PIP_VERSION"
+    echo ""
     echo "Starten Sie die Anwendung mit:"
     echo "  source venv/bin/activate"
     echo "  python3 start.py"
 else
     echo "⚠ Einige Abhängigkeiten fehlen!"
     echo "=========================================="
+    echo ""
+    echo "System-Informationen:"
+    echo "  Betriebssystem: $OS"
+    echo "  Architektur: $ARCH"
+    echo "  Python: $PYTHON_VERSION"
+    echo "  pip: $PIP_VERSION"
     echo ""
     echo "Bitte installieren Sie fehlende Pakete:"
     echo "  source venv/bin/activate"
