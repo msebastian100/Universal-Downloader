@@ -2661,9 +2661,14 @@ class DeezerDownloaderGUI:
                         if q in available_qualities:
                             relevant_qualities.append(q)
                     
-                    # Wenn keine relevanten Qualitäten gefunden, zeige alle an
+                    # Wenn keine relevanten Qualitäten gefunden, zeige alle gefundenen an (ohne best/niedrigste)
                     if not relevant_qualities:
-                        relevant_qualities = available_qualities[:5]  # Zeige max. 5
+                        # Zeige alle gefundenen Qualitäten (außer best/niedrigste, die sind immer dabei)
+                        other_qualities = [q for q in available_qualities if q not in ['best', 'niedrigste']]
+                        if other_qualities:
+                            relevant_qualities = ['best'] + other_qualities[:4] + ['niedrigste']  # Zeige max. 4 zusätzliche
+                        else:
+                            relevant_qualities = ['best', 'niedrigste']
                     
                     if relevant_qualities:
                         qualities_str = ", ".join(relevant_qualities)
