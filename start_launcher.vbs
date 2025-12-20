@@ -172,10 +172,10 @@ If checkUpdates Then
         
         ' Prüfe ob Update erkannt wurde (verschiedene Muster)
         Dim updateOutputLower
-        updateOutputLower = LCase(updateStdOut)
+        updateOutputLower = LCase(updateStdOut & " " & updateStdErr)
         If InStr(updateOutputLower, "update verfügbar") > 0 Or InStr(updateOutputLower, "update available") > 0 Or _
-           InStr(updateOutputLower, "version") > 0 And InStr(updateOutputLower, "→") > 0 Or _
-           InStr(updateOutputLower, "commits_behind") > 0 And InStr(updateOutputLower, "0") = 0 Then
+           (InStr(updateOutputLower, "version") > 0 And InStr(updateOutputLower, "→") > 0) Or _
+           (InStr(updateOutputLower, "commits_behind") > 0 And InStr(updateOutputLower, " 0") = 0) Then
             updateDetected = True
             WriteLog "[INFO] Update wurde erkannt!"
         End If
@@ -183,7 +183,8 @@ If checkUpdates Then
         ' Prüfe ob Update installiert wurde (verschiedene Muster)
         If InStr(updateOutputLower, "erfolgreich aktualisiert") > 0 Or InStr(updateOutputLower, "successfully updated") > 0 Or _
            InStr(updateOutputLower, "update erfolgreich") > 0 Or InStr(updateOutputLower, "update erfolgreich abgeschlossen") > 0 Or _
-           InStr(updateOutputLower, "update abgeschlossen") > 0 Or InStr(updateOutputLower, "update completed") > 0 Then
+           InStr(updateOutputLower, "update abgeschlossen") > 0 Or InStr(updateOutputLower, "update completed") > 0 Or _
+           InStr(updateOutputLower, "erfolgreich aktualisiert") > 0 Then
             updateInstalled = True
             WriteLog "[OK] Update wurde erfolgreich installiert!"
         End If
