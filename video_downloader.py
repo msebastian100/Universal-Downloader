@@ -48,7 +48,7 @@ class VideoDownloader:
         
         Args:
             download_path: Pfad zum Download-Verzeichnis
-            quality: Video-Qualität ('best', 'worst', '720p', '1080p', etc.)
+            quality: Video-Qualität ('best', 'niedrigste', '720p', '1080p', etc.)
             output_format: Ausgabeformat ('mp4', 'mp3', 'webm', etc.)
             gui_instance: Optional GUI-Instanz für Zugriff auf Account-Daten
         """
