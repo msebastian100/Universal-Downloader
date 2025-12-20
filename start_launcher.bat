@@ -328,9 +328,13 @@ if %errorlevel% == 0 (
     ) else (
         echo [%date% %time%] [WARNING] Kein Python-Prozess gefunden >> "%LOG_FILE%"
         echo.
+        echo ========================================
         echo WARNUNG: Python-Prozess wurde nicht gefunden!
+        echo ========================================
         echo.
         echo Log-Datei: %LOG_FILE%
+        echo.
+        echo Bitte pruefen Sie die Log-Datei fuer Details.
         echo.
         pause
     )
