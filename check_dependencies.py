@@ -8,6 +8,12 @@ import sys
 import subprocess
 from pathlib import Path
 
+# Import für yt-dlp Prüfung
+try:
+    import yt_dlp
+except ImportError:
+    yt_dlp = None
+
 # Farben für Terminal-Ausgabe
 class Colors:
     GREEN = '\033[92m'
