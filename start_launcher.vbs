@@ -79,7 +79,15 @@ Else
 End If
 
 ' Prüfe auf Updates (nur wenn nicht --no-update Parameter übergeben wurde)
-If WScript.Arguments.Count = 0 Or WScript.Arguments(0) <> "--no-update" Then
+Dim checkUpdates
+checkUpdates = True
+If WScript.Arguments.Count > 0 Then
+    If WScript.Arguments(0) = "--no-update" Then
+        checkUpdates = False
+    End If
+End If
+
+If checkUpdates Then
     WriteLog "[INFO] Prüfe auf Updates..."
     
     ' Prüfe ob update_from_github.py existiert
