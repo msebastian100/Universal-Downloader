@@ -1,45 +1,8 @@
-Der Befehl "�r" ist entweder falsch geschrieben oder
-konnte nicht gefunden werden.
-Der Befehl "Updates" ist entweder falsch geschrieben oder
-konnte nicht gefunden werden.
-Der Befehl "s" ist entweder falsch geschrieben oder
-konnte nicht gefunden werden.
-Der Befehl """ ist entweder falsch geschrieben oder
-konnte nicht gefunden werden.
-Der Befehl "ei" ist entweder falsch geschrieben oder
-konnte nicht gefunden werden.
-Der Befehl "bledelayedexpansion" ist entweder falsch geschrieben oder
-konnte nicht gefunden werden.
-Der Befehl "E" ist entweder falsch geschrieben oder
-konnte nicht gefunden werden.
-Der Befehl "datetime-String" ist entweder falsch geschrieben oder
-konnte nicht gefunden werden.
-Der Befehl "ns" ist entweder falsch geschrieben oder
-konnte nicht gefunden werden.
-Der Befehl "ed" ist entweder falsch geschrieben oder
-konnte nicht gefunden werden.
-Der Befehl "back" ist entweder falsch geschrieben oder
-konnte nicht gefunden werden.
-Das System kann den angegebenen Pfad nicht finden.
-Die Syntax für den Dateinamen, Verzeichnisnamen oder die Datenträgerbezeichnung ist falsch.
-Das System kann den angegebenen Pfad nicht finden.
-Das System kann den angegebenen Pfad nicht finden.
-Das System kann den angegebenen Pfad nicht finden.
-Der Befehl "ob" ist entweder falsch geschrieben oder
-konnte nicht gefunden werden.
-Der Befehl "t" ist entweder falsch geschrieben oder
-konnte nicht gefunden werden.
-Der Befehl "G_FILE" ist entweder falsch geschrieben oder
-konnte nicht gefunden werden.
-Das System kann den angegebenen Pfad nicht finden.
-Das System kann den angegebenen Pfad nicht finden.
-Das System kann den angegebenen Pfad nicht finden.
-Das System kann den angegebenen Pfad nicht finden.
-Der Befehl "fe" ist entweder falsch geschrieben oder
-konnte nicht gefunden werden.
-Der Befehl "st" ist entweder falsch geschrieben oder
-konnte nicht gefunden werden.
-Das System kann den angegebenen Pfad nicht finden.
-FEHLER: start.py nicht gefunden in: D:\Users\basti\Downloads\Universal-Downloader\
-Log-Datei:
-Drücken Sie eine beliebige Taste . . .
+Skript:
+D:\Users\basti\Downloads\Universal-Downloader start launc
+herbs
+Zeile: 328
+Zeichen: 46
+Fehler: Name erneut definiert
+‚Code: 80040411
+Quelle: Kompilierungsfehler in Microsoft VBScript
