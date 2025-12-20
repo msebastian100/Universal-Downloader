@@ -55,26 +55,9 @@ Else
     WriteLog "[WARNING] Kein Icon gefunden"
 End If
 
-' Erstelle Shortcut (.lnk) mit Icon für Taskleiste
+' Shortcut wird nach Python-Suche erstellt (siehe weiter unten)
 Dim shortcutPath
 shortcutPath = scriptPath & "\Universal Downloader.lnk"
-If Not fso.FileExists(shortcutPath) And iconPath <> "" Then
-    WriteLog "[INFO] Erstelle Shortcut mit Icon: " & shortcutPath
-    On Error Resume Next
-    Dim shortcut
-    Set shortcut = WshShell.CreateShortcut(shortcutPath)
-    shortcut.TargetPath = WScript.ScriptFullName
-    shortcut.WorkingDirectory = scriptPath
-    shortcut.Description = "Universal Downloader"
-    shortcut.IconLocation = iconPath & ",0"
-    shortcut.Save
-    If Err.Number = 0 Then
-        WriteLog "[OK] Shortcut erstellt: " & shortcutPath
-    Else
-        WriteLog "[WARNING] Konnte Shortcut nicht erstellen: " & Err.Description
-    End If
-    On Error Goto 0
-End If
 
 ' Prüfe ob start.py existiert
 If Not fso.FileExists(pythonScript) Then
