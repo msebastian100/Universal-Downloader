@@ -411,10 +411,11 @@ Else
                                 Exit For
                             End If
                             ' Suche in Unterordnern (Python3.11, Python3.12, etc.)
-                            Set folder = fso.GetFolder(altPath)
-                            For Each subfolder In folder.SubFolders
-                                If fso.FileExists(subfolder.Path & "\pythonw.exe") Then
-                                    pythonExe = subfolder.Path & "\pythonw.exe"
+                            Dim folder5, subfolder5
+                            Set folder5 = fso.GetFolder(altPath)
+                            For Each subfolder5 In folder5.SubFolders
+                                If fso.FileExists(subfolder5.Path & "\pythonw.exe") Then
+                                    pythonExe = subfolder5.Path & "\pythonw.exe"
                                     WriteLog "[OK] Python gefunden (Methode 5): " & pythonExe
                                     Exit For
                                 End If
