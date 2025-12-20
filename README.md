@@ -61,7 +61,7 @@ Dieser Downloader ist **nur für privaten Gebrauch** bestimmt. Bitte beachten Si
 - ✅ **YouTube**: Videos und Playlists
 - ✅ **ARD, ZDF, ORF, SWR, BR, WDR, MDR, NDR, HR, RBB, SR, Phoenix, Arte, Tagesschau, RocketBeans TV**
 - ✅ Format-Auswahl: **MP4 (Video)** oder **MP3 (Audio)**
-- ✅ Qualitätsauswahl: Beste Qualität, 1080p, 720p, 480p, Niedrigste Qualität
+- ✅ Qualitätsauswahl: Beste Qualität, 1080p, 720p, Niedrigste Qualität
 - ✅ Playlist-Download: Gesamte Playlists herunterladen
 - ✅ Automatische Metadaten-Extraktion
 
@@ -137,7 +137,7 @@ python3 gui.py
 #### 🎬 Video-Downloader-Tab
 1. Download-Pfad auswählen
 2. **Format wählen**: MP4 (Video) oder MP3 (Audio)
-3. **Qualität wählen**: Beste Qualität, 1080p, 720p, 480p, etc.
+3. **Qualität wählen**: Beste Qualität, 1080p, 720p, Niedrigste Qualität
 4. **Optional**: "Gesamte Playlist herunterladen" aktivieren
 5. Video-URL einfügen (YouTube, ARD, ZDF, etc.)
 6. "Download starten" klicken
