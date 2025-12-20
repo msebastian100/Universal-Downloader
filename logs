@@ -1,80 +1,48 @@
-[2025/12/19 23:39:45] ==========================================
-[2025/12/19 23:39:45] Launcher gestartet: D:\Users\basti\Downloads\Universal-Downloader\start_launcher.vbs
-[2025/12/19 23:39:45] Verzeichnis: D:\Users\basti\Downloads\Universal-Downloader
-[2025/12/19 23:39:45] [OK] start.py gefunden: D:\Users\basti\Downloads\Universal-Downloader\start.py
-[2025/12/19 23:39:45] [INFO] Starte Python-Suche...
-[2025/12/19 23:39:45] [INFO] Methode 1: Prüfe pythonw.exe im PATH...
-[2025/12/19 23:39:45] [OK] Python gefunden (Methode 1): pythonw.exe im PATH
-[2025/12/19 23:39:45] [INFO] Starte Anwendung mit: pythonw.exe D:\Users\basti\Downloads\Universal-Downloader\start.py
-[2025/12/19 23:39:45] [INFO] Start-Befehl ausgeführt, Exit-Code: 0
-[2025/12/19 23:39:45] [OK] Launcher beendet erfolgreich
-[2025/12/20 15:53:23] ==========================================
-[2025/12/20 15:53:23] Launcher gestartet: D:\Users\basti\Downloads\Universal-Downloader\start_launcher.vbs
-[2025/12/20 15:53:23] Verzeichnis: D:\Users\basti\Downloads\Universal-Downloader
-[2025/12/20 15:53:23] Log-Datei: D:\Users\basti\Downloads\Universal-Downloader\vbs.log.txt
-[2025/12/20 15:53:23] [INFO] Icon gefunden: D:\Users\basti\Downloads\Universal-Downloader\icon.ico
-[2025/12/20 15:53:23] [OK] start.py gefunden: D:\Users\basti\Downloads\Universal-Downloader\start.py
-[2025/12/20 15:53:23] [OK] requirements.txt gefunden: D:\Users\basti\Downloads\Universal-Downloader\requirements.txt
-[2025/12/20 15:53:23] [INFO] Prüfe auf Updates...
-[2025/12/20 15:53:23] [INFO] Starte Update-Check...
-[2025/12/20 15:53:23] [INFO] Python für Update-Check: C:\Users\basti\AppData\Local\Programs\Python\Python310\python.exe
-[2025/12/20 15:53:30] [INFO] Update-Skript Ausgabe: [INFO] Prüfe auf Updates...
-[INFO] Repository-Pfad: D:\Users\basti\Downloads\Universal-Downloader
-[INFO] Repository-URL: https://github.com/msebastian100/Universal-Downloader
-[INFO] Keine Updates verfügbar
+==========================================
+Universal Downloader - Launcher
+==========================================
 
-[INFO] Bereits auf dem neuesten Stand
+✓ Python gefunden: Python 3.12.3
 
-[2025/12/20 15:53:30] [DEBUG] Update-Check Exit-Code: 1
-[2025/12/20 15:53:31] [DEBUG] Update-Ausgabe Länge: 252
-[2025/12/20 15:53:31] [DEBUG] noUpdateAvailable: Wahr
-[2025/12/20 15:53:31] [OK] Update-Check abgeschlossen - Bereits auf dem neuesten Stand
-[2025/12/20 15:53:31] 
-[2025/12/20 15:53:31] [INFO] ==========================================
-[2025/12/20 15:53:31] [INFO] Starte Python-Suche auf allen Laufwerken...
-[2025/12/20 15:53:31] [INFO] ==========================================
-[2025/12/20 15:53:31] [INFO] Methode 1: Prüfe pythonw.exe im PATH...
-[2025/12/20 15:53:31] [INFO] pythonw.exe --version Ausgabe: Python 3.10.11
+[INFO] Prüfe auf Updates...
+[UPDATE] [INFO] Prüfe auf Updates...
+[UPDATE] [INFO] Repository-Pfad: /home/basti/Downloads/Universal-Downloader-main
+[UPDATE] [INFO] Repository-URL: https://github.com/msebastian100/Universal-Downloader
+[UPDATE] [INFO] Prüfe auf Git-Commits...
+[UPDATE] [INFO] Hole neueste Änderungen von GitHub...
+[UPDATE] [INFO] Keine neuen Commits verfügbar
+[UPDATE] [INFO] Keine Updates verfügbar
+[UPDATE] 
+[UPDATE] [INFO] Bereits auf dem neuesten Stand
+⚠ Update-Check fehlgeschlagen oder keine Updates verfügbar
 
-[2025/12/20 15:53:31] [INFO] pythonw.exe --version Exit-Code: 0
-[2025/12/20 15:53:31] [OK] Python gefunden (Methode 1): pythonw.exe im PATH
-[2025/12/20 15:53:31] [INFO] where pythonw.exe Ausgabe: C:\Users\basti\AppData\Local\Programs\Python\Python310\pythonw.exe
-C:\Users\basti\AppData\Local\Microsoft\WindowsApps\pythonw.exe
+[INFO] Starte Universal Downloader...
 
-[2025/12/20 15:53:31] [INFO] where pythonw.exe Exit-Code: 0
-[2025/12/20 15:53:31] [INFO] ==========================================
-[2025/12/20 15:53:31] [INFO] Python gefunden: C:\Users\basti\AppData\Local\Programs\Python\Python310\pythonw.exe
-[2025/12/20 15:53:31] [INFO] Arbeitsverzeichnis: D:\Users\basti\Downloads\Universal-Downloader
-[2025/12/20 15:53:31] [INFO] ==========================================
-[2025/12/20 15:53:31] [INFO] Erstelle/aktualisiere Shortcut: D:\Users\basti\Downloads\Universal-Downloader\Universal Downloader.lnk
-[2025/12/20 15:53:31] [OK] Shortcut erstellt: D:\Users\basti\Downloads\Universal-Downloader\Universal Downloader.lnk
-[2025/12/20 15:53:31] [INFO] Shortcut zeigt auf: D:\Users\basti\Downloads\Universal-Downloader\start_launcher.vbs
-[2025/12/20 15:53:31] [INFO] VBS startet dann: C:\Users\basti\AppData\Local\Programs\Python\Python310\pythonw.exe D:\Users\basti\Downloads\Universal-Downloader\start.py
-[2025/12/20 15:53:31] [INFO] Shortcut Icon: D:\Users\basti\Downloads\Universal-Downloader\icon.ico
-[2025/12/20 15:53:31] [INFO] ==========================================
-[2025/12/20 15:53:32] [INFO] Prüfe requirements.txt...
-[2025/12/20 15:53:32] [INFO] ==========================================
-[2025/12/20 15:53:32] [INFO] pip --version Ausgabe: pip 25.3 from C:\Users\basti\AppData\Local\Programs\Python\Python310\lib\site-packages\pip (python 3.10)
+[INFO] [2025-12-20 21:39:30] ============================================================
+[INFO] [2025-12-20 21:39:30] Universal Downloader wird gestartet...
+[INFO] [2025-12-20 21:39:30] Python-Version: 3.12.3 (main, Nov  6 2025, 13:44:16) [GCC 13.3.0]
+[INFO] [2025-12-20 21:39:30] Plattform: linux
+[INFO] [2025-12-20 21:39:30] Executable: /usr/bin/python3
+[INFO] [2025-12-20 21:39:30] Frozen: False
+[INFO] [2025-12-20 21:39:30] PID: 13575
+[INFO] [2025-12-20 21:39:30] Log-Datei: /home/basti/Downloads/Universal Downloader/Logs/start_debug_2025-12-20.log
+[INFO] [2025-12-20 21:39:30] Kein Restart-Flag gefunden - normaler Start
+[INFO] [2025-12-20 21:39:30] Importiere auto_install_dependencies...
+[INFO] [2025-12-20 21:39:30] Prüfe yt-dlp...
+[INFO] [2025-12-20 21:39:30] yt-dlp Status: FEHLT (Version: N/A)
+[INFO] [2025-12-20 21:39:30] Prüfe ffmpeg...
+[INFO] [2025-12-20 21:39:30] ffmpeg Status: OK (Version: ffmpeg version 6.1.1-3ubuntu5 Copyright (c) 2000-2023 the FFmpeg developers)
+[WARNING] [2025-12-20 21:39:30] Einige Abhängigkeiten fehlen - werden im Hintergrund installiert
+[INFO] [2025-12-20 21:39:30] Importiere gui...
+[ERROR] [2025-12-20 21:39:30] Fehler beim Importieren der Module: No module named 'tkinter'
+✗ Fehler beim Importieren der Module: No module named 'tkinter'
 
+Bitte installieren Sie die Abhängigkeiten:
+  pip install -r requirements.txt
 
-[2025/12/20 15:53:32] [INFO] pip --version Exit-Code: 0
-[2025/12/20 15:53:32] [OK] pip verfügbar
-[2025/12/20 15:53:32] [INFO] ==========================================
-[2025/12/20 15:53:32] [INFO] Starte requirements.txt Installation...
-[2025/12/20 15:53:32] [INFO] Befehl: C:\Users\basti\AppData\Local\Programs\Python\Python310\pythonw.exe -m pip install --upgrade -r "D:\Users\basti\Downloads\Universal-Downloader\requirements.txt"
-[2025/12/20 15:53:32] [INFO] ==========================================
-[2025/12/20 15:53:34] [INFO] pip install Exit-Code: 0
-[2025/12/20 15:53:34] [OK] requirements.txt erfolgreich installiert/aktualisiert
-[2025/12/20 15:53:34] [INFO] ==========================================
-[2025/12/20 15:53:34] [INFO] Starte Anwendung...
-[2025/12/20 15:53:34] [INFO] Start-Befehl: "C:\Users\basti\AppData\Local\Programs\Python\Python310\pythonw.exe" "D:\Users\basti\Downloads\Universal-Downloader\start.py"
-[2025/12/20 15:53:34] [INFO] Arbeitsverzeichnis: D:\Users\basti\Downloads\Universal-Downloader
-[2025/12/20 15:53:34] [INFO] ==========================================
-[2025/12/20 15:53:34] [INFO] Start-Befehl ausgeführt (ShellExecute), Exit-Code: 0
-[2025/12/20 15:53:36] [INFO] tasklist Ausgabe: "pythonw.exe","30824","Console","1","82,156 K"
+Für detaillierte Prüfung:
+  python check_dependencies.py
 
-[2025/12/20 15:53:36] [INFO] tasklist Exit-Code: 0
-[2025/12/20 15:53:36] [OK] Python-Prozess läuft: pythonw.exe
-[2025/12/20 15:53:36] [OK] ==========================================
-[2025/12/20 15:53:36] [OK] Launcher beendet erfolgreich
-[2025/12/20 15:53:36] [OK] ==========================================
+❌ Anwendung wurde mit Fehler beendet (Exit-Code: 1)
+
+Drücken Sie eine Taste zum Beenden...
