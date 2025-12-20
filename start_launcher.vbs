@@ -95,17 +95,14 @@ If WScript.Arguments.Count = 0 Or WScript.Arguments(0) <> "--no-update" Then
         On Error Resume Next
         Dim whereResultUpdate
         Set whereResultUpdate = WshShell.Exec("where " & pythonExeUpdate)
-        whereResultUpdate.StdOut.ReadLine
-        whereResultUpdate.StdOut.SkipLine
         Dim whereOutputUpdate
         whereOutputUpdate = whereResultUpdate.StdOut.ReadAll
-        whereResultUpdate.StdOut.Close
         whereResultUpdate.WaitOnReturn = True
         
-        If whereResultUpdate.ExitCode = 0 And Len(whereOutputUpdate) > 0 Then
+        If whereResultUpdate.ExitCode = 0 And Len(Trim(whereOutputUpdate)) > 0 Then
             Dim whereLinesUpdate
             whereLinesUpdate = Split(whereOutputUpdate, vbCrLf)
-            If UBound(whereLinesUpdate) >= 0 Then
+            If UBound(whereLinesUpdate) >= 0 And Len(Trim(whereLinesUpdate(0))) > 0 Then
                 fullPythonPathUpdate = Trim(whereLinesUpdate(0))
             End If
         End If
