@@ -1,40 +1,22 @@
-==========================================
-Universal Downloader - Launcher
-==========================================
+INFO] Starte Universal Downloader...
 
-✓ Python gefunden: Python 3.12.3
-
-[INFO] Prüfe auf Updates...
-[UPDATE] [INFO] Prüfe auf Updates...
-[UPDATE] [INFO] Repository-Pfad: /home/basti/Downloads/Universal-Downloader-main
-[UPDATE] [INFO] Repository-URL: https://github.com/msebastian100/Universal-Downloader
-[UPDATE] [INFO] Prüfe auf Git-Commits...
-[UPDATE] [INFO] Hole neueste Änderungen von GitHub...
-[UPDATE] [INFO] Keine neuen Commits verfügbar
-[UPDATE] [INFO] Keine Updates verfügbar
-[UPDATE] 
-[UPDATE] [INFO] Bereits auf dem neuesten Stand
-⚠ Update-Check fehlgeschlagen oder keine Updates verfügbar
-
-[INFO] Starte Universal Downloader...
-
-[INFO] [2025-12-20 21:39:30] ============================================================
-[INFO] [2025-12-20 21:39:30] Universal Downloader wird gestartet...
-[INFO] [2025-12-20 21:39:30] Python-Version: 3.12.3 (main, Nov  6 2025, 13:44:16) [GCC 13.3.0]
-[INFO] [2025-12-20 21:39:30] Plattform: linux
-[INFO] [2025-12-20 21:39:30] Executable: /usr/bin/python3
-[INFO] [2025-12-20 21:39:30] Frozen: False
-[INFO] [2025-12-20 21:39:30] PID: 13575
-[INFO] [2025-12-20 21:39:30] Log-Datei: /home/basti/Downloads/Universal Downloader/Logs/start_debug_2025-12-20.log
-[INFO] [2025-12-20 21:39:30] Kein Restart-Flag gefunden - normaler Start
-[INFO] [2025-12-20 21:39:30] Importiere auto_install_dependencies...
-[INFO] [2025-12-20 21:39:30] Prüfe yt-dlp...
-[INFO] [2025-12-20 21:39:30] yt-dlp Status: FEHLT (Version: N/A)
-[INFO] [2025-12-20 21:39:30] Prüfe ffmpeg...
-[INFO] [2025-12-20 21:39:30] ffmpeg Status: OK (Version: ffmpeg version 6.1.1-3ubuntu5 Copyright (c) 2000-2023 the FFmpeg developers)
-[WARNING] [2025-12-20 21:39:30] Einige Abhängigkeiten fehlen - werden im Hintergrund installiert
-[INFO] [2025-12-20 21:39:30] Importiere gui...
-[ERROR] [2025-12-20 21:39:30] Fehler beim Importieren der Module: No module named 'tkinter'
+[INFO] [2025-12-20 21:48:48] ============================================================
+[INFO] [2025-12-20 21:48:48] Universal Downloader wird gestartet...
+[INFO] [2025-12-20 21:48:48] Python-Version: 3.12.3 (main, Nov  6 2025, 13:44:16) [GCC 13.3.0]
+[INFO] [2025-12-20 21:48:48] Plattform: linux
+[INFO] [2025-12-20 21:48:48] Executable: /usr/bin/python3
+[INFO] [2025-12-20 21:48:48] Frozen: False
+[INFO] [2025-12-20 21:48:48] PID: 14134
+[INFO] [2025-12-20 21:48:48] Log-Datei: /home/basti/Downloads/Universal Downloader/Logs/start_debug_2025-12-20.log
+[INFO] [2025-12-20 21:48:48] Kein Restart-Flag gefunden - normaler Start
+[INFO] [2025-12-20 21:48:48] Importiere auto_install_dependencies...
+[INFO] [2025-12-20 21:48:48] Prüfe yt-dlp...
+[INFO] [2025-12-20 21:48:48] yt-dlp Status: FEHLT (Version: N/A)
+[INFO] [2025-12-20 21:48:48] Prüfe ffmpeg...
+[INFO] [2025-12-20 21:48:48] ffmpeg Status: OK (Version: ffmpeg version 6.1.1-3ubuntu5 Copyright (c) 2000-2023 the FFmpeg developers)
+[WARNING] [2025-12-20 21:48:48] Einige Abhängigkeiten fehlen - werden im Hintergrund installiert
+[INFO] [2025-12-20 21:48:48] Importiere gui...
+[ERROR] [2025-12-20 21:48:48] Fehler beim Importieren der Module: No module named 'tkinter'
 ✗ Fehler beim Importieren der Module: No module named 'tkinter'
 
 Bitte installieren Sie die Abhängigkeiten:
@@ -46,3 +28,4 @@ Für detaillierte Prüfung:
 ❌ Anwendung wurde mit Fehler beendet (Exit-Code: 1)
 
 Drücken Sie eine Taste zum Beenden...
+
