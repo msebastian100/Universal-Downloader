@@ -140,14 +140,14 @@ If checkUpdates Then
                 WshShell.ExpandEnvironmentStrings("%PROGRAMFILES(X86)%\Python") _
             )
             
-            Dim pathUpdate, foundUpdate, folderUpdate, subfolder
+            Dim pathUpdate, foundUpdate, folderUpdateUpdate, subfolderUpdate
             foundUpdate = False
             For Each pathUpdate In commonPathsUpdate
                 If fso.FolderExists(pathUpdate) Then
-                    Set folderUpdate = fso.GetFolder(pathUpdate)
-                    For Each subfolder In folderUpdate.SubFolders
-                        If fso.FileExists(subfolder.Path & "\python.exe") Then
-                            fullPythonPathUpdate = subfolder.Path & "\python.exe"
+                    Set folderUpdateUpdate = fso.GetFolder(pathUpdate)
+                    For Each subfolderUpdate In folderUpdateUpdate.SubFolders
+                        If fso.FileExists(subfolderUpdate.Path & "\python.exe") Then
+                            fullPythonPathUpdate = subfolderUpdate.Path & "\python.exe"
                             foundUpdate = True
                             Exit For
                         End If
