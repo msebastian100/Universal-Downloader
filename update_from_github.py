@@ -354,9 +354,29 @@ def check_and_update(repo_path: Optional[Path] = None,
             # Initialisiere Git-Repository falls nötig
             git_dir = repo_path / '.git'
             is_new_repo = False
-            if not git_dir.exists():
+            
+            # Prüfe ob es ein vollständiges Git-Repository ist
+            # Ein vollständiges Repository hat einen HEAD oder einen refs/heads Branch
+            has_valid_repo = False
+            if git_dir.exists():
+                # Prüfe ob HEAD existiert oder ein Branch existiert
+                head_file = git_dir / 'HEAD'
+                refs_dir = git_dir / 'refs' / 'heads'
+                if head_file.exists() or (refs_dir.exists() and any(refs_dir.iterdir())):
+                    # Prüfe ob HEAD auf einen gültigen Commit zeigt
+                    head_check = subprocess.run(
+                        ['git', 'rev-parse', '--verify', 'HEAD'],
+                        cwd=repo_path,
+                        capture_output=True,
+                        text=True,
+                        timeout=5
+                    )
+                    has_valid_repo = (head_check.returncode == 0)
+            
+            if not git_dir.exists() or not has_valid_repo:
                 print("[INFO] Initialisiere Git-Repository...")
-                subprocess.run(['git', 'init'], cwd=repo_path, check=True, timeout=10)
+                if not git_dir.exists():
+                    subprocess.run(['git', 'init'], cwd=repo_path, check=True, timeout=10)
                 # Prüfe ob remote bereits existiert
                 check_remote = subprocess.run(
                     ['git', 'remote', 'get-url', 'origin'],
