@@ -1461,12 +1461,22 @@ class VideoDownloader:
                 yt_args.extend(['-f', 'bestaudio/best'])
             elif quality == "best":
                 yt_args.extend(['-f', 'bestvideo+bestaudio/best'])
-            elif quality == "worst":
+            elif quality == "niedrigste" or quality == "worst":  # Unterstütze beide für Kompatibilität
                 yt_args.extend(['-f', 'worstvideo+worstaudio/worst'])
             elif quality.endswith('p'):
                 # Spezifische Auflösung (z.B. "720p", "1080p")
                 resolution = quality[:-1]  # Entferne 'p'
-                yt_args.extend(['-f', f'bestvideo[height<={resolution}]+bestaudio/best[height<={resolution}]'])
+                # Prüfe ob Auflösung gültig ist (1080, 720, etc.)
+                try:
+                    resolution_int = int(resolution)
+                    if resolution_int > 0:
+                        yt_args.extend(['-f', f'bestvideo[height<={resolution_int}]+bestaudio/best[height<={resolution_int}]'])
+                    else:
+                        # Fallback zu best bei ungültiger Auflösung
+                        yt_args.extend(['-f', 'bestvideo+bestaudio/best'])
+                except ValueError:
+                    # Fallback zu best bei ungültiger Auflösung
+                    yt_args.extend(['-f', 'bestvideo+bestaudio/best'])
             else:
                 # Fallback zu best
                 yt_args.extend(['-f', 'bestvideo+bestaudio/best'])

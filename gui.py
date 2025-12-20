@@ -705,7 +705,9 @@ class DeezerDownloaderGUI:
         format_frame = ttk.LabelFrame(opt, text="Format", padding="5")
         format_frame.pack(fill=tk.X, padx=5, pady=5)
         
-        self.video_format_var = tk.StringVar(value="mp4")
+        # Lade Format aus Einstellungen
+        default_format = self.settings.get('default_video_format', 'mp4')
+        self.video_format_var = tk.StringVar(value=default_format)
         formats = [("MP4", "mp4"), ("MP3", "mp3"), ("WebM", "webm"), ("MKV", "mkv"), ("AVI", "avi"), ("Keine", "none")]
         for text, value in formats:
             ttk.Radiobutton(format_frame, text=text, variable=self.video_format_var, value=value).pack(side=tk.LEFT, padx=5)
@@ -714,8 +716,10 @@ class DeezerDownloaderGUI:
         quality_frame = ttk.LabelFrame(opt, text="Qualität", padding="5")
         quality_frame.pack(fill=tk.X, padx=5, pady=5)
         
-        self.video_quality_var = tk.StringVar(value="best")
-        qualities = [("Beste", "best"), ("1080p", "1080p"), ("720p", "720p"), ("480p", "480p"), ("Niedrigste", "worst")]
+        # Lade Qualität aus Einstellungen
+        default_quality = self.settings.get('default_video_quality', 'best')
+        self.video_quality_var = tk.StringVar(value=default_quality)
+        qualities = [("Beste", "best"), ("1080p", "1080p"), ("720p", "720p"), ("Niedrigste", "niedrigste")]
         for text, value in qualities:
             ttk.Radiobutton(quality_frame, text=text, variable=self.video_quality_var, value=value).pack(side=tk.LEFT, padx=5)
         
@@ -4209,7 +4213,12 @@ class DeezerDownloaderGUI:
             old_thumbnail = self.video_thumbnail_var.get()
             old_resume = self.video_resume_var.get()
             settings = scheduled['settings']
-            self.video_quality_var.set(settings.get('quality', 'best'))
+            # Unterstütze sowohl 'quality' (Legacy) als auch 'default_video_quality'
+            quality = settings.get('quality') or settings.get('default_video_quality', 'best')
+            # Konvertiere 'worst' zu 'niedrigste' für Kompatibilität
+            if quality == 'worst':
+                quality = 'niedrigste'
+            self.video_quality_var.set(quality)
             self.video_format_var.set(settings.get('format', 'mp4'))
             self.video_subtitle_var.set(settings.get('subtitle', False))
             self.video_subtitle_lang_var.set(settings.get('subtitle_lang', 'de'))
@@ -5543,7 +5552,7 @@ Copyright (c) 2025 Universal Downloader Contributors
         # Standard-Qualität
         ttk.Label(video_frame, text="Standard-Qualität:").grid(row=0, column=0, sticky=tk.W, pady=5)
         quality_var = tk.StringVar(value=self.settings.get('default_video_quality', 'best'))
-        quality_combo = ttk.Combobox(video_frame, textvariable=quality_var, values=['best', '1080p', '720p', '480p', '360p', 'worst'], state='readonly', width=15)
+        quality_combo = ttk.Combobox(video_frame, textvariable=quality_var, values=['best', '1080p', '720p', 'niedrigste'], state='readonly', width=15)
         quality_combo.grid(row=0, column=1, padx=5, pady=5, sticky=tk.W)
         
         # Standard-Format
