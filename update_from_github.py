@@ -418,8 +418,14 @@ def check_and_update(repo_path: Optional[Path] = None,
                 
                 has_local_head = (head_check.returncode == 0)
                 
-                if not has_local_head or is_new_repo:
-                    # Kein lokaler HEAD oder neues Repository -> Update definitiv nötig
+                # Debug-Ausgabe
+                print(f"[DEBUG] is_new_repo: {is_new_repo}, has_local_head: {has_local_head}")
+                
+                # Wenn Repository neu initialisiert wurde ODER kein HEAD existiert -> Update definitiv nötig
+                if is_new_repo:
+                    print("[INFO] Repository wurde neu initialisiert - Update erforderlich")
+                    update_needed = True
+                elif not has_local_head:
                     print("[INFO] Lokales Repository hat noch keinen Commit - Update erforderlich")
                     update_needed = True
                 else:
@@ -434,12 +440,14 @@ def check_and_update(repo_path: Optional[Path] = None,
                     
                     if result.returncode == 0:
                         commits_behind = int(result.stdout.strip())
+                        print(f"[DEBUG] Commits hinter origin/main: {commits_behind}")
                         if commits_behind > 0:
                             update_needed = True
                             print(f"[INFO] {commits_behind} neue Commit(s) verfügbar")
                         else:
                             print("[INFO] Keine neuen Commits verfügbar")
                     else:
+                        print(f"[DEBUG] git rev-list fehlgeschlagen: {result.stderr}")
                         # Fallback: Prüfe ob HEAD und origin/main unterschiedlich sind
                         local_hash = subprocess.run(
                             ['git', 'rev-parse', 'HEAD'],
@@ -457,7 +465,11 @@ def check_and_update(repo_path: Optional[Path] = None,
                         )
                         
                         if local_hash.returncode == 0 and remote_hash.returncode == 0:
-                            if local_hash.stdout.strip() != remote_hash.stdout.strip():
+                            local_commit = local_hash.stdout.strip()
+                            remote_commit = remote_hash.stdout.strip()
+                            print(f"[DEBUG] Lokaler Commit: {local_commit[:8]}...")
+                            print(f"[DEBUG] Remote Commit: {remote_commit[:8]}...")
+                            if local_commit != remote_commit:
                                 update_needed = True
                                 print("[INFO] Lokaler und Remote-Commit unterscheiden sich - Update erforderlich")
                             else:
@@ -468,6 +480,8 @@ def check_and_update(repo_path: Optional[Path] = None,
                             if remote_hash.returncode != 0:
                                 print("[WARNING] Konnte Remote-Hash nicht ermitteln - Update wird durchgeführt")
                                 update_needed = True
+                
+                print(f"[DEBUG] update_needed nach Git-Prüfung: {update_needed}")
         except Exception as e:
             print(f"[WARNING] Konnte Git-Status nicht prüfen: {e}")
             import traceback
