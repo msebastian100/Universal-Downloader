@@ -1,8 +1,15 @@
-Skript:
-D:\Users\basti\Downloads\Universal-Downloader start launc
-herbs
-Zeile: 328
-Zeichen: 46
-Fehler: Name erneut definiert
-‚Code: 80040411
-Quelle: Kompilierungsfehler in Microsoft VBScript
+==========================================
+Universal Downloader - Update-Check
+==========================================
+
+[INFO] Prüfe auf Updates...
+[INFO] Repository-Pfad: D:\Users\basti\Downloads\Universal-Downloader
+[INFO] Repository-URL: https://github.com/msebastian100/Universal-Downloader
+[INFO] Keine Updates verfügbar
+
+[INFO] Bereits auf dem neuesten Stand
+
+==========================================
+Update-Check beendet mit Fehler (Code: 1
+==========================================
+Drücken Sie eine beliebige Taste . . .
