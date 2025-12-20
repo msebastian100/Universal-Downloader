@@ -4889,7 +4889,7 @@ Historie-Einträge: {len(self.video_download_history)}
         # Stoppe Progress Bar
         self._dep_progress.stop()
         
-        # Zeige alle Meldungen (nur ffmpeg, yt-dlp wird automatisch installiert)
+        # Zeige alle Meldungen (requirements.txt und ffmpeg)
         self._dep_status_text.config(state=tk.NORMAL)
         for msg in messages:
             self._dep_status_text.insert(tk.END, msg + "\n")

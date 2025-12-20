@@ -509,20 +509,12 @@ def ensure_dependencies():
     else:
         messages.append("[OK] Alle Pakete aus requirements.txt sind installiert")
     
-    # Prüfe und aktualisiere yt-dlp
-    ytdlp_ok, ytdlp_updated, ytdlp_message = check_and_update_ytdlp()
+    # Prüfe yt-dlp (sollte jetzt über requirements.txt installiert sein)
+    ytdlp_ok, ytdlp_version = check_ytdlp()
     if ytdlp_ok:
-        ytdlp_available, ytdlp_version = check_ytdlp()
-        if ytdlp_updated:
-            messages.append(f"[OK] yt-dlp erfolgreich aktualisiert: {ytdlp_message}")
-            has_updates = True
-        elif ytdlp_message:
-            messages.append(f"[INFO] yt-dlp: {ytdlp_message}")
-            has_updates = True
-        else:
-            messages.append(f"[OK] yt-dlp verfügbar (Version: {ytdlp_version})")
+        messages.append(f"[OK] yt-dlp verfügbar (Version: {ytdlp_version})")
     else:
-        messages.append("[ERROR] yt-dlp Installation/Update fehlgeschlagen")
+        messages.append("[WARNING] yt-dlp nicht verfügbar (sollte über requirements.txt installiert werden)")
     
     # Prüfe ffmpeg
     ffmpeg_available, ffmpeg_version = check_ffmpeg()
