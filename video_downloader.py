@@ -484,7 +484,6 @@ class VideoDownloader:
                 format_note = fmt.get('format_note', '').lower()
                 if format_note:
                     # Extrahiere Auflösung aus format_note (z.B. "1080p", "720p")
-                    import re
                     match = re.search(r'(\d+)p?', format_note)
                     if match:
                         res = int(match.group(1))
