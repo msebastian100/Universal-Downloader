@@ -225,14 +225,16 @@ else
     OS="$(uname -s)"
     case "${OS}" in
         Linux*)
-            # Prüfe ob apt-get verfügbar ist (Debian/Ubuntu/Mint)
+            # Prüfe ob apt-get verfügbar ist (Debian/Ubuntu/Mint/Ubuntu ARM)
             if command -v apt-get &> /dev/null; then
                 echo "  Installiere ffmpeg über apt-get..."
+                echo "  (Unterstützt: Ubuntu, Ubuntu ARM, Linux Mint, Debian)"
                 if sudo apt-get update && sudo apt-get install -y ffmpeg; then
                     echo "✓ ffmpeg erfolgreich installiert"
                 else
                     echo "❌ Fehler bei der Installation von ffmpeg"
                     echo "  Bitte installieren Sie ffmpeg manuell: sudo apt-get install ffmpeg"
+                    echo "  Für Ubuntu ARM: sudo apt-get install ffmpeg (funktioniert gleich)"
                 fi
             # Prüfe ob dnf verfügbar ist (Fedora/RHEL)
             elif command -v dnf &> /dev/null; then
