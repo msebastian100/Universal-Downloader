@@ -404,6 +404,12 @@ class VideoDownloader:
                             try:
                                 info = json.loads(line)
                                 self.log(f"✓ Video gefunden: {info.get('title', 'Unbekannt')}")
+                                
+                                # Extrahiere verfügbare Qualitäten aus formats
+                                available_qualities = self._extract_available_qualities(info)
+                                if available_qualities:
+                                    info['available_qualities'] = available_qualities
+                                
                                 return info
                             except json.JSONDecodeError:
                                 continue

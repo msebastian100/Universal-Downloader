@@ -2651,6 +2651,23 @@ class DeezerDownloaderGUI:
                 self.video_log(f"  Titel: {title}")
                 self.video_log(f"  Dauer: {duration_str}")
                 self.video_log(f"  Uploader: {video_info.get('uploader', 'Unbekannt')}")
+                
+                # Zeige verfügbare Qualitäten an
+                available_qualities = video_info.get('available_qualities', [])
+                if available_qualities:
+                    # Filtere nur die relevanten Qualitäten (best, 1080p, 720p, niedrigste)
+                    relevant_qualities = []
+                    for q in ['best', '1080p', '720p', 'niedrigste']:
+                        if q in available_qualities:
+                            relevant_qualities.append(q)
+                    
+                    # Wenn keine relevanten Qualitäten gefunden, zeige alle an
+                    if not relevant_qualities:
+                        relevant_qualities = available_qualities[:5]  # Zeige max. 5
+                    
+                    if relevant_qualities:
+                        qualities_str = ", ".join(relevant_qualities)
+                        self.video_log(f"  Verfügbare Qualitäten: {qualities_str}")
             
             # Starte Download mit Fortschritts-Callback
             self.video_log("\nStarte Download...")
