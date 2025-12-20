@@ -94,12 +94,12 @@ If checkUpdates Then
     If fso.FileExists(updateScript) Then
         WriteLog "[INFO] Starte Update-Check..."
         
-        ' Finde Python für Update-Check (vereinfachte Suche)
+        ' Finde Python für Update-Check (verwende python.exe statt pythonw.exe für sichtbare Ausgabe)
         Dim pythonExeUpdate, fullPythonPathUpdate
-        pythonExeUpdate = "pythonw.exe"
+        pythonExeUpdate = "python.exe"
         fullPythonPathUpdate = ""
         
-        ' Methode 1: Prüfe pythonw.exe im PATH
+        ' Methode 1: Prüfe python.exe im PATH
         On Error Resume Next
         Dim whereResultUpdate
         Set whereResultUpdate = WshShell.Exec("where " & pythonExeUpdate)
@@ -116,51 +116,122 @@ If checkUpdates Then
         End If
         On Error Goto 0
         
-        ' Methode 2: Prüfe typische Installationspfade
+        ' Methode 2: Prüfe pythonw.exe als Fallback
+        If Len(fullPythonPathUpdate) = 0 Then
+            On Error Resume Next
+            Set whereResultUpdate = WshShell.Exec("where pythonw.exe")
+            whereOutputUpdate = whereResultUpdate.StdOut.ReadAll
+            whereResultUpdate.WaitOnReturn = True
+            If whereResultUpdate.ExitCode = 0 And Len(Trim(whereOutputUpdate)) > 0 Then
+                whereLinesUpdate = Split(whereOutputUpdate, vbCrLf)
+                If UBound(whereLinesUpdate) >= 0 And Len(Trim(whereLinesUpdate(0))) > 0 Then
+                    fullPythonPathUpdate = Trim(whereLinesUpdate(0))
+                End If
+            End If
+            On Error Goto 0
+        End If
+        
+        ' Methode 3: Prüfe typische Installationspfade
         If Len(fullPythonPathUpdate) = 0 Then
             Dim commonPathsUpdate
             commonPathsUpdate = Array( _
-                WshShell.ExpandEnvironmentStrings("%LOCALAPPDATA%\Programs\Python\Python*\pythonw.exe"), _
-                WshShell.ExpandEnvironmentStrings("%PROGRAMFILES%\Python*\pythonw.exe"), _
-                WshShell.ExpandEnvironmentStrings("%PROGRAMFILES(X86)%\Python*\pythonw.exe"), _
-                "C:\Python*\pythonw.exe", _
-                "D:\Python*\pythonw.exe" _
+                WshShell.ExpandEnvironmentStrings("%LOCALAPPDATA%\Programs\Python"), _
+                WshShell.ExpandEnvironmentStrings("%PROGRAMFILES%\Python"), _
+                WshShell.ExpandEnvironmentStrings("%PROGRAMFILES(X86)%\Python") _
             )
             
-            Dim pathUpdate, foundUpdate
+            Dim pathUpdate, foundUpdate, folderUpdate, subfolder
             foundUpdate = False
             For Each pathUpdate In commonPathsUpdate
-                Dim matchesUpdate
-                Set matchesUpdate = fso.GetFolder(fso.GetParentFolderName(pathUpdate)).GetFiles(fso.GetFileName(pathUpdate))
-                If matchesUpdate.Count > 0 Then
-                    fullPythonPathUpdate = matchesUpdate(0).Path
-                    foundUpdate = True
-                    Exit For
+                If fso.FolderExists(pathUpdate) Then
+                    Set folderUpdate = fso.GetFolder(pathUpdate)
+                    For Each subfolder In folderUpdate.SubFolders
+                        If fso.FileExists(subfolder.Path & "\python.exe") Then
+                            fullPythonPathUpdate = subfolder.Path & "\python.exe"
+                            foundUpdate = True
+                            Exit For
+                        End If
+                    Next
+                    If foundUpdate Then Exit For
                 End If
             Next
         End If
         
-        ' Methode 3: Fallback zu pythonw.exe
+        ' Methode 4: Fallback zu python.exe
         If Len(fullPythonPathUpdate) = 0 Then
             fullPythonPathUpdate = pythonExeUpdate
         End If
         
         WriteLog "[INFO] Python für Update-Check: " & fullPythonPathUpdate
         
-        ' Führe Update-Check aus und erfasse Ausgabe
+        ' Führe Update-Check aus (sichtbar, damit Benutzer den Fortschritt sieht)
         Dim updateResult, updateOutput, updateDetected, updateInstalled
         updateDetected = False
         updateInstalled = False
         
+        ' Erstelle temporäre Batch-Datei für sichtbare Ausgabe mit Logging
+        Dim tempBatFile, tempLogFile, tempResultFile
+        tempBatFile = scriptPath & "\update_temp.bat"
+        tempLogFile = scriptPath & "\update_output.txt"
+        tempResultFile = scriptPath & "\update_result.txt"
+        Dim tempBatStream
+        Set tempBatStream = fso.CreateTextFile(tempBatFile, True)
+        tempBatStream.WriteLine "@echo off"
+        tempBatStream.WriteLine "setlocal enabledelayedexpansion"
+        tempBatStream.WriteLine "cd /d """ & scriptPath & """"
+        tempBatStream.WriteLine "echo =========================================="
+        tempBatStream.WriteLine "echo Universal Downloader - Update-Check"
+        tempBatStream.WriteLine "echo =========================================="
+        tempBatStream.WriteLine "echo."
+        tempBatStream.WriteLine """" & fullPythonPathUpdate & """ """ & updateScript & """ > """ & tempLogFile & """ 2>&1"
+        tempBatStream.WriteLine "set UPDATE_RESULT=!errorlevel!"
+        tempBatStream.WriteLine "echo !UPDATE_RESULT! > """ & tempResultFile & """"
+        tempBatStream.WriteLine "type """ & tempLogFile & """"
+        tempBatStream.WriteLine "echo."
+        tempBatStream.WriteLine "echo =========================================="
+        tempBatStream.WriteLine "if !UPDATE_RESULT!==0 ("
+        tempBatStream.WriteLine "    echo Update-Check abgeschlossen"
+        tempBatStream.WriteLine ") else ("
+        tempBatStream.WriteLine "    echo Update-Check beendet mit Fehler (Code: !UPDATE_RESULT!)"
+        tempBatStream.WriteLine ")"
+        tempBatStream.WriteLine "echo =========================================="
+        tempBatStream.WriteLine "pause"
+        tempBatStream.Close
+        
         On Error Resume Next
-        Dim updateProcess
-        Set updateProcess = WshShell.Exec("""" & fullPythonPathUpdate & """ """ & updateScript & """")
-        Dim updateStdOut, updateStdErr
-        updateStdOut = updateProcess.StdOut.ReadAll
-        updateStdErr = updateProcess.StdErr.ReadAll
-        updateProcess.WaitOnReturn = True
-        updateResult = updateProcess.ExitCode
+        ' Führe Update-Check in sichtbarem Fenster aus
+        updateResult = WshShell.Run("""" & tempBatFile & """", 1, True) ' 1 = sichtbar
         On Error Goto 0
+        
+        ' Lese Exit-Code aus Result-Datei
+        If fso.FileExists(tempResultFile) Then
+            Dim resultStream
+            Set resultStream = fso.OpenTextFile(tempResultFile, 1, False)
+            Dim resultCode
+            resultCode = Trim(resultStream.ReadAll)
+            resultStream.Close
+            If IsNumeric(resultCode) Then
+                updateResult = CInt(resultCode)
+            End If
+            fso.DeleteFile tempResultFile
+        End If
+        
+        ' Lese Ausgabe aus Log-Datei
+        Dim updateStdOut, updateStdErr
+        updateStdOut = ""
+        updateStdErr = ""
+        If fso.FileExists(tempLogFile) Then
+            Dim logStreamUpdate
+            Set logStreamUpdate = fso.OpenTextFile(tempLogFile, 1, False)
+            updateStdOut = logStreamUpdate.ReadAll
+            logStreamUpdate.Close
+            fso.DeleteFile tempLogFile
+        End If
+        
+        ' Lösche temporäre Batch-Datei
+        If fso.FileExists(tempBatFile) Then
+            fso.DeleteFile tempBatFile
+        End If
         
         ' Schreibe Ausgabe ins Log
         If Len(updateStdOut) > 0 Then
@@ -174,7 +245,7 @@ If checkUpdates Then
         Dim updateOutputLower
         updateOutputLower = LCase(updateStdOut & " " & updateStdErr)
         If InStr(updateOutputLower, "update verfügbar") > 0 Or InStr(updateOutputLower, "update available") > 0 Or _
-           (InStr(updateOutputLower, "version") > 0 And InStr(updateOutputLower, "→") > 0) Or _
+           (InStr(updateOutputLower, "version") > 0 And (InStr(updateOutputLower, "→") > 0 Or InStr(updateOutputLower, "->") > 0)) Or _
            (InStr(updateOutputLower, "commits_behind") > 0 And InStr(updateOutputLower, " 0") = 0) Then
             updateDetected = True
             WriteLog "[INFO] Update wurde erkannt!"
@@ -184,9 +255,12 @@ If checkUpdates Then
         If InStr(updateOutputLower, "erfolgreich aktualisiert") > 0 Or InStr(updateOutputLower, "successfully updated") > 0 Or _
            InStr(updateOutputLower, "update erfolgreich") > 0 Or InStr(updateOutputLower, "update erfolgreich abgeschlossen") > 0 Or _
            InStr(updateOutputLower, "update abgeschlossen") > 0 Or InStr(updateOutputLower, "update completed") > 0 Or _
-           InStr(updateOutputLower, "erfolgreich aktualisiert") > 0 Then
-            updateInstalled = True
-            WriteLog "[OK] Update wurde erfolgreich installiert!"
+           InStr(updateOutputLower, "update erfolgreich abgeschlossen") > 0 Or InStr(updateOutputLower, "bereits auf dem neuesten stand") = 0 And updateResult = 0 Then
+            ' Wenn Exit-Code 0 und nicht "bereits auf dem neuesten stand", dann wurde wahrscheinlich aktualisiert
+            If InStr(updateOutputLower, "bereits auf dem neuesten stand") = 0 And InStr(updateOutputLower, "keine updates verfügbar") = 0 Then
+                updateInstalled = True
+                WriteLog "[OK] Update wurde erfolgreich installiert!"
+            End If
         End If
         
         If updateResult = 0 Then
