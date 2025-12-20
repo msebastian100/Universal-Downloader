@@ -309,35 +309,97 @@ def check_and_update(repo_path: Optional[Path] = None,
         try:
             # Initialisiere Git-Repository falls nötig
             git_dir = repo_path / '.git'
+            is_new_repo = False
             if not git_dir.exists():
+                print("[INFO] Initialisiere Git-Repository...")
                 subprocess.run(['git', 'init'], cwd=repo_path, check=True, timeout=10)
-                subprocess.run(['git', 'remote', 'add', 'origin', repo_url], 
-                              cwd=repo_path, check=True, timeout=10)
+                # Prüfe ob remote bereits existiert
+                check_remote = subprocess.run(
+                    ['git', 'remote', 'get-url', 'origin'],
+                    cwd=repo_path,
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                if check_remote.returncode != 0:
+                    subprocess.run(['git', 'remote', 'add', 'origin', repo_url], 
+                                  cwd=repo_path, check=True, timeout=10)
+                else:
+                    # Remote existiert bereits, aktualisiere URL falls nötig
+                    subprocess.run(['git', 'remote', 'set-url', 'origin', repo_url], 
+                                  cwd=repo_path, check=True, timeout=10)
+                is_new_repo = True
             
             # Hole neueste Änderungen
-            subprocess.run(['git', 'fetch', 'origin', 'main'], 
-                          cwd=repo_path, 
-                          check=True, 
-                          timeout=60)
-            
-            # Prüfe ob neue Commits verfügbar sind
-            result = subprocess.run(
-                ['git', 'rev-list', 'HEAD..origin/main', '--count'],
-                cwd=repo_path,
+            print("[INFO] Hole neueste Änderungen von GitHub...")
+            fetch_result = subprocess.run(
+                ['git', 'fetch', 'origin', 'main'], 
+                cwd=repo_path, 
                 capture_output=True,
                 text=True,
-                timeout=10
+                timeout=60
             )
             
-            if result.returncode == 0:
-                commits_behind = int(result.stdout.strip())
-                if commits_behind > 0:
+            if fetch_result.returncode != 0:
+                print(f"[WARNING] Git fetch fehlgeschlagen: {fetch_result.stderr}")
+            else:
+                # Prüfe ob lokaler HEAD existiert
+                head_check = subprocess.run(
+                    ['git', 'rev-parse', '--verify', 'HEAD'],
+                    cwd=repo_path,
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                
+                if head_check.returncode != 0 or is_new_repo:
+                    # Kein lokaler HEAD oder neues Repository -> Update definitiv nötig
+                    print("[INFO] Lokales Repository hat noch keinen Commit - Update erforderlich")
                     update_needed = True
-                    print(f"[INFO] {commits_behind} neue Commit(s) verfügbar")
                 else:
-                    print("[INFO] Keine neuen Commits verfügbar")
+                    # Prüfe ob neue Commits verfügbar sind
+                    result = subprocess.run(
+                        ['git', 'rev-list', 'HEAD..origin/main', '--count'],
+                        cwd=repo_path,
+                        capture_output=True,
+                        text=True,
+                        timeout=10
+                    )
+                    
+                    if result.returncode == 0:
+                        commits_behind = int(result.stdout.strip())
+                        if commits_behind > 0:
+                            update_needed = True
+                            print(f"[INFO] {commits_behind} neue Commit(s) verfügbar")
+                        else:
+                            print("[INFO] Keine neuen Commits verfügbar")
+                    else:
+                        # Fallback: Prüfe ob HEAD und origin/main unterschiedlich sind
+                        local_hash = subprocess.run(
+                            ['git', 'rev-parse', 'HEAD'],
+                            cwd=repo_path,
+                            capture_output=True,
+                            text=True,
+                            timeout=5
+                        )
+                        remote_hash = subprocess.run(
+                            ['git', 'rev-parse', 'origin/main'],
+                            cwd=repo_path,
+                            capture_output=True,
+                            text=True,
+                            timeout=5
+                        )
+                        
+                        if local_hash.returncode == 0 and remote_hash.returncode == 0:
+                            if local_hash.stdout.strip() != remote_hash.stdout.strip():
+                                update_needed = True
+                                print("[INFO] Lokaler und Remote-Commit unterscheiden sich - Update erforderlich")
+                            else:
+                                print("[INFO] Bereits auf dem neuesten Stand")
         except Exception as e:
             print(f"[WARNING] Konnte Git-Status nicht prüfen: {e}")
+            import traceback
+            print(f"[DEBUG] Traceback: {traceback.format_exc()}")
     
     # Prüfe zusätzlich auf Version-Updates (als Information)
     try:
