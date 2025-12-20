@@ -83,11 +83,26 @@ def update_via_git(repo_path: Path, repo_url: str) -> Tuple[bool, str]:
     try:
         # Prüfe ob es bereits ein Git-Repository ist
         git_dir = repo_path / '.git'
+        is_new_repo = False
         if not git_dir.exists():
             # Initialisiere Git-Repository
             subprocess.run(['git', 'init'], cwd=repo_path, check=True, timeout=10)
-            subprocess.run(['git', 'remote', 'add', 'origin', repo_url], 
-                          cwd=repo_path, check=True, timeout=10)
+            # Prüfe ob remote bereits existiert
+            check_remote = subprocess.run(
+                ['git', 'remote', 'get-url', 'origin'],
+                cwd=repo_path,
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if check_remote.returncode != 0:
+                subprocess.run(['git', 'remote', 'add', 'origin', repo_url], 
+                              cwd=repo_path, check=True, timeout=10)
+            else:
+                # Remote existiert bereits, aktualisiere URL falls nötig
+                subprocess.run(['git', 'remote', 'set-url', 'origin', repo_url], 
+                              cwd=repo_path, check=True, timeout=10)
+            is_new_repo = True
         
         # Hole neueste Änderungen
         subprocess.run(['git', 'fetch', 'origin', 'main'], 
@@ -95,19 +110,32 @@ def update_via_git(repo_path: Path, repo_url: str) -> Tuple[bool, str]:
                       check=True, 
                       timeout=60)
         
-        # Prüfe ob Updates verfügbar sind
-        result = subprocess.run(
-            ['git', 'rev-list', 'HEAD..origin/main', '--count'],
+        # Prüfe ob lokaler HEAD existiert
+        head_check = subprocess.run(
+            ['git', 'rev-parse', '--verify', 'HEAD'],
             cwd=repo_path,
             capture_output=True,
             text=True,
-            timeout=10
+            timeout=5
         )
         
-        if result.returncode == 0:
-            commits_behind = int(result.stdout.strip())
-            if commits_behind == 0:
-                return True, "Bereits auf dem neuesten Stand"
+        if head_check.returncode != 0 or is_new_repo:
+            # Kein lokaler HEAD -> Update definitiv nötig
+            print("[INFO] Lokales Repository hat noch keinen Commit - Update erforderlich")
+        else:
+            # Prüfe ob Updates verfügbar sind
+            result = subprocess.run(
+                ['git', 'rev-list', 'HEAD..origin/main', '--count'],
+                cwd=repo_path,
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            
+            if result.returncode == 0:
+                commits_behind = int(result.stdout.strip())
+                if commits_behind == 0:
+                    return True, "Bereits auf dem neuesten Stand"
         
         # Erstelle Backup wichtiger Dateien
         backup_dir = repo_path / '.update_backup'
