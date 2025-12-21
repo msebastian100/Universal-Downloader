@@ -5,29 +5,49 @@
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
 
-# Erstelle Logs-Verzeichnis falls nicht vorhanden
-mkdir -p "$SCRIPT_DIR/logs"
+# Erstelle Logs-Verzeichnis falls nicht vorhanden (mit Fehlerbehandlung)
+LOG_DIR="$SCRIPT_DIR/logs"
+if ! mkdir -p "$LOG_DIR" 2>/dev/null; then
+    # Fallback: Versuche im aktuellen Verzeichnis zu loggen
+    LOG_DIR="$SCRIPT_DIR"
+fi
 
 # Log-Datei mit Timestamp
 LOG_DATE=$(date +%Y-%m-%d_%H-%M-%S 2>/dev/null || date +%Y-%m-%d)
-LOG_FILE="$SCRIPT_DIR/logs/install_debug_${LOG_DATE}.log"
+LOG_FILE="$LOG_DIR/install_debug_${LOG_DATE}.log"
+
+# Prüfe ob Log-Datei beschreibbar ist
+CAN_LOG=true
+if ! touch "$LOG_FILE" 2>/dev/null; then
+    CAN_LOG=false
+    LOG_FILE="/dev/null"
+    echo "⚠ Warnung: Kann nicht in Log-Datei schreiben, verwende stdout"
+fi
 
 # Funktion zum gleichzeitigen Loggen und Ausgeben
 log_and_echo() {
     local message="$1"
     local timestamp=$(date '+%Y-%m-%d %H:%M:%S' 2>/dev/null || date)
-    echo "[$timestamp] $message" | tee -a "$LOG_FILE"
+    if [ "$CAN_LOG" = true ]; then
+        echo "[$timestamp] $message" | tee -a "$LOG_FILE" 2>/dev/null || echo "[$timestamp] $message"
+    else
+        echo "[$timestamp] $message"
+    fi
 }
 
 # Funktion zum Loggen ohne Echo (nur für Debug)
 log_debug() {
     local message="$1"
     local timestamp=$(date '+%Y-%m-%d %H:%M:%S' 2>/dev/null || date)
-    echo "[$timestamp] [DEBUG] $message" >> "$LOG_FILE"
+    if [ "$CAN_LOG" = true ]; then
+        echo "[$timestamp] [DEBUG] $message" >> "$LOG_FILE" 2>/dev/null || true
+    fi
 }
 
-# Redirect stderr auch in Log-Datei
-exec 2>> "$LOG_FILE"
+# Redirect stderr auch in Log-Datei (falls möglich)
+if [ "$CAN_LOG" = true ]; then
+    exec 2>> "$LOG_FILE" 2>/dev/null || true
+fi
 
 log_and_echo "=========================================="
 log_and_echo "Universal Downloader - Installation"
@@ -483,3 +503,7 @@ else
     log_and_echo "  $LOG_FILE"
 fi
 log_and_echo ""
+
+# Pause am Ende, damit Terminal offen bleibt
+log_and_echo "Drücken Sie eine beliebige Taste zum Beenden..."
+read -n 1 -s
