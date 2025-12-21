@@ -694,34 +694,61 @@ else
     log_debug "venv existiert bereits"
 fi
 
-# Aktiviere venv
-log_and_echo "Aktiviere virtuelle Umgebung..."
-log_debug "Aktiviere venv: source $SCRIPT_DIR/venv/bin/activate"
-source venv/bin/activate
-log_debug "venv aktiviert, Python: $(which python3)"
-
-# Installiere Abhängigkeiten
-log_and_echo "Installiere Python-Abhängigkeiten..."
-log_debug "Upgrade pip..."
-if pip install --upgrade pip 2>&1 | tee -a "$LOG_FILE"; then
-    log_debug "pip upgrade erfolgreich"
-else
-    log_and_echo "⚠ Warnung: pip upgrade fehlgeschlagen, fahre fort..."
-fi
-
-log_debug "Installiere requirements.txt..."
-if [ -f "requirements.txt" ]; then
-    log_debug "requirements.txt gefunden, starte Installation..."
-    if pip install -r requirements.txt 2>&1 | tee -a "$LOG_FILE"; then
-        log_and_echo "✓ Python-Abhängigkeiten installiert"
+# Aktiviere venv (nur wenn erfolgreich erstellt)
+if [ -d "venv" ] && [ -f "venv/bin/activate" ]; then
+    log_and_echo "Aktiviere virtuelle Umgebung..."
+    log_debug "Aktiviere venv: source $SCRIPT_DIR/venv/bin/activate"
+    source venv/bin/activate
+    log_debug "venv aktiviert, Python: $(which python3)"
+    
+    # Installiere Abhängigkeiten
+    log_and_echo "Installiere Python-Abhängigkeiten..."
+    log_debug "Upgrade pip..."
+    PIP_UPGRADE_OUTPUT=$(pip install --upgrade pip 2>&1)
+    PIP_UPGRADE_EXIT=$?
+    echo "$PIP_UPGRADE_OUTPUT" | tee -a "$LOG_FILE"
+    log_debug "pip upgrade Exit-Code: $PIP_UPGRADE_EXIT"
+    
+    if [ $PIP_UPGRADE_EXIT -eq 0 ]; then
+        log_debug "pip upgrade erfolgreich"
     else
-        log_and_echo "❌ Fehler bei der Installation der Abhängigkeiten"
-        log_and_echo "  Siehe Log-Datei für Details: $LOG_FILE"
-        log_and_echo "  Versuchen Sie manuell: pip install -r requirements.txt"
+        log_and_echo "⚠ Warnung: pip upgrade fehlgeschlagen, fahre fort..."
+        log_debug "pip upgrade Fehler: $PIP_UPGRADE_OUTPUT"
+    fi
+    
+    log_debug "Installiere requirements.txt..."
+    if [ -f "requirements.txt" ]; then
+        log_debug "requirements.txt gefunden, starte Installation..."
+        log_and_echo "  Lade Pakete aus requirements.txt..."
+        
+        # Zeige Inhalt von requirements.txt
+        log_and_echo ""
+        log_and_echo "=== SYSTEM-LOGS: Inhalt von requirements.txt ==="
+        cat requirements.txt | tee -a "$LOG_FILE"
+        log_and_echo "================================================"
+        log_and_echo ""
+        
+        PIP_INSTALL_OUTPUT=$(pip install -r requirements.txt 2>&1)
+        PIP_INSTALL_EXIT=$?
+        echo "$PIP_INSTALL_OUTPUT" | tee -a "$LOG_FILE"
+        log_debug "pip install Exit-Code: $PIP_INSTALL_EXIT"
+        
+        if [ $PIP_INSTALL_EXIT -eq 0 ]; then
+            log_and_echo "✓ Python-Abhängigkeiten installiert"
+        else
+            log_and_echo "❌ Fehler bei der Installation der Abhängigkeiten (Exit-Code: $PIP_INSTALL_EXIT)"
+            log_and_echo "  Fehler-Ausgabe:"
+            echo "$PIP_INSTALL_OUTPUT" | grep -i "error\|fehl\|failed" | head -20 | tee -a "$LOG_FILE" || echo "$PIP_INSTALL_OUTPUT" | tail -20 | tee -a "$LOG_FILE"
+            log_and_echo "  Siehe Log-Datei für Details: $LOG_FILE"
+            log_and_echo "  Versuchen Sie manuell: pip install -r requirements.txt"
+        fi
+    else
+        log_and_echo "⚠ Warnung: requirements.txt nicht gefunden!"
+        log_debug "requirements.txt nicht gefunden in: $SCRIPT_DIR"
     fi
 else
-    log_and_echo "⚠ Warnung: requirements.txt nicht gefunden!"
-    log_debug "requirements.txt nicht gefunden in: $SCRIPT_DIR"
+    log_and_echo "⚠ Warnung: venv konnte nicht erstellt werden - überspringe Python-Abhängigkeiten Installation"
+    log_and_echo "  Bitte erstellen Sie die venv manuell und installieren Sie dann die Abhängigkeiten"
 fi
 
 log_and_echo ""
@@ -879,12 +906,71 @@ if python3 -c "import tkinter" 2>/dev/null; then
     log_debug "tkinter ist verfügbar"
 else
     log_and_echo "  ✗ tkinter (GUI-Bibliothek) - FEHLT!"
-    log_and_echo "    Installieren Sie es mit:"
-    log_and_echo "      Ubuntu/Debian/Mint: sudo apt-get install python3-tk"
-    log_and_echo "      Fedora/RHEL: sudo dnf install python3-tkinter"
-    log_and_echo "      Arch Linux: sudo pacman -S tk"
+    log_and_echo "    Versuche automatische Installation..."
+    
+    if [ "$OS" = "Linux" ]; then
+        if command -v apt-get &> /dev/null; then
+            log_debug "Installiere python3-tk über apt-get..."
+            INSTALL_TK_OUTPUT=$($SUDO_CMD apt-get install -y python3-tk 2>&1)
+            INSTALL_TK_EXIT=$?
+            echo "$INSTALL_TK_OUTPUT" | tee -a "$LOG_FILE"
+            log_debug "apt-get install python3-tk Exit-Code: $INSTALL_TK_EXIT"
+            
+            if [ $INSTALL_TK_EXIT -eq 0 ]; then
+                if python3 -c "import tkinter" 2>/dev/null; then
+                    log_and_echo "  ✓ tkinter erfolgreich installiert"
+                else
+                    log_and_echo "  ⚠ Installation meldete Erfolg, aber tkinter kann nicht importiert werden"
+                    ALL_OK=false
+                fi
+            else
+                log_and_echo "  ❌ Installation fehlgeschlagen"
+                log_and_echo "    Installieren Sie es manuell: $SUDO_CMD apt-get install python3-tk"
+                ALL_OK=false
+            fi
+        elif command -v dnf &> /dev/null; then
+            log_debug "Installiere python3-tkinter über dnf..."
+            if $SUDO_CMD dnf install -y python3-tkinter 2>&1 | tee -a "$LOG_FILE"; then
+                if python3 -c "import tkinter" 2>/dev/null; then
+                    log_and_echo "  ✓ tkinter erfolgreich installiert"
+                else
+                    log_and_echo "  ⚠ Installation meldete Erfolg, aber tkinter kann nicht importiert werden"
+                    ALL_OK=false
+                fi
+            else
+                log_and_echo "  ❌ Installation fehlgeschlagen"
+                log_and_echo "    Installieren Sie es manuell: $SUDO_CMD dnf install python3-tkinter"
+                ALL_OK=false
+            fi
+        elif command -v pacman &> /dev/null; then
+            log_debug "Installiere tk über pacman..."
+            if $SUDO_CMD pacman -S --noconfirm tk 2>&1 | tee -a "$LOG_FILE"; then
+                if python3 -c "import tkinter" 2>/dev/null; then
+                    log_and_echo "  ✓ tkinter erfolgreich installiert"
+                else
+                    log_and_echo "  ⚠ Installation meldete Erfolg, aber tkinter kann nicht importiert werden"
+                    ALL_OK=false
+                fi
+            else
+                log_and_echo "  ❌ Installation fehlgeschlagen"
+                log_and_echo "    Installieren Sie es manuell: $SUDO_CMD pacman -S tk"
+                ALL_OK=false
+            fi
+        else
+            log_and_echo "    Installieren Sie es manuell:"
+            log_and_echo "      Ubuntu/Debian/Mint: sudo apt-get install python3-tk"
+            log_and_echo "      Fedora/RHEL: sudo dnf install python3-tkinter"
+            log_and_echo "      Arch Linux: sudo pacman -S tk"
+            ALL_OK=false
+        fi
+    else
+        log_and_echo "    Installieren Sie es manuell:"
+        log_and_echo "      Ubuntu/Debian/Mint: sudo apt-get install python3-tk"
+        log_and_echo "      Fedora/RHEL: sudo dnf install python3-tkinter"
+        log_and_echo "      Arch Linux: sudo pacman -S tk"
+        ALL_OK=false
+    fi
     log_debug "tkinter FEHLT - Python kann es nicht importieren"
-    ALL_OK=false
 fi
 
 # Prüfe ffmpeg
