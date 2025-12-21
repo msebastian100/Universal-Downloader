@@ -6104,35 +6104,37 @@ def main():
     
     # Setze WM_CLASS für Linux (MUSS sofort nach tk.Tk() gesetzt werden, vor allem anderen)
     if sys.platform.startswith("linux"):
-        try:
-            # Setze WM_CLASS - wichtig für Linux Desktop Environments
-            # Das erste Element ist der Name, das zweite die Klasse
-            # Verwende beide Parameter explizit
-            root.wm_class("UniversalDownloader", "UniversalDownloader")
-            
-            # Setze auch über tk.call (direkter Zugriff)
+        def set_wm_class():
+            """Setze WM_CLASS mit mehreren Methoden für maximale Kompatibilität"""
             try:
+                # Methode 1: tkinter wm_class (beide Parameter)
+                root.wm_class("UniversalDownloader", "UniversalDownloader")
+            except:
+                pass
+            
+            try:
+                # Methode 2: Direkter tk.call Zugriff
                 root.tk.call('wm', 'class', root._w, 'UniversalDownloader')
             except:
                 pass
             
-            # Setze WM_NAME separat
             try:
+                # Methode 3: WM_NAME separat setzen
                 root.tk.call('wm', 'name', root._w, 'Universal Downloader')
             except:
                 pass
-                
-            # Setze auch RESOURCE_NAME im Tk-Interpreter
-            try:
-                root.tk.call('set', '::env(RESOURCE_NAME)', 'UniversalDownloader')
-            except:
-                pass
-        except Exception as e:
-            # Fallback
-            try:
-                root.wm_class("UniversalDownloader")
-            except:
-                pass
+        
+        # Setze sofort
+        set_wm_class()
+        
+        # Setze erneut nach update_idletasks (wenn Fenster vollständig initialisiert ist)
+        root.after(10, set_wm_class)
+        root.after(100, set_wm_class)
+        root.after(500, set_wm_class)
+        
+        # Verwende xprop als Fallback (nachdem Fenster erstellt wurde)
+        root.after(200, lambda: _set_wm_class_x11(root))
+        root.after(1000, lambda: _set_wm_class_x11(root))
     
     # Setze Fenstertitel (wichtig für Windows Taskleiste)
     root.title("Universal Downloader")
@@ -6182,18 +6184,25 @@ def _set_wm_class_x11(root):
         return
     
     try:
-        import subprocess
         # Hole Fenster-ID
         window_id = root.winfo_id()
         if window_id:
             # Verwende xprop um WM_CLASS zu setzen
             # Format: WM_CLASS(STRING) = "name", "class"
-            cmd = ['xprop', '-id', str(window_id), '-f', 'WM_CLASS', '8s', '-set', 'WM_CLASS', 'UniversalDownloader']
-            subprocess.run(cmd, capture_output=True, timeout=2, check=False)
+            # WICHTIG: xprop erwartet "name,class" als einen String
+            cmd = ['xprop', '-id', str(window_id), '-f', 'WM_CLASS', '8s', '-set', 'WM_CLASS', 'UniversalDownloader,UniversalDownloader']
+            result = subprocess.run(cmd, capture_output=True, timeout=2, check=False)
             
             # Setze auch WM_NAME
             cmd_name = ['xprop', '-id', str(window_id), '-f', 'WM_NAME', '8s', '-set', 'WM_NAME', 'Universal Downloader']
             subprocess.run(cmd_name, capture_output=True, timeout=2, check=False)
+            
+            # Setze auch _NET_WM_NAME (für moderne Desktop Environments)
+            try:
+                cmd_net_name = ['xprop', '-id', str(window_id), '-f', '_NET_WM_NAME', '8s', '-set', '_NET_WM_NAME', 'Universal Downloader']
+                subprocess.run(cmd_net_name, capture_output=True, timeout=2, check=False)
+            except:
+                pass
     except Exception:
         # xprop nicht verfügbar oder Fehler - ignoriere
         pass
