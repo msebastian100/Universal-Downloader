@@ -33,15 +33,22 @@ fi
 
 # Funktion zum gleichzeitigen Loggen und Ausgeben
 log_and_echo() {
+    local use_echo_e=false
+    if [ "$1" = "-e" ]; then
+        use_echo_e=true
+        shift
+    fi
     local message="$1"
     local timestamp=$(date '+%Y-%m-%d %H:%M:%S' 2>/dev/null || date)
     # Entferne Farbcodes für Log-Datei
-    local message_no_color=$(echo "$message" | sed 's/\x1b\[[0-9;]*m//g')
+    local message_no_color=$(echo -e "$message" | sed 's/\x1b\[[0-9;]*m//g')
     if [ "$CAN_LOG" = true ]; then
         echo "[$timestamp] $message_no_color" >> "$LOG_FILE" 2>/dev/null || true
+    fi
+    if [ "$use_echo_e" = true ]; then
         echo -e "[$timestamp] $message"
     else
-        echo -e "[$timestamp] $message"
+        echo "[$timestamp] $message"
     fi
 }
 
