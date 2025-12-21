@@ -104,11 +104,12 @@ if [ "$OS" = "Linux" ]; then
     
     # python3-venv - prüfe ob spezifisches Paket installiert ist
     PYTHON_MINOR_CHECK=$(python3 -c "import sys; print(sys.version_info.minor)" 2>/dev/null)
-    if dpkg -l 2>/dev/null | grep -q "^ii.*python${PYTHON_MINOR_CHECK}-venv"; then
-        log_and_echo "  ✓ python${PYTHON_MINOR_CHECK}-venv: installiert"
-        log_debug "python${PYTHON_MINOR_CHECK}-venv Paket gefunden"
+    VENV_PACKAGE_CHECK="python3.${PYTHON_MINOR_CHECK}-venv"
+    if dpkg -l 2>/dev/null | grep -q "^ii.*${VENV_PACKAGE_CHECK}"; then
+        log_and_echo "  ✓ ${VENV_PACKAGE_CHECK}: installiert"
+        log_debug "${VENV_PACKAGE_CHECK} Paket gefunden"
     elif python3 -m venv --help &> /dev/null 2>&1; then
-        log_and_echo "  ⚠ python3-venv: verfügbar (aber python${PYTHON_MINOR_CHECK}-venv fehlt möglicherweise)"
+        log_and_echo "  ⚠ python3-venv: verfügbar (aber ${VENV_PACKAGE_CHECK} fehlt möglicherweise)"
         log_debug "python3-venv generisch verfügbar, aber spezifisches Paket fehlt"
     else
         log_and_echo "  ✗ python3-venv: nicht verfügbar"
@@ -435,12 +436,22 @@ if [ "$OS" = "Linux" ]; then
     
     if command -v apt-get &> /dev/null; then
         # Prüfe ob python3.X-venv Paket installiert ist (Ubuntu/Debian)
-        log_debug "Prüfe ob python${PYTHON_MINOR_VERSION}-venv installiert ist..."
-        if dpkg -l | grep -q "^ii.*python${PYTHON_MINOR_VERSION}-venv"; then
+        VENV_PACKAGE_NAME="python3.${PYTHON_MINOR_VERSION}-venv"
+        log_debug "Prüfe ob $VENV_PACKAGE_NAME installiert ist..."
+        log_debug "Suche in dpkg -l nach: $VENV_PACKAGE_NAME"
+        
+        if dpkg -l 2>/dev/null | grep -q "^ii.*${VENV_PACKAGE_NAME}"; then
             VENV_PACKAGE_INSTALLED=true
-            log_debug "python${PYTHON_MINOR_VERSION}-venv ist installiert"
+            log_debug "$VENV_PACKAGE_NAME ist installiert"
         else
-            log_debug "python${PYTHON_MINOR_VERSION}-venv ist NICHT installiert"
+            log_debug "$VENV_PACKAGE_NAME ist NICHT installiert"
+            # Prüfe auch mit apt-cache ob Paket verfügbar ist
+            log_debug "Prüfe ob $VENV_PACKAGE_NAME in Repository verfügbar ist..."
+            if apt-cache search "^${VENV_PACKAGE_NAME}" 2>/dev/null | grep -q "^${VENV_PACKAGE_NAME}"; then
+                log_debug "$VENV_PACKAGE_NAME ist im Repository verfügbar"
+            else
+                log_debug "$VENV_PACKAGE_NAME ist NICHT im Repository verfügbar"
+            fi
         fi
         
         # Prüfe auch python3-venv (generisches Paket)
@@ -457,31 +468,70 @@ if [ "$OS" = "Linux" ]; then
                         log_debug "python3-venv funktioniert"
                     else
                         rm -rf "$TEST_VENV_DIR"
-                        log_debug "python3-venv installiert, aber funktioniert nicht (benötigt python${PYTHON_MINOR_VERSION}-venv)"
+                        log_debug "python3-venv installiert, aber funktioniert nicht (benötigt $VENV_PACKAGE_NAME)"
                     fi
                 fi
             fi
         fi
         
         if [ "$VENV_PACKAGE_INSTALLED" = false ]; then
-            log_and_echo "⚠ python${PYTHON_MINOR_VERSION}-venv nicht installiert - versuche Installation..."
-            log_debug "Starte Installation von python${PYTHON_MINOR_VERSION}-venv..."
-            log_debug "Befehl: $SUDO_CMD apt-get install -y python${PYTHON_MINOR_VERSION}-venv"
+            log_and_echo "⚠ $VENV_PACKAGE_NAME nicht installiert - versuche Installation..."
+            log_debug "Starte Installation von $VENV_PACKAGE_NAME..."
+            log_debug "Befehl: $SUDO_CMD apt-get install -y $VENV_PACKAGE_NAME"
+            
+            # System-Logs: Zeige verfügbare python3-venv Pakete
+            log_and_echo ""
+            log_and_echo "=== SYSTEM-LOGS: Verfügbare python3-venv Pakete ==="
+            apt-cache search "^python3.*venv" 2>/dev/null | head -20 | tee -a "$LOG_FILE" || true
+            log_and_echo "=================================================="
+            log_and_echo ""
             
             if $SUDO_CMD apt-get update 2>&1 | tee -a "$LOG_FILE"; then
-                log_debug "apt-get update erfolgreich"
-                if $SUDO_CMD apt-get install -y python${PYTHON_MINOR_VERSION}-venv 2>&1 | tee -a "$LOG_FILE"; then
-                    log_and_echo "✓ python${PYTHON_MINOR_VERSION}-venv erfolgreich installiert"
-                    VENV_PACKAGE_INSTALLED=true
-                else
-                    log_and_echo "❌ python${PYTHON_MINOR_VERSION}-venv Installation fehlgeschlagen"
-                    log_and_echo "  Versuche auch python3-venv zu installieren..."
-                    if $SUDO_CMD apt-get install -y python3-venv 2>&1 | tee -a "$LOG_FILE"; then
-                        log_and_echo "✓ python3-venv installiert (als Fallback)"
+                APT_UPDATE_EXIT=${PIPESTATUS[0]}
+                log_debug "apt-get update Exit-Code: $APT_UPDATE_EXIT"
+                if [ $APT_UPDATE_EXIT -eq 0 ]; then
+                    log_debug "apt-get update erfolgreich"
+                    
+                    # System-Logs: Zeige Paket-Informationen
+                    log_and_echo ""
+                    log_and_echo "=== SYSTEM-LOGS: Paket-Informationen ==="
+                    apt-cache show "$VENV_PACKAGE_NAME" 2>/dev/null | head -30 | tee -a "$LOG_FILE" || log_and_echo "Paket $VENV_PACKAGE_NAME nicht gefunden in Repository"
+                    log_and_echo "========================================"
+                    log_and_echo ""
+                    
+                    INSTALL_OUTPUT=$($SUDO_CMD apt-get install -y "$VENV_PACKAGE_NAME" 2>&1)
+                    INSTALL_EXIT=$?
+                    echo "$INSTALL_OUTPUT" | tee -a "$LOG_FILE"
+                    log_debug "apt-get install Exit-Code: $INSTALL_EXIT"
+                    
+                    if [ $INSTALL_EXIT -eq 0 ]; then
+                        # Prüfe ob Paket wirklich installiert wurde
+                        if dpkg -l 2>/dev/null | grep -q "^ii.*${VENV_PACKAGE_NAME}"; then
+                            log_and_echo "✓ $VENV_PACKAGE_NAME erfolgreich installiert"
+                            VENV_PACKAGE_INSTALLED=true
+                        else
+                            log_and_echo "⚠ Warnung: Installation meldete Erfolg, aber Paket ist nicht installiert"
+                            log_debug "Paket-Status nach Installation:"
+                            dpkg -l | grep -i "python.*venv" | tee -a "$LOG_FILE" || true
+                        fi
                     else
-                        log_and_echo "⚠ Warnung: Beide venv-Pakete konnten nicht installiert werden"
-                        log_and_echo "  Versuche venv trotzdem zu erstellen..."
+                        log_and_echo "❌ $VENV_PACKAGE_NAME Installation fehlgeschlagen (Exit-Code: $INSTALL_EXIT)"
+                        log_and_echo "  Fehler-Ausgabe:"
+                        echo "$INSTALL_OUTPUT" | grep -i "error\|fehl\|kann nicht" | tee -a "$LOG_FILE" || echo "$INSTALL_OUTPUT" | tail -5 | tee -a "$LOG_FILE"
+                        log_and_echo "  Versuche auch python3-venv zu installieren..."
+                        if $SUDO_CMD apt-get install -y python3-venv 2>&1 | tee -a "$LOG_FILE"; then
+                            INSTALL2_EXIT=${PIPESTATUS[0]}
+                            if [ $INSTALL2_EXIT -eq 0 ]; then
+                                log_and_echo "✓ python3-venv installiert (als Fallback)"
+                            else
+                                log_and_echo "⚠ Warnung: Beide venv-Pakete konnten nicht installiert werden"
+                                log_and_echo "  Versuche venv trotzdem zu erstellen..."
+                            fi
+                        fi
                     fi
+                else
+                    log_and_echo "❌ apt-get update fehlgeschlagen (Exit-Code: $APT_UPDATE_EXIT)"
+                    log_and_echo "  Siehe Log-Datei für Details: $LOG_FILE"
                 fi
             else
                 log_and_echo "❌ apt-get update fehlgeschlagen"
@@ -537,33 +587,89 @@ if [ ! -d "venv" ]; then
         log_debug "venv/bin/activate existiert: $([ -f "venv/bin/activate" ] && echo 'ja' || echo 'nein')"
         
         if echo "$VENV_OUTPUT" | grep -q "ensurepip is not available"; then
-            log_and_echo "  python${PYTHON_MINOR_VERSION}-venv fehlt - versuche Installation..."
+            log_and_echo "  $VENV_PACKAGE_NAME fehlt - versuche Installation..."
             if [ "$OS" = "Linux" ] && command -v apt-get &> /dev/null; then
                 log_debug "Starte apt-get update..."
+                
+                # System-Logs: Zeige verfügbare Pakete
+                log_and_echo ""
+                log_and_echo "=== SYSTEM-LOGS: Verfügbare python3-venv Pakete ==="
+                apt-cache search "^python3.*venv" 2>/dev/null | head -20 | tee -a "$LOG_FILE" || true
+                log_and_echo "=================================================="
+                log_and_echo ""
+                
                 if $SUDO_CMD apt-get update 2>&1 | tee -a "$LOG_FILE"; then
-                    log_debug "Installiere python${PYTHON_MINOR_VERSION}-venv..."
-                    if $SUDO_CMD apt-get install -y python${PYTHON_MINOR_VERSION}-venv 2>&1 | tee -a "$LOG_FILE"; then
-                        log_and_echo "  python${PYTHON_MINOR_VERSION}-venv installiert, versuche venv erneut zu erstellen..."
-                        # Lösche fehlerhaftes venv-Verzeichnis
-                        rm -rf venv
-                        log_debug "Erstelle venv erneut..."
-                        VENV_OUTPUT2=$(python3 -m venv venv 2>&1)
-                        VENV_EXIT2=$?
-                        echo "$VENV_OUTPUT2" | tee -a "$LOG_FILE"
-                        log_debug "venv Exit-Code (2. Versuch): $VENV_EXIT2"
+                    APT_UPDATE_EXIT=${PIPESTATUS[0]}
+                    log_debug "apt-get update Exit-Code: $APT_UPDATE_EXIT"
+                    
+                    if [ $APT_UPDATE_EXIT -eq 0 ]; then
+                        log_debug "Installiere $VENV_PACKAGE_NAME..."
                         
-                        if [ $VENV_EXIT2 -eq 0 ] && [ -d "venv" ] && [ -f "venv/bin/activate" ]; then
-                            log_and_echo "✓ Virtuelle Umgebung erstellt"
+                        # System-Logs: Zeige Paket-Informationen
+                        log_and_echo ""
+                        log_and_echo "=== SYSTEM-LOGS: Paket-Informationen für $VENV_PACKAGE_NAME ==="
+                        apt-cache show "$VENV_PACKAGE_NAME" 2>/dev/null | head -30 | tee -a "$LOG_FILE" || log_and_echo "Paket $VENV_PACKAGE_NAME nicht gefunden"
+                        log_and_echo "=============================================================="
+                        log_and_echo ""
+                        
+                        INSTALL_OUTPUT=$($SUDO_CMD apt-get install -y "$VENV_PACKAGE_NAME" 2>&1)
+                        INSTALL_EXIT=$?
+                        echo "$INSTALL_OUTPUT" | tee -a "$LOG_FILE"
+                        log_debug "apt-get install Exit-Code: $INSTALL_EXIT"
+                        
+                        if [ $INSTALL_EXIT -eq 0 ]; then
+                            # Prüfe ob Paket wirklich installiert wurde
+                            if dpkg -l 2>/dev/null | grep -q "^ii.*${VENV_PACKAGE_NAME}"; then
+                                log_and_echo "  $VENV_PACKAGE_NAME installiert, versuche venv erneut zu erstellen..."
+                                # Lösche fehlerhaftes venv-Verzeichnis
+                                rm -rf venv
+                                log_debug "Erstelle venv erneut..."
+                                VENV_OUTPUT2=$(python3 -m venv venv 2>&1)
+                                VENV_EXIT2=$?
+                                echo "$VENV_OUTPUT2" | tee -a "$LOG_FILE"
+                                log_debug "venv Exit-Code (2. Versuch): $VENV_EXIT2"
+                                
+                                if [ $VENV_EXIT2 -eq 0 ] && [ -d "venv" ] && [ -f "venv/bin/activate" ]; then
+                                    log_and_echo "✓ Virtuelle Umgebung erstellt"
+                                else
+                                    log_and_echo "❌ venv-Erstellung fehlgeschlagen (auch nach Installation)"
+                                    log_and_echo "  Fehler: $VENV_OUTPUT2"
+                                    
+                                    # System-Logs: Zeige installierte python3-venv Pakete
+                                    log_and_echo ""
+                                    log_and_echo "=== SYSTEM-LOGS: Installierte python3-venv Pakete ==="
+                                    dpkg -l | grep -i "python.*venv" | tee -a "$LOG_FILE" || log_and_echo "Keine python3-venv Pakete gefunden"
+                                    log_and_echo "======================================================"
+                                    log_and_echo ""
+                                    
+                                    log_and_echo "  Siehe Log-Datei für Details: $LOG_FILE"
+                                    exit_with_pause 1
+                                fi
+                            else
+                                log_and_echo "❌ Installation meldete Erfolg, aber Paket ist nicht installiert"
+                                log_debug "Paket-Status:"
+                                dpkg -l | grep -i "python.*venv" | tee -a "$LOG_FILE" || true
+                                exit_with_pause 1
+                            fi
                         else
-                            log_and_echo "❌ venv-Erstellung fehlgeschlagen (auch nach Installation)"
-                            log_and_echo "  Fehler: $VENV_OUTPUT2"
+                            log_and_echo "❌ $VENV_PACKAGE_NAME Installation fehlgeschlagen (Exit-Code: $INSTALL_EXIT)"
+                            log_and_echo "  Fehler-Ausgabe:"
+                            echo "$INSTALL_OUTPUT" | grep -i "error\|fehl\|kann nicht\|nicht gefunden" | tee -a "$LOG_FILE" || echo "$INSTALL_OUTPUT" | tail -10 | tee -a "$LOG_FILE"
+                            
+                            # System-Logs: Zeige alle verfügbaren python3 Pakete
+                            log_and_echo ""
+                            log_and_echo "=== SYSTEM-LOGS: Alle verfügbaren python3.*-venv Pakete ==="
+                            apt-cache search "^python3\." | grep "venv" | tee -a "$LOG_FILE" || true
+                            log_and_echo "=========================================================="
+                            log_and_echo ""
+                            
                             log_and_echo "  Siehe Log-Datei für Details: $LOG_FILE"
+                            log_and_echo "  Versuchen Sie manuell: $SUDO_CMD apt-get install $VENV_PACKAGE_NAME"
                             exit_with_pause 1
                         fi
                     else
-                        log_and_echo "❌ python${PYTHON_MINOR_VERSION}-venv Installation fehlgeschlagen"
+                        log_and_echo "❌ apt-get update fehlgeschlagen (Exit-Code: $APT_UPDATE_EXIT)"
                         log_and_echo "  Siehe Log-Datei für Details: $LOG_FILE"
-                        log_and_echo "  Versuchen Sie manuell: $SUDO_CMD apt-get install python${PYTHON_MINOR_VERSION}-venv"
                         exit_with_pause 1
                     fi
                 else
@@ -572,8 +678,8 @@ if [ ! -d "venv" ]; then
                     exit_with_pause 1
                 fi
             else
-                log_and_echo "  Bitte installieren Sie python${PYTHON_MINOR_VERSION}-venv manuell"
-                log_and_echo "  Ubuntu/Debian ARM: $SUDO_CMD apt-get install python${PYTHON_MINOR_VERSION}-venv"
+                log_and_echo "  Bitte installieren Sie $VENV_PACKAGE_NAME manuell"
+                log_and_echo "  Ubuntu/Debian ARM: $SUDO_CMD apt-get install $VENV_PACKAGE_NAME"
                 log_and_echo "  Siehe Log-Datei für Details: $LOG_FILE"
                 exit_with_pause 1
             fi
