@@ -1001,6 +1001,29 @@ if [ "$ALL_OK" = true ]; then
     log_and_echo "✓ Alle Abhängigkeiten sind installiert!"
     log_and_echo "=========================================="
     log_and_echo ""
+    
+    # Erstelle Startmenü-Verknüpfung
+    log_and_echo "Erstelle Startmenü-Verknüpfung..."
+    log_debug "Prüfe ob create_shortcut.py existiert..."
+    if [ -f "create_shortcut.py" ]; then
+        log_debug "Rufe create_shortcut.py auf..."
+        if python3 create_shortcut.py 2>&1 | tee -a "$LOG_FILE"; then
+            SHORTCUT_EXIT=${PIPESTATUS[0]}
+            if [ $SHORTCUT_EXIT -eq 0 ]; then
+                log_and_echo "✓ Startmenü-Verknüpfung erstellt"
+            else
+                log_and_echo "⚠ Konnte Startmenü-Verknüpfung nicht erstellen"
+                log_debug "create_shortcut.py Exit-Code: $SHORTCUT_EXIT"
+            fi
+        else
+            log_and_echo "⚠ Konnte Startmenü-Verknüpfung nicht erstellen"
+        fi
+    else
+        log_debug "create_shortcut.py nicht gefunden"
+        log_and_echo "⚠ create_shortcut.py nicht gefunden - überspringe Verknüpfung"
+    fi
+    log_and_echo ""
+    
     log_and_echo "System-Informationen:"
     log_and_echo "  Betriebssystem: $OS"
     log_and_echo "  Architektur: $ARCH"
@@ -1008,8 +1031,16 @@ if [ "$ALL_OK" = true ]; then
     log_and_echo "  pip: $PIP_VERSION"
     log_and_echo ""
     log_and_echo "Starten Sie die Anwendung mit:"
-    log_and_echo "  source venv/bin/activate"
-    log_and_echo "  python3 start.py"
+    if [ "$OS" = "Linux" ]; then
+        log_and_echo "  ./start.sh"
+        log_and_echo "  Oder über das Startmenü: Universal Downloader"
+    elif [ "$OS" = "Windows_NT" ] || [ "$OS" = "MINGW" ] || [ "$OS" = "MSYS" ]; then
+        log_and_echo "  start_launcher.vbs"
+        log_and_echo "  Oder über das Startmenü: Universal Downloader"
+    else
+        log_and_echo "  source venv/bin/activate"
+        log_and_echo "  python3 start.py"
+    fi
     log_and_echo ""
     log_and_echo "Log-Datei: $LOG_FILE"
 else

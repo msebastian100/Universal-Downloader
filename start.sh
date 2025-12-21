@@ -329,6 +329,27 @@ else
     log_and_echo ""
 fi
 
+# Erstelle Startmenü-Verknüpfung beim ersten Start (nur wenn nicht bereits vorhanden)
+log_and_echo "[INFO] Prüfe Startmenü-Verknüpfung..."
+log_debug "Prüfe ob create_shortcut.py existiert..."
+if [ -f "create_shortcut.py" ]; then
+    log_debug "Rufe create_shortcut.py auf..."
+    if python3 create_shortcut.py 2>&1 | tee -a "$LOG_FILE"; then
+        SHORTCUT_EXIT=${PIPESTATUS[0]}
+        if [ $SHORTCUT_EXIT -eq 0 ]; then
+            log_and_echo -e "${GREEN}✓${NC} Startmenü-Verknüpfung erstellt oder bereits vorhanden"
+        else
+            log_and_echo -e "${YELLOW}⚠${NC} Konnte Startmenü-Verknüpfung nicht erstellen"
+            log_debug "create_shortcut.py Exit-Code: $SHORTCUT_EXIT"
+        fi
+    else
+        log_and_echo -e "${YELLOW}⚠${NC} Konnte Startmenü-Verknüpfung nicht erstellen"
+    fi
+else
+    log_debug "create_shortcut.py nicht gefunden"
+fi
+log_and_echo ""
+
 log_debug "starte Anwendung..."
 
 # Starte Anwendung
