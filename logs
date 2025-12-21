@@ -1,31 +1,146 @@
-INFO] Starte Universal Downloader...
+[2025-12-21 14:22:56] ==========================================
+[2025-12-21 14:22:56] Universal Downloader - Installation
+[2025-12-21 14:22:56] ==========================================
+[2025-12-21 14:22:56] Log-Datei: /home/basti/Downloads/Universal-Downloader-main/install_debug_2025-12-21_14-22-56.log
+[2025-12-21 14:22:56] 
+[2025-12-21 14:22:56] [DEBUG] Betriebssystem erkannt: OS=Linux, ARCH=aarch64
+[2025-12-21 14:22:56] Betriebssystem: Linux
+[2025-12-21 14:22:56] Architektur: aarch64
+[2025-12-21 14:22:56] 
+[2025-12-21 14:22:56] Prüfe Python3...
+[2025-12-21 14:22:56] ✓ Python gefunden: Python 3.12.3
+[2025-12-21 14:22:56] [DEBUG] Python-Version: Python 3.12.3
+[2025-12-21 14:22:56] 
+[2025-12-21 14:22:56] Prüfe pip...
+[2025-12-21 14:22:56] [DEBUG] Prüfe pip Verfügbarkeit...
+[2025-12-21 14:22:58] ✓ pip gefunden: pip 24.0 from /usr/lib/python3/dist-packages/pip (python 3.12)
+[2025-12-21 14:22:58] [DEBUG] pip-Version: pip 24.0 from /usr/lib/python3/dist-packages/pip (python 3.12)
+[2025-12-21 14:22:58] 
+[2025-12-21 14:22:58] Erstelle virtuelle Umgebung...
+[2025-12-21 14:22:58] [DEBUG] Erstelle venv in: /home/basti/Downloads/Universal-Downloader-main/venv
+The virtual environment was not created successfully because ensurepip is not
+available.  On Debian/Ubuntu systems, you need to install the python3-venv
+package using the following command.
 
-[INFO] [2025-12-20 21:48:48] ============================================================
-[INFO] [2025-12-20 21:48:48] Universal Downloader wird gestartet...
-[INFO] [2025-12-20 21:48:48] Python-Version: 3.12.3 (main, Nov  6 2025, 13:44:16) [GCC 13.3.0]
-[INFO] [2025-12-20 21:48:48] Plattform: linux
-[INFO] [2025-12-20 21:48:48] Executable: /usr/bin/python3
-[INFO] [2025-12-20 21:48:48] Frozen: False
-[INFO] [2025-12-20 21:48:48] PID: 14134
-[INFO] [2025-12-20 21:48:48] Log-Datei: /home/basti/Downloads/Universal Downloader/Logs/start_debug_2025-12-20.log
-[INFO] [2025-12-20 21:48:48] Kein Restart-Flag gefunden - normaler Start
-[INFO] [2025-12-20 21:48:48] Importiere auto_install_dependencies...
-[INFO] [2025-12-20 21:48:48] Prüfe yt-dlp...
-[INFO] [2025-12-20 21:48:48] yt-dlp Status: FEHLT (Version: N/A)
-[INFO] [2025-12-20 21:48:48] Prüfe ffmpeg...
-[INFO] [2025-12-20 21:48:48] ffmpeg Status: OK (Version: ffmpeg version 6.1.1-3ubuntu5 Copyright (c) 2000-2023 the FFmpeg developers)
-[WARNING] [2025-12-20 21:48:48] Einige Abhängigkeiten fehlen - werden im Hintergrund installiert
-[INFO] [2025-12-20 21:48:48] Importiere gui...
-[ERROR] [2025-12-20 21:48:48] Fehler beim Importieren der Module: No module named 'tkinter'
-✗ Fehler beim Importieren der Module: No module named 'tkinter'
+    apt install python3.12-venv
 
-Bitte installieren Sie die Abhängigkeiten:
-  pip install -r requirements.txt
+You may need to use sudo with that command.  After installing the python3-venv
+package, recreate your virtual environment.
 
-Für detaillierte Prüfung:
-  python check_dependencies.py
+Failing command: /home/basti/Downloads/Universal-Downloader-main/venv/bin/python3
 
-❌ Anwendung wurde mit Fehler beendet (Exit-Code: 1)
+[2025-12-21 14:22:58] ✓ Virtuelle Umgebung erstellt
+[2025-12-21 14:22:58] 
+[2025-12-21 14:22:58] Aktiviere virtuelle Umgebung...
+[2025-12-21 14:22:58] [DEBUG] Aktiviere venv: source /home/basti/Downloads/Universal-Downloader-main/venv/bin/activate
+[2025-12-21 14:22:58] [DEBUG] venv aktiviert, Python: /usr/bin/python3
+[2025-12-21 14:22:58] Installiere Python-Abhängigkeiten...
+[2025-12-21 14:22:58] [DEBUG] Upgrade pip...
+error: externally-managed-environment
 
-Drücken Sie eine Taste zum Beenden...
+× This environment is externally managed
+╰─> To install Python packages system-wide, try apt install
+    python3-xyz, where xyz is the package you are trying to
+    install.
+    
+    If you wish to install a non-Debian-packaged Python package,
+    create a virtual environment using python3 -m venv path/to/venv.
+    Then use path/to/venv/bin/python and path/to/venv/bin/pip. Make
+    sure you have python3-full installed.
+    
+    If you wish to install a non-Debian packaged Python application,
+    it may be easiest to use pipx install xyz, which will manage a
+    virtual environment for you. Make sure you have pipx installed.
+    
+    See /usr/share/doc/python3.12/README.venv for more information.
 
+note: If you believe this is a mistake, please contact your Python installation or OS distribution provider. You can override this, at the risk of breaking your Python installation or OS, by passing --break-system-packages.
+hint: See PEP 668 for the detailed specification.
+[2025-12-21 14:22:59] [DEBUG] pip upgrade erfolgreich
+[2025-12-21 14:22:59] [DEBUG] Installiere requirements.txt...
+[2025-12-21 14:22:59] [DEBUG] requirements.txt gefunden, starte Installation...
+error: externally-managed-environment
+
+× This environment is externally managed
+╰─> To install Python packages system-wide, try apt install
+    python3-xyz, where xyz is the package you are trying to
+    install.
+    
+    If you wish to install a non-Debian-packaged Python package,
+    create a virtual environment using python3 -m venv path/to/venv.
+    Then use path/to/venv/bin/python and path/to/venv/bin/pip. Make
+    sure you have python3-full installed.
+    
+    If you wish to install a non-Debian packaged Python application,
+    it may be easiest to use pipx install xyz, which will manage a
+    virtual environment for you. Make sure you have pipx installed.
+    
+    See /usr/share/doc/python3.12/README.venv for more information.
+
+note: If you believe this is a mistake, please contact your Python installation or OS distribution provider. You can override this, at the risk of breaking your Python installation or OS, by passing --break-system-packages.
+hint: See PEP 668 for the detailed specification.
+[2025-12-21 14:22:59] ✓ Python-Abhängigkeiten installiert
+[2025-12-21 14:22:59] 
+[2025-12-21 14:22:59] Prüfe System-Abhängigkeiten...
+[2025-12-21 14:22:59] 
+[2025-12-21 14:23:01] 
+[2025-12-21 14:23:01] ==========================================
+[2025-12-21 14:23:01] Installations-Status
+[2025-12-21 14:23:01] ==========================================
+[2025-12-21 14:23:01] 
+[2025-12-21 14:23:01] Python-Pakete aus requirements.txt:
+[2025-12-21 14:23:01]   ✓ requests
+[2025-12-21 14:23:01] [DEBUG] Paket requests (requests) ist installiert
+[2025-12-21 14:23:01]   ✗ mutagen
+[2025-12-21 14:23:01] [DEBUG] Paket mutagen (mutagen) FEHLT
+[2025-12-21 14:23:01]   ✓ Pillow
+[2025-12-21 14:23:01] [DEBUG] Paket Pillow (PIL) ist installiert
+[2025-12-21 14:23:02]   ✗ deezer-python
+[2025-12-21 14:23:02] [DEBUG] Paket deezer-python (deezer) FEHLT
+[2025-12-21 14:23:02]   ✗ yt-dlp
+[2025-12-21 14:23:02] [DEBUG] Paket yt-dlp (yt_dlp) FEHLT
+[2025-12-21 14:23:02]   ✗ beautifulsoup4
+[2025-12-21 14:23:02] [DEBUG] Paket beautifulsoup4 (bs4) FEHLT
+[2025-12-21 14:23:02]   ✗ selenium
+[2025-12-21 14:23:02] [DEBUG] Paket selenium (selenium) FEHLT
+[2025-12-21 14:23:03]   ✗ audible
+[2025-12-21 14:23:03] [DEBUG] Paket audible (audible) FEHLT
+[2025-12-21 14:23:03]   ✗ browser-cookie3
+[2025-12-21 14:23:03] [DEBUG] Paket browser-cookie3 (browser_cookie3) FEHLT
+[2025-12-21 14:23:03] 
+[2025-12-21 14:23:03] System-Abhängigkeiten:
+[2025-12-21 14:23:03] [DEBUG] Prüfe tkinter...
+[2025-12-21 14:23:03]   ✗ tkinter (GUI-Bibliothek) - FEHLT!
+[2025-12-21 14:23:03]     Installieren Sie es mit:
+[2025-12-21 14:23:03]       Ubuntu/Debian/Mint: sudo apt-get install python3-tk
+[2025-12-21 14:23:03]       Fedora/RHEL: sudo dnf install python3-tkinter
+[2025-12-21 14:23:03]       Arch Linux: sudo pacman -S tk
+[2025-12-21 14:23:03] [DEBUG] tkinter FEHLT - Python kann es nicht importieren
+[2025-12-21 14:23:03] [DEBUG] Prüfe ffmpeg...
+[2025-12-21 14:23:03]   ✓ ffmpeg
+[2025-12-21 14:23:03] [DEBUG] ffmpeg gefunden: /usr/bin/ffmpeg
+[2025-12-21 14:23:03] [DEBUG] Prüfe yt-dlp...
+[2025-12-21 14:23:04]   ✗ yt-dlp
+[2025-12-21 14:23:04] [DEBUG] yt-dlp FEHLT
+[2025-12-21 14:23:04] 
+[2025-12-21 14:23:04] ==========================================
+[2025-12-21 14:23:04] ⚠ Einige Abhängigkeiten fehlen!
+[2025-12-21 14:23:04] ==========================================
+[2025-12-21 14:23:04] 
+[2025-12-21 14:23:04] System-Informationen:
+[2025-12-21 14:23:04]   Betriebssystem: Linux
+[2025-12-21 14:23:04]   Architektur: aarch64
+[2025-12-21 14:23:04]   Python: Python 3.12.3
+[2025-12-21 14:23:04]   pip: pip 24.0 from /usr/lib/python3/dist-packages/pip (python 3.12)
+[2025-12-21 14:23:04] 
+[2025-12-21 14:23:04] Bitte installieren Sie fehlende Pakete:
+[2025-12-21 14:23:04]   source venv/bin/activate
+[2025-12-21 14:23:04]   pip install -r requirements.txt
+[2025-12-21 14:23:04] 
+[2025-12-21 14:23:04] Oder prüfen Sie die Abhängigkeiten mit:
+[2025-12-21 14:23:04]   python3 check_dependencies.py
+[2025-12-21 14:23:04] 
+[2025-12-21 14:23:04] Detaillierte Fehlerinformationen finden Sie in der Log-Datei:
+[2025-12-21 14:23:04]   /home/basti/Downloads/Universal-Downloader-main/install_debug_2025-12-21_14-22-56.log
+[2025-12-21 14:23:04] 
+[2025-12-21 14:23:04] Drücken Sie eine beliebige Taste zum Beenden...
