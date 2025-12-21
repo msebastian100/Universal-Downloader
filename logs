@@ -1,30 +1,47 @@
-[2025-12-21 14:33:02] ==========================================
-[2025-12-21 14:33:02] Universal Downloader - Installation
-[2025-12-21 14:33:02] ==========================================
-[2025-12-21 14:33:02] Log-Datei: /home/basti/Downloads/Universal-Downloader-main(1)/Universal-Downloader-main/install_debug_2025-12-21_14-33-02.log
-[2025-12-21 14:33:02] 
-[2025-12-21 14:33:02] [DEBUG] Betriebssystem erkannt: OS=Linux, ARCH=aarch64
-[2025-12-21 14:33:02] Betriebssystem: Linux
-[2025-12-21 14:33:02] Architektur: aarch64
-[2025-12-21 14:33:02] 
-[2025-12-21 14:33:02] [DEBUG] sudo gefunden
-[2025-12-21 14:33:02] ⚠ sudo benötigt Passwort - Sie werden möglicherweise nach Ihrem Passwort gefragt
-[2025-12-21 14:33:02] [DEBUG] SUDO_CMD: sudo, IS_ROOT: false
-[2025-12-21 14:33:02] Prüfe Python3...
-[2025-12-21 14:33:02] ✓ Python gefunden: Python 3.12.3
-[2025-12-21 14:33:02] [DEBUG] Python-Version: Python 3.12.3
-[2025-12-21 14:33:02] 
-[2025-12-21 14:33:02] Prüfe pip...
-[2025-12-21 14:33:02] [DEBUG] Prüfe pip Verfügbarkeit...
-[2025-12-21 14:33:04] ✓ pip gefunden: pip 24.0 from /usr/lib/python3/dist-packages/pip (python 3.12)
-[2025-12-21 14:33:04] [DEBUG] pip-Version: pip 24.0 from /usr/lib/python3/dist-packages/pip (python 3.12)
-[2025-12-21 14:33:04] 
-[2025-12-21 14:33:04] Prüfe python3-venv...
-[2025-12-21 14:33:04] [DEBUG] Prüfe ob python3-venv installiert ist...
-[2025-12-21 14:33:04] [DEBUG] python3-venv ist verfügbar
-[2025-12-21 14:33:04] 
-[2025-12-21 14:33:04] Erstelle virtuelle Umgebung...
-[2025-12-21 14:33:04] [DEBUG] Erstelle venv in: /home/basti/Downloads/Universal-Downloader-main(1)/Universal-Downloader-main/venv
+[2025-12-21 14:40:39] ==========================================
+[2025-12-21 14:40:39] Universal Downloader - Installation
+[2025-12-21 14:40:39] ==========================================
+[2025-12-21 14:40:39] Log-Datei: /home/basti/Downloads/Universal-Downloader-main(2)/Universal-Downloader-main/install_debug_2025-12-21_14-40-39.log
+[2025-12-21 14:40:39] 
+[2025-12-21 14:40:39] [DEBUG] Betriebssystem erkannt: OS=Linux, ARCH=aarch64
+[2025-12-21 14:40:39] System-Informationen:
+[2025-12-21 14:40:39]   Betriebssystem: Linux
+[2025-12-21 14:40:39]   Architektur: aarch64
+[2025-12-21 14:40:40]   Kernel: 6.8.0-90-generic
+[2025-12-21 14:40:40]   Hostname: basti
+[2025-12-21 14:40:40]   Benutzer: basti
+[2025-12-21 14:40:40]   Home-Verzeichnis: /home/basti
+[2025-12-21 14:40:40]   Arbeitsverzeichnis: /home/basti/Downloads/Universal-Downloader-main(2)/Universal-Downloader-main
+[2025-12-21 14:40:40] 
+[2025-12-21 14:40:40] Installierte System-Pakete (relevant):
+[2025-12-21 14:40:40]   ✓ Python: Python 3.12.3 (/usr/bin/python3)
+[2025-12-21 14:40:40] [DEBUG] Python gefunden: Python 3.12.3
+[2025-12-21 14:40:40]   ✓ pip: pip 24.0 from /usr/lib/python3/dist-packages/pip (python 3.12)
+[2025-12-21 14:40:40]   ✓ python3-venv: verfügbar
+[2025-12-21 14:40:41]   ✗ python3-tk: nicht installiert
+[2025-12-21 14:40:41]   ✓ ffmpeg: ffmpeg version 6.1.1-3ubuntu5 Copyright (c) 2000-2023 the FFmpeg developers
+[2025-12-21 14:40:41]   ✗ yt-dlp: nicht installiert
+[2025-12-21 14:40:41]   ✓ sudo: Sudo-Version 1.9.15p5
+[2025-12-21 14:40:41]   ✓ apt-get: apt 2.8.3 (arm64)
+[2025-12-21 14:40:41] 
+[2025-12-21 14:40:41] [DEBUG] sudo gefunden
+[2025-12-21 14:40:41] ⚠ sudo benötigt Passwort - Sie werden möglicherweise nach Ihrem Passwort gefragt
+[2025-12-21 14:40:41] [DEBUG] SUDO_CMD: sudo, IS_ROOT: false
+[2025-12-21 14:40:41] Prüfe Python3...
+[2025-12-21 14:40:41] ✓ Python gefunden: Python 3.12.3
+[2025-12-21 14:40:41] [DEBUG] Python-Version: Python 3.12.3
+[2025-12-21 14:40:41] 
+[2025-12-21 14:40:41] Prüfe pip...
+[2025-12-21 14:40:41] [DEBUG] Prüfe pip Verfügbarkeit...
+[2025-12-21 14:40:42] ✓ pip gefunden: pip 24.0 from /usr/lib/python3/dist-packages/pip (python 3.12)
+[2025-12-21 14:40:42] [DEBUG] pip-Version: pip 24.0 from /usr/lib/python3/dist-packages/pip (python 3.12)
+[2025-12-21 14:40:42] 
+[2025-12-21 14:40:42] Prüfe python3-venv...
+[2025-12-21 14:40:42] [DEBUG] Prüfe ob python3-venv installiert ist...
+[2025-12-21 14:40:43] [DEBUG] python3-venv ist verfügbar
+[2025-12-21 14:40:43] 
+[2025-12-21 14:40:43] Erstelle virtuelle Umgebung...
+[2025-12-21 14:40:43] [DEBUG] Erstelle venv in: /home/basti/Downloads/Universal-Downloader-main(2)/Universal-Downloader-main/venv
 The virtual environment was not created successfully because ensurepip is not
 available.  On Debian/Ubuntu systems, you need to install the python3-venv
 package using the following command.
@@ -34,9 +51,9 @@ package using the following command.
 You may need to use sudo with that command.  After installing the python3-venv
 package, recreate your virtual environment.
 
-Failing command: /home/basti/Downloads/Universal-Downloader-main(1)/Universal-Downloader-main/venv/bin/python3
-[2025-12-21 14:33:04] ❌ Fehler beim Erstellen der virtuellen Umgebung
-[2025-12-21 14:33:04]   Fehler: The virtual environment was not created successfully because ensurepip is not
+Failing command: /home/basti/Downloads/Universal-Downloader-main(2)/Universal-Downloader-main/venv/bin/python3
+[2025-12-21 14:40:43] ❌ Fehler beim Erstellen der virtuellen Umgebung
+[2025-12-21 14:40:43]   Fehler: The virtual environment was not created successfully because ensurepip is not
 available.  On Debian/Ubuntu systems, you need to install the python3-venv
 package using the following command.
 
@@ -45,5 +62,7 @@ package using the following command.
 You may need to use sudo with that command.  After installing the python3-venv
 package, recreate your virtual environment.
 
-Failing command: /home/basti/Downloads/Universal-Downloader-main(1)/Universal-Downloader-main/venv/bin/python3
-[2025-12-21 14:33:04]   Siehe Log-Datei für Details: /home/basti/Downloads/Universal-Downloader-main(1)/Universal-Downloader-main/install_debug_2025-12-21_14-33-02.log
+Failing command: /home/basti/Downloads/Universal-Downloader-main(2)/Universal-Downloader-main/venv/bin/python3
+[2025-12-21 14:40:43]   Siehe Log-Datei für Details: /home/basti/Downloads/Universal-Downloader-main(2)/Universal-Downloader-main/install_debug_2025-12-21_14-40-39.log
+[2025-12-21 14:40:43] 
+[2025-12-21 14:40:43] Drücken Sie eine beliebige Taste zum Beenden...
