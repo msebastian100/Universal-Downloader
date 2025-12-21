@@ -73,6 +73,10 @@ log_and_echo "Log-Datei: $LOG_FILE"
 log_and_echo "Verzeichnis: $SCRIPT_DIR"
 log_debug "Skript gestartet: $0"
 log_debug "Argumente: $@"
+
+# Erkenne Betriebssystem
+OS="$(uname -s)"
+log_debug "Betriebssystem: $OS"
 log_and_echo ""
 
 # Prüfe Python
