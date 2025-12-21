@@ -6176,6 +6176,29 @@ def main():
     root.mainloop()
 
 
+def _set_wm_class_x11(root):
+    """Setze WM_CLASS über xprop (X11 direkt) - Fallback-Methode"""
+    if not sys.platform.startswith("linux"):
+        return
+    
+    try:
+        import subprocess
+        # Hole Fenster-ID
+        window_id = root.winfo_id()
+        if window_id:
+            # Verwende xprop um WM_CLASS zu setzen
+            # Format: WM_CLASS(STRING) = "name", "class"
+            cmd = ['xprop', '-id', str(window_id), '-f', 'WM_CLASS', '8s', '-set', 'WM_CLASS', 'UniversalDownloader']
+            subprocess.run(cmd, capture_output=True, timeout=2, check=False)
+            
+            # Setze auch WM_NAME
+            cmd_name = ['xprop', '-id', str(window_id), '-f', 'WM_NAME', '8s', '-set', 'WM_NAME', 'Universal Downloader']
+            subprocess.run(cmd_name, capture_output=True, timeout=2, check=False)
+    except Exception:
+        # xprop nicht verfügbar oder Fehler - ignoriere
+        pass
+
+
 if __name__ == "__main__":
     main()
 
