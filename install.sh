@@ -102,11 +102,17 @@ if [ "$OS" = "Linux" ]; then
         log_and_echo "  ✗ pip: nicht installiert"
     fi
     
-    # python3-venv
-    if python3 -m venv --help &> /dev/null 2>&1; then
-        log_and_echo "  ✓ python3-venv: verfügbar"
+    # python3-venv - prüfe ob spezifisches Paket installiert ist
+    PYTHON_MINOR_CHECK=$(python3 -c "import sys; print(sys.version_info.minor)" 2>/dev/null)
+    if dpkg -l 2>/dev/null | grep -q "^ii.*python${PYTHON_MINOR_CHECK}-venv"; then
+        log_and_echo "  ✓ python${PYTHON_MINOR_CHECK}-venv: installiert"
+        log_debug "python${PYTHON_MINOR_CHECK}-venv Paket gefunden"
+    elif python3 -m venv --help &> /dev/null 2>&1; then
+        log_and_echo "  ⚠ python3-venv: verfügbar (aber python${PYTHON_MINOR_CHECK}-venv fehlt möglicherweise)"
+        log_debug "python3-venv generisch verfügbar, aber spezifisches Paket fehlt"
     else
         log_and_echo "  ✗ python3-venv: nicht verfügbar"
+        log_debug "python3-venv nicht gefunden"
     fi
     
     # tkinter
@@ -419,27 +425,87 @@ log_and_echo ""
 if [ "$OS" = "Linux" ]; then
     log_and_echo "Prüfe python3-venv..."
     log_debug "Prüfe ob python3-venv installiert ist..."
-    if ! python3 -m venv --help &> /dev/null; then
-        log_and_echo "⚠ python3-venv nicht verfügbar - versuche Installation..."
-        if command -v apt-get &> /dev/null; then
-            PYTHON_MINOR_VERSION=$(python3 -c "import sys; print(sys.version_info.minor)" 2>/dev/null)
-            log_debug "Python Minor-Version: $PYTHON_MINOR_VERSION"
-            if $SUDO_CMD apt-get install -y python3-venv python${PYTHON_MINOR_VERSION}-venv 2>&1 | tee -a "$LOG_FILE"; then
-                log_and_echo "✓ python3-venv erfolgreich installiert"
-            else
-                log_and_echo "⚠ Warnung: python3-venv Installation fehlgeschlagen"
-                log_and_echo "  Versuche venv trotzdem zu erstellen..."
+    
+    PYTHON_MAJOR_VERSION=$(python3 -c "import sys; print(sys.version_info.major)" 2>/dev/null)
+    PYTHON_MINOR_VERSION=$(python3 -c "import sys; print(sys.version_info.minor)" 2>/dev/null)
+    log_debug "Python Version: $PYTHON_MAJOR_VERSION.$PYTHON_MINOR_VERSION"
+    log_debug "Architektur: $ARCH"
+    
+    VENV_PACKAGE_INSTALLED=false
+    
+    if command -v apt-get &> /dev/null; then
+        # Prüfe ob python3.X-venv Paket installiert ist (Ubuntu/Debian)
+        log_debug "Prüfe ob python${PYTHON_MINOR_VERSION}-venv installiert ist..."
+        if dpkg -l | grep -q "^ii.*python${PYTHON_MINOR_VERSION}-venv"; then
+            VENV_PACKAGE_INSTALLED=true
+            log_debug "python${PYTHON_MINOR_VERSION}-venv ist installiert"
+        else
+            log_debug "python${PYTHON_MINOR_VERSION}-venv ist NICHT installiert"
+        fi
+        
+        # Prüfe auch python3-venv (generisches Paket)
+        if [ "$VENV_PACKAGE_INSTALLED" = false ]; then
+            if dpkg -l | grep -q "^ii.*python3-venv"; then
+                log_debug "python3-venv (generisch) ist installiert"
+                # Teste ob es funktioniert
+                if python3 -m venv --help &> /dev/null 2>&1; then
+                    # Teste ob venv tatsächlich erstellt werden kann
+                    TEST_VENV_DIR="/tmp/test_venv_$$"
+                    if python3 -m venv "$TEST_VENV_DIR" &> /dev/null 2>&1; then
+                        VENV_PACKAGE_INSTALLED=true
+                        rm -rf "$TEST_VENV_DIR"
+                        log_debug "python3-venv funktioniert"
+                    else
+                        rm -rf "$TEST_VENV_DIR"
+                        log_debug "python3-venv installiert, aber funktioniert nicht (benötigt python${PYTHON_MINOR_VERSION}-venv)"
+                    fi
+                fi
             fi
-        elif command -v dnf &> /dev/null; then
+        fi
+        
+        if [ "$VENV_PACKAGE_INSTALLED" = false ]; then
+            log_and_echo "⚠ python${PYTHON_MINOR_VERSION}-venv nicht installiert - versuche Installation..."
+            log_debug "Starte Installation von python${PYTHON_MINOR_VERSION}-venv..."
+            log_debug "Befehl: $SUDO_CMD apt-get install -y python${PYTHON_MINOR_VERSION}-venv"
+            
+            if $SUDO_CMD apt-get update 2>&1 | tee -a "$LOG_FILE"; then
+                log_debug "apt-get update erfolgreich"
+                if $SUDO_CMD apt-get install -y python${PYTHON_MINOR_VERSION}-venv 2>&1 | tee -a "$LOG_FILE"; then
+                    log_and_echo "✓ python${PYTHON_MINOR_VERSION}-venv erfolgreich installiert"
+                    VENV_PACKAGE_INSTALLED=true
+                else
+                    log_and_echo "❌ python${PYTHON_MINOR_VERSION}-venv Installation fehlgeschlagen"
+                    log_and_echo "  Versuche auch python3-venv zu installieren..."
+                    if $SUDO_CMD apt-get install -y python3-venv 2>&1 | tee -a "$LOG_FILE"; then
+                        log_and_echo "✓ python3-venv installiert (als Fallback)"
+                    else
+                        log_and_echo "⚠ Warnung: Beide venv-Pakete konnten nicht installiert werden"
+                        log_and_echo "  Versuche venv trotzdem zu erstellen..."
+                    fi
+                fi
+            else
+                log_and_echo "❌ apt-get update fehlgeschlagen"
+                log_and_echo "  Siehe Log-Datei für Details: $LOG_FILE"
+            fi
+        else
+            log_debug "python3-venv ist bereits installiert"
+        fi
+    elif command -v dnf &> /dev/null; then
+        # Fedora/RHEL
+        if rpm -q python3-venv &> /dev/null; then
+            VENV_PACKAGE_INSTALLED=true
+            log_debug "python3-venv ist installiert (rpm)"
+        else
+            log_and_echo "⚠ python3-venv nicht installiert - versuche Installation..."
             if $SUDO_CMD dnf install -y python3-venv 2>&1 | tee -a "$LOG_FILE"; then
                 log_and_echo "✓ python3-venv erfolgreich installiert"
+                VENV_PACKAGE_INSTALLED=true
             else
                 log_and_echo "⚠ Warnung: python3-venv Installation fehlgeschlagen"
             fi
         fi
-    else
-        log_debug "python3-venv ist verfügbar"
     fi
+    
     log_and_echo ""
 fi
 
@@ -447,41 +513,72 @@ fi
 if [ ! -d "venv" ]; then
     log_and_echo "Erstelle virtuelle Umgebung..."
     log_debug "Erstelle venv in: $SCRIPT_DIR/venv"
+    log_debug "Python-Version: $PYTHON_MAJOR_VERSION.$PYTHON_MINOR_VERSION"
+    log_debug "Architektur: $ARCH"
+    
+    # Lösche eventuell vorhandenes fehlerhaftes venv-Verzeichnis
+    if [ -d "venv" ] && [ ! -f "venv/bin/activate" ]; then
+        log_debug "Lösche fehlerhaftes venv-Verzeichnis..."
+        rm -rf venv
+    fi
+    
     VENV_OUTPUT=$(python3 -m venv venv 2>&1)
     VENV_EXIT=$?
     echo "$VENV_OUTPUT" | tee -a "$LOG_FILE"
+    log_debug "venv Exit-Code: $VENV_EXIT"
     
     if [ $VENV_EXIT -eq 0 ] && [ -d "venv" ] && [ -f "venv/bin/activate" ]; then
         log_and_echo "✓ Virtuelle Umgebung erstellt"
+        log_debug "venv erfolgreich erstellt: $(ls -la venv/bin/activate 2>/dev/null || echo 'nicht gefunden')"
     else
         log_and_echo "❌ Fehler beim Erstellen der virtuellen Umgebung"
         log_and_echo "  Fehler: $VENV_OUTPUT"
+        log_debug "venv-Verzeichnis existiert: $([ -d "venv" ] && echo 'ja' || echo 'nein')"
+        log_debug "venv/bin/activate existiert: $([ -f "venv/bin/activate" ] && echo 'ja' || echo 'nein')"
+        
         if echo "$VENV_OUTPUT" | grep -q "ensurepip is not available"; then
-            log_and_echo "  python3-venv fehlt - versuche Installation..."
+            log_and_echo "  python${PYTHON_MINOR_VERSION}-venv fehlt - versuche Installation..."
             if [ "$OS" = "Linux" ] && command -v apt-get &> /dev/null; then
-                PYTHON_MINOR_VERSION=$(python3 -c "import sys; print(sys.version_info.minor)" 2>/dev/null)
-                log_and_echo "  Installiere python${PYTHON_MINOR_VERSION}-venv..."
-                if $SUDO_CMD apt-get install -y python${PYTHON_MINOR_VERSION}-venv 2>&1 | tee -a "$LOG_FILE"; then
-                    log_and_echo "  Versuche venv erneut zu erstellen..."
-                    if python3 -m venv venv 2>&1 | tee -a "$LOG_FILE"; then
-                        log_and_echo "✓ Virtuelle Umgebung erstellt"
+                log_debug "Starte apt-get update..."
+                if $SUDO_CMD apt-get update 2>&1 | tee -a "$LOG_FILE"; then
+                    log_debug "Installiere python${PYTHON_MINOR_VERSION}-venv..."
+                    if $SUDO_CMD apt-get install -y python${PYTHON_MINOR_VERSION}-venv 2>&1 | tee -a "$LOG_FILE"; then
+                        log_and_echo "  python${PYTHON_MINOR_VERSION}-venv installiert, versuche venv erneut zu erstellen..."
+                        # Lösche fehlerhaftes venv-Verzeichnis
+                        rm -rf venv
+                        log_debug "Erstelle venv erneut..."
+                        VENV_OUTPUT2=$(python3 -m venv venv 2>&1)
+                        VENV_EXIT2=$?
+                        echo "$VENV_OUTPUT2" | tee -a "$LOG_FILE"
+                        log_debug "venv Exit-Code (2. Versuch): $VENV_EXIT2"
+                        
+                        if [ $VENV_EXIT2 -eq 0 ] && [ -d "venv" ] && [ -f "venv/bin/activate" ]; then
+                            log_and_echo "✓ Virtuelle Umgebung erstellt"
+                        else
+                            log_and_echo "❌ venv-Erstellung fehlgeschlagen (auch nach Installation)"
+                            log_and_echo "  Fehler: $VENV_OUTPUT2"
+                            log_and_echo "  Siehe Log-Datei für Details: $LOG_FILE"
+                            exit_with_pause 1
+                        fi
                     else
-                        log_and_echo "❌ venv-Erstellung fehlgeschlagen"
+                        log_and_echo "❌ python${PYTHON_MINOR_VERSION}-venv Installation fehlgeschlagen"
                         log_and_echo "  Siehe Log-Datei für Details: $LOG_FILE"
+                        log_and_echo "  Versuchen Sie manuell: $SUDO_CMD apt-get install python${PYTHON_MINOR_VERSION}-venv"
                         exit_with_pause 1
                     fi
                 else
-                    log_and_echo "❌ python3-venv Installation fehlgeschlagen"
+                    log_and_echo "❌ apt-get update fehlgeschlagen"
                     log_and_echo "  Siehe Log-Datei für Details: $LOG_FILE"
                     exit_with_pause 1
                 fi
             else
-                log_and_echo "  Bitte installieren Sie python3-venv manuell"
-                log_and_echo "  Ubuntu/Debian: $SUDO_CMD apt-get install python3-venv"
+                log_and_echo "  Bitte installieren Sie python${PYTHON_MINOR_VERSION}-venv manuell"
+                log_and_echo "  Ubuntu/Debian ARM: $SUDO_CMD apt-get install python${PYTHON_MINOR_VERSION}-venv"
                 log_and_echo "  Siehe Log-Datei für Details: $LOG_FILE"
                 exit_with_pause 1
             fi
         else
+            log_and_echo "  Unbekannter Fehler beim Erstellen der venv"
             log_and_echo "  Siehe Log-Datei für Details: $LOG_FILE"
             exit_with_pause 1
         fi
