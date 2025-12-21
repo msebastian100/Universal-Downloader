@@ -231,7 +231,7 @@ Type=Application
 Name=Universal Downloader
 GenericName=Universal Downloader
 Comment=Downloader für Musik und Videos von verschiedenen Plattformen
-Exec=bash "{start_script}"
+Exec=env RESOURCE_NAME=UniversalDownloader bash "{start_script}"
 Path={script_dir}
 Icon={system_icon_path if system_icon_path else icon_path}
 Terminal=false
