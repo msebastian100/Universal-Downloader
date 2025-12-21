@@ -70,20 +70,16 @@ class DeezerDownloaderGUI:
         self.root = root
         self.root.title("Universal Downloader")
         
-        # Setze WM_CLASS für Linux (wichtig für Taskleiste und Icon)
+        # Setze WM_CLASS für Linux erneut (falls es in main() nicht funktioniert hat)
         if sys.platform.startswith("linux"):
             try:
-                # Setze WM_CLASS (Name und Klasse)
-                # Das erste Element ist der Name, das zweite die Klasse
-                # Linux Desktop Environments verwenden das für Icon und Name
-                self.root.wm_class("UniversalDownloader")
-                # Alternative: Setze beide separat
+                # Versuche verschiedene Methoden
+                self.root.wm_class("UniversalDownloader", "UniversalDownloader")
                 self.root.tk.call('wm', 'class', self.root._w, 'UniversalDownloader')
                 self.root.tk.call('wm', 'name', self.root._w, 'Universal Downloader')
-            except Exception as e:
-                # Fallback falls wm_class nicht funktioniert
+            except Exception:
                 try:
-                    self.root.wm_class("UniversalDownloader", "UniversalDownloader")
+                    self.root.wm_class("UniversalDownloader")
                 except:
                     pass
         
@@ -6100,25 +6096,46 @@ Copyright (c) 2025 Universal Downloader Contributors
 
 def main():
     """Hauptfunktion"""
+    # Setze RESOURCE_NAME Umgebungsvariable für Linux (MUSS vor tk.Tk() gesetzt werden)
+    if sys.platform.startswith("linux"):
+        os.environ['RESOURCE_NAME'] = 'UniversalDownloader'
+    
     root = tk.Tk()
     
-    # Setze Fenstertitel (wichtig für Windows Taskleiste)
-    root.title("Universal Downloader")
-    
-    # Setze WM_CLASS für Linux (MUSS vor update_idletasks() gesetzt werden)
+    # Setze WM_CLASS für Linux (MUSS sofort nach tk.Tk() gesetzt werden, vor allem anderen)
     if sys.platform.startswith("linux"):
         try:
             # Setze WM_CLASS - wichtig für Linux Desktop Environments
             # Das erste Element ist der Name, das zweite die Klasse
+            # Verwende beide Parameter explizit
             root.wm_class("UniversalDownloader", "UniversalDownloader")
-            # Setze auch den Fensternamen
-            root.tk.call('wm', 'name', root._w, 'Universal Downloader')
-        except Exception:
+            
+            # Setze auch über tk.call (direkter Zugriff)
             try:
-                # Fallback
+                root.tk.call('wm', 'class', root._w, 'UniversalDownloader')
+            except:
+                pass
+            
+            # Setze WM_NAME separat
+            try:
+                root.tk.call('wm', 'name', root._w, 'Universal Downloader')
+            except:
+                pass
+                
+            # Setze auch RESOURCE_NAME im Tk-Interpreter
+            try:
+                root.tk.call('set', '::env(RESOURCE_NAME)', 'UniversalDownloader')
+            except:
+                pass
+        except Exception as e:
+            # Fallback
+            try:
                 root.wm_class("UniversalDownloader")
             except:
                 pass
+    
+    # Setze Fenstertitel (wichtig für Windows Taskleiste)
+    root.title("Universal Downloader")
     
     # Wichtig: update_idletasks() vor dem Erstellen der App, damit das Fenster initialisiert ist
     root.update_idletasks()

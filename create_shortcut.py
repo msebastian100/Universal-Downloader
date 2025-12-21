@@ -224,10 +224,12 @@ def create_linux_desktop():
                 system_icon_path = icon_path
         
         # Erstelle .desktop Datei
+        # WICHTIG: StartupWMClass muss exakt mit der WM_CLASS übereinstimmen
         desktop_content = f"""[Desktop Entry]
 Version=1.0
 Type=Application
 Name=Universal Downloader
+GenericName=Universal Downloader
 Comment=Downloader für Musik und Videos von verschiedenen Plattformen
 Exec=bash "{start_script}"
 Path={script_dir}
@@ -237,7 +239,6 @@ Categories=AudioVideo;Network;Utility;
 Keywords=downloader;music;video;youtube;deezer;spotify;
 StartupNotify=true
 StartupWMClass=UniversalDownloader
-WMClass=UniversalDownloader
 """
         
         with open(desktop_file, 'w', encoding='utf-8') as f:
