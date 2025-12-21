@@ -126,10 +126,200 @@ if [ ! -f "start.py" ]; then
     log_and_echo "Bitte stellen Sie sicher, dass Sie im richtigen Verzeichnis sind."
     log_and_echo "Aktuelles Verzeichnis: $SCRIPT_DIR"
     log_and_echo "Siehe Log-Datei für Details: $LOG_FILE"
+    log_and_echo ""
+    log_and_echo "Drücken Sie eine beliebige Taste zum Beenden..."
+    read -n 1 -s
     exit 1
 fi
 
-log_debug "start.py gefunden, starte Anwendung..."
+log_debug "start.py gefunden"
+
+# Prüfe ob Installation durchgeführt wurde
+log_and_echo "[INFO] Prüfe Installation..."
+log_debug "Prüfe ob venv existiert und Abhängigkeiten installiert sind..."
+
+NEEDS_INSTALL=false
+MISSING_PACKAGES=()
+
+# Prüfe venv
+if [ ! -d "venv" ] || [ ! -f "venv/bin/activate" ]; then
+    log_and_echo "⚠ Virtuelle Umgebung fehlt oder ist unvollständig"
+    log_debug "venv fehlt oder ist unvollständig"
+    NEEDS_INSTALL=true
+else
+    log_debug "venv existiert"
+    
+    # Aktiviere venv für Prüfung
+    source venv/bin/activate 2>/dev/null
+    log_debug "venv aktiviert für Prüfung: $(which python3)"
+    
+    # Prüfe wichtige Pakete aus requirements.txt
+    log_debug "Prüfe Python-Pakete..."
+    for package in requests mutagen Pillow deezer-python yt-dlp beautifulsoup4 selenium audible browser-cookie3; do
+        if [ "$package" = "Pillow" ]; then
+            import_name="PIL"
+        elif [ "$package" = "beautifulsoup4" ]; then
+            import_name="bs4"
+        elif [ "$package" = "deezer-python" ]; then
+            import_name="deezer"
+        elif [ "$package" = "browser-cookie3" ]; then
+            import_name="browser_cookie3"
+        elif [ "$package" = "yt-dlp" ]; then
+            import_name="yt_dlp"
+        else
+            import_name=$(echo "$package" | sed 's/-/_/g')
+        fi
+        
+        if ! python3 -c "import $import_name" 2>/dev/null; then
+            MISSING_PACKAGES+=("$package")
+            log_debug "Paket $package ($import_name) FEHLT"
+        else
+            log_debug "Paket $package ($import_name) ist installiert"
+        fi
+    done
+    
+    # Prüfe tkinter
+    if ! python3 -c "import tkinter" 2>/dev/null; then
+        MISSING_PACKAGES+=("python3-tk")
+        log_debug "tkinter FEHLT"
+    fi
+    
+    deactivate 2>/dev/null || true
+fi
+
+# Prüfe System-Abhängigkeiten
+if ! command -v ffmpeg &> /dev/null; then
+    MISSING_PACKAGES+=("ffmpeg")
+    log_debug "ffmpeg FEHLT"
+fi
+
+if [ ${#MISSING_PACKAGES[@]} -gt 0 ]; then
+    NEEDS_INSTALL=true
+    log_and_echo "⚠ Fehlende Abhängigkeiten erkannt: ${MISSING_PACKAGES[*]}"
+    log_debug "Fehlende Pakete: ${MISSING_PACKAGES[*]}"
+fi
+
+# Führe Installation durch falls nötig
+if [ "$NEEDS_INSTALL" = true ]; then
+    log_and_echo ""
+    log_and_echo "=========================================="
+    log_and_echo "Automatische Installation wird gestartet"
+    log_and_echo "=========================================="
+    log_and_echo ""
+    log_and_echo "Fehlende Abhängigkeiten:"
+    for pkg in "${MISSING_PACKAGES[@]}"; do
+        log_and_echo "  - $pkg"
+    done
+    log_and_echo ""
+    log_and_echo "Starte install.sh..."
+    log_and_echo ""
+    
+    # Rufe install.sh auf
+    if [ -f "install.sh" ]; then
+        log_debug "Rufe install.sh auf..."
+        chmod +x install.sh 2>/dev/null || true
+        
+        # Führe install.sh aus und fange Ausgabe
+        INSTALL_OUTPUT=$(bash install.sh 2>&1)
+        INSTALL_EXIT=$?
+        echo "$INSTALL_OUTPUT" | tee -a "$LOG_FILE"
+        log_debug "install.sh Exit-Code: $INSTALL_EXIT"
+        
+        if [ $INSTALL_EXIT -eq 0 ]; then
+            log_and_echo ""
+            log_and_echo -e "${GREEN}✓${NC} Installation erfolgreich abgeschlossen"
+            log_and_echo ""
+        else
+            log_and_echo ""
+            log_and_echo -e "${YELLOW}⚠${NC} Installation mit Warnungen beendet (Exit-Code: $INSTALL_EXIT)"
+            log_and_echo "  Siehe Log-Datei für Details: $LOG_FILE"
+            log_and_echo ""
+        fi
+    else
+        log_and_echo -e "${RED}❌ install.sh nicht gefunden!${NC}"
+        log_and_echo "  Bitte führen Sie die Installation manuell durch:"
+        log_and_echo "    bash install.sh"
+        log_and_echo ""
+        log_and_echo "  Oder installieren Sie fehlende Pakete manuell:"
+        for pkg in "${MISSING_PACKAGES[@]}"; do
+            log_and_echo "    - $pkg"
+        done
+        log_and_echo ""
+        log_and_echo "Drücken Sie eine beliebige Taste zum Beenden..."
+        read -n 1 -s
+        exit 1
+    fi
+    
+    # Prüfe erneut nach Installation
+    log_and_echo "[INFO] Prüfe Installation erneut..."
+    MISSING_AFTER_INSTALL=()
+    
+    if [ -d "venv" ] && [ -f "venv/bin/activate" ]; then
+        source venv/bin/activate 2>/dev/null
+        
+        for package in requests mutagen Pillow deezer-python yt-dlp beautifulsoup4 selenium audible browser-cookie3; do
+            if [ "$package" = "Pillow" ]; then
+                import_name="PIL"
+            elif [ "$package" = "beautifulsoup4" ]; then
+                import_name="bs4"
+            elif [ "$package" = "deezer-python" ]; then
+                import_name="deezer"
+            elif [ "$package" = "browser-cookie3" ]; then
+                import_name="browser_cookie3"
+            elif [ "$package" = "yt-dlp" ]; then
+                import_name="yt_dlp"
+            else
+                import_name=$(echo "$package" | sed 's/-/_/g')
+            fi
+            
+            if ! python3 -c "import $import_name" 2>/dev/null; then
+                MISSING_AFTER_INSTALL+=("$package")
+                log_and_echo -e "${YELLOW}⚠${NC} Paket $package fehlt immer noch"
+                log_debug "Paket $package fehlt nach Installation"
+            fi
+        done
+        
+        if ! python3 -c "import tkinter" 2>/dev/null; then
+            MISSING_AFTER_INSTALL+=("python3-tk")
+            log_and_echo -e "${YELLOW}⚠${NC} tkinter fehlt immer noch"
+        fi
+        
+        deactivate 2>/dev/null || true
+    else
+        log_and_echo -e "${YELLOW}⚠${NC} venv konnte nicht erstellt werden"
+        MISSING_AFTER_INSTALL+=("venv")
+    fi
+    
+    if ! command -v ffmpeg &> /dev/null; then
+        MISSING_AFTER_INSTALL+=("ffmpeg")
+        log_and_echo -e "${YELLOW}⚠${NC} ffmpeg fehlt immer noch"
+    fi
+    
+    if [ ${#MISSING_AFTER_INSTALL[@]} -gt 0 ]; then
+        log_and_echo ""
+        log_and_echo -e "${YELLOW}⚠${NC} Einige Abhängigkeiten fehlen noch:"
+        for pkg in "${MISSING_AFTER_INSTALL[@]}"; do
+            log_and_echo "  - $pkg"
+        done
+        log_and_echo ""
+        log_and_echo "=== FEHLENDE ABHÄNGIGKEITEN IN LOG ===" >> "$LOG_FILE"
+        echo "Fehlende Pakete nach Installation:" >> "$LOG_FILE"
+        for pkg in "${MISSING_AFTER_INSTALL[@]}"; do
+            echo "  - $pkg" >> "$LOG_FILE"
+        done
+        echo "=============================================" >> "$LOG_FILE"
+        log_and_echo "  Details wurden in Log-Datei geschrieben: $LOG_FILE"
+        log_and_echo ""
+    else
+        log_and_echo -e "${GREEN}✓${NC} Alle Abhängigkeiten sind installiert"
+        log_and_echo ""
+    fi
+else
+    log_and_echo -e "${GREEN}✓${NC} Alle Voraussetzungen erfüllt"
+    log_and_echo ""
+fi
+
+log_debug "starte Anwendung..."
 
 # Starte Anwendung
 log_and_echo "[INFO] Starte Universal Downloader..."
@@ -137,6 +327,13 @@ log_and_echo ""
 log_debug "Starte: python3 start.py"
 log_debug "Python-Pfad: $(which python3)"
 log_debug "Arbeitsverzeichnis: $(pwd)"
+
+# Aktiviere venv falls vorhanden
+if [ -d "venv" ] && [ -f "venv/bin/activate" ]; then
+    log_debug "Aktiviere venv vor Start..."
+    source venv/bin/activate
+    log_debug "venv aktiviert: $(which python3)"
+fi
 
 # Führe start.py aus und logge alle Ausgaben
 if [ "$CAN_LOG" = true ]; then
@@ -152,6 +349,29 @@ if [ $EXIT_CODE -ne 0 ]; then
     log_and_echo ""
     log_and_echo -e "${RED}❌ Anwendung wurde mit Fehler beendet (Exit-Code: $EXIT_CODE)${NC}"
     log_and_echo ""
+    
+    # Prüfe ob Fehler mit fehlenden Modulen zusammenhängt
+    if grep -q "No module named" "$LOG_FILE" 2>/dev/null; then
+        log_and_echo "=== FEHLENDE MODULE ERKANNT ==="
+        MISSING_MODULES=$(grep "No module named" "$LOG_FILE" | sed 's/.*No module named //' | sort -u)
+        log_and_echo "Fehlende Module:"
+        echo "$MISSING_MODULES" | while read -r module; do
+            log_and_echo "  - $module"
+        done
+        log_and_echo ""
+        log_and_echo "=== FEHLENDE MODULE IN LOG ===" >> "$LOG_FILE"
+        echo "$MISSING_MODULES" | while read -r module; do
+            echo "  - $module" >> "$LOG_FILE"
+        done
+        echo "====================================" >> "$LOG_FILE"
+        log_and_echo "Versuchen Sie die Installation erneut:"
+        log_and_echo "  bash install.sh"
+        log_and_echo "  Oder installieren Sie manuell:"
+        log_and_echo "  source venv/bin/activate"
+        log_and_echo "  pip install -r requirements.txt"
+        log_and_echo ""
+    fi
+    
     log_and_echo "Detaillierte Fehlerinformationen finden Sie in der Log-Datei:"
     log_and_echo "  $LOG_FILE"
 else
