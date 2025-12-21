@@ -70,6 +70,23 @@ class DeezerDownloaderGUI:
         self.root = root
         self.root.title("Universal Downloader")
         
+        # Setze WM_CLASS für Linux (wichtig für Taskleiste und Icon)
+        if sys.platform.startswith("linux"):
+            try:
+                # Setze WM_CLASS (Name und Klasse)
+                # Das erste Element ist der Name, das zweite die Klasse
+                # Linux Desktop Environments verwenden das für Icon und Name
+                self.root.wm_class("UniversalDownloader")
+                # Alternative: Setze beide separat
+                self.root.tk.call('wm', 'class', self.root._w, 'UniversalDownloader')
+                self.root.tk.call('wm', 'name', self.root._w, 'Universal Downloader')
+            except Exception as e:
+                # Fallback falls wm_class nicht funktioniert
+                try:
+                    self.root.wm_class("UniversalDownloader", "UniversalDownloader")
+                except:
+                    pass
+        
         # Setze Programm-Icon
         self._set_application_icon()
         
@@ -6061,12 +6078,27 @@ def main():
     # Setze Fenstertitel (wichtig für Windows Taskleiste)
     root.title("Universal Downloader")
     
+    # Setze WM_CLASS für Linux (MUSS vor update_idletasks() gesetzt werden)
+    if sys.platform.startswith("linux"):
+        try:
+            # Setze WM_CLASS - wichtig für Linux Desktop Environments
+            # Das erste Element ist der Name, das zweite die Klasse
+            root.wm_class("UniversalDownloader", "UniversalDownloader")
+            # Setze auch den Fensternamen
+            root.tk.call('wm', 'name', root._w, 'Universal Downloader')
+        except Exception:
+            try:
+                # Fallback
+                root.wm_class("UniversalDownloader")
+            except:
+                pass
+    
     # Wichtig: update_idletasks() vor dem Erstellen der App, damit das Fenster initialisiert ist
     root.update_idletasks()
     
     app = DeezerDownloaderGUI(root)
     
-    # Setze Icon erneut nach vollständiger Initialisierung (für Windows)
+    # Setze Icon erneut nach vollständiger Initialisierung
     if sys.platform == "win32":
         root.after(100, app._set_application_icon)
         
@@ -6086,6 +6118,9 @@ def main():
                 pass
         except:
             pass
+    elif sys.platform.startswith("linux"):
+        # Für Linux: Setze Icon sofort
+        root.after(100, app._set_application_icon)
     
     # Cleanup beim Schließen
     def on_closing():

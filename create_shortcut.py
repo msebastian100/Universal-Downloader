@@ -200,6 +200,29 @@ def create_linux_desktop():
                 icon_path = str(icon)
                 break
         
+        # Kopiere Icon ins System-Icon-Verzeichnis falls möglich
+        system_icon_path = ""
+        if icon_path:
+            try:
+                # Versuche Icon ins lokale Icon-Verzeichnis zu kopieren
+                icon_dir = Path.home() / ".local" / "share" / "icons"
+                icon_dir.mkdir(parents=True, exist_ok=True)
+                
+                icon_file = Path(icon_path)
+                if icon_file.exists():
+                    # Verwende PNG für Linux (beste Unterstützung)
+                    if icon_file.suffix.lower() in ['.png', '.svg']:
+                        system_icon_path = str(icon_dir / "universal-downloader.png")
+                        import shutil
+                        shutil.copy2(icon_path, system_icon_path)
+                        system_icon_path = "universal-downloader"  # Relativer Name für Icon-Theme
+                    else:
+                        # Konvertiere ICO zu PNG falls nötig (wird später implementiert)
+                        system_icon_path = icon_path
+            except Exception as e:
+                # Fallback: Verwende absoluten Pfad
+                system_icon_path = icon_path
+        
         # Erstelle .desktop Datei
         desktop_content = f"""[Desktop Entry]
 Version=1.0
@@ -208,11 +231,13 @@ Name=Universal Downloader
 Comment=Downloader für Musik und Videos von verschiedenen Plattformen
 Exec=bash "{start_script}"
 Path={script_dir}
-Icon={icon_path}
+Icon={system_icon_path if system_icon_path else icon_path}
 Terminal=false
 Categories=AudioVideo;Network;Utility;
 Keywords=downloader;music;video;youtube;deezer;spotify;
 StartupNotify=true
+StartupWMClass=UniversalDownloader
+WMClass=UniversalDownloader
 """
         
         with open(desktop_file, 'w', encoding='utf-8') as f:
