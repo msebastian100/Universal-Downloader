@@ -573,7 +573,7 @@ WriteLog "[INFO] Python gefunden: " & fullPythonPath
 WriteLog "[INFO] Arbeitsverzeichnis: " & scriptPath
 WriteLog "[INFO] =========================================="
 
-' Erstelle/aktualisiere Shortcut (.lnk) mit Icon für Taskleiste
+' Erstelle/aktualisiere Shortcut (.lnk) mit Icon für Taskleiste (lokal)
 ' WICHTIG: Shortcut zeigt auf die VBS-Datei, nicht direkt auf pythonw.exe
 ' Die VBS startet dann pythonw.exe, und start.py setzt die App User Model ID
 ' Das verhindert, dass Windows die .lnk-Datei als "pythonw.exe" erkennt
@@ -623,6 +623,50 @@ If shortcutNeedsUpdate Then
     End If
     On Error Goto 0
 End If
+
+' Erstelle Startmenü-Verknüpfung
+On Error Resume Next
+Dim startMenuPath, startMenuShortcutPath
+startMenuPath = WshShell.SpecialFolders("StartMenu") & "\Programs"
+startMenuShortcutPath = startMenuPath & "\Universal Downloader.lnk"
+
+' Erstelle Startmenü-Ordner falls nicht vorhanden
+If Not fso.FolderExists(startMenuPath) Then
+    fso.CreateFolder startMenuPath
+End If
+
+' Prüfe ob Startmenü-Verknüpfung bereits existiert
+Dim startMenuShortcutNeedsUpdate
+startMenuShortcutNeedsUpdate = True
+If fso.FileExists(startMenuShortcutPath) Then
+    Dim existingStartMenuShortcut
+    Set existingStartMenuShortcut = WshShell.CreateShortcut(startMenuShortcutPath)
+    If InStr(LCase(existingStartMenuShortcut.TargetPath), "start_launcher.vbs") > 0 Then
+        startMenuShortcutNeedsUpdate = False
+        WriteLog "[INFO] Startmenü-Verknüpfung existiert bereits: " & startMenuShortcutPath
+    End If
+End If
+
+' Erstelle/aktualisiere Startmenü-Verknüpfung nur wenn nötig
+If startMenuShortcutNeedsUpdate Then
+    WriteLog "[INFO] Erstelle Startmenü-Verknüpfung: " & startMenuShortcutPath
+    Dim startMenuShortcut
+    Set startMenuShortcut = WshShell.CreateShortcut(startMenuShortcutPath)
+    startMenuShortcut.TargetPath = WScript.ScriptFullName
+    startMenuShortcut.WorkingDirectory = scriptPath
+    startMenuShortcut.Description = "Universal Downloader - Downloader für Musik und Videos"
+    If iconPath <> "" Then
+        startMenuShortcut.IconLocation = iconPath & ",0"
+    End If
+    startMenuShortcut.WindowStyle = 7
+    startMenuShortcut.Save
+    If Err.Number = 0 Then
+        WriteLog "[OK] Startmenü-Verknüpfung erstellt: " & startMenuShortcutPath
+    Else
+        WriteLog "[WARNING] Konnte Startmenü-Verknüpfung nicht erstellen: " & Err.Description
+    End If
+End If
+On Error Goto 0
 
 ' Prüfe und installiere requirements.txt
 If fso.FileExists(requirementsFile) Then
