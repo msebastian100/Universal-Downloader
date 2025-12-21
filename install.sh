@@ -44,6 +44,15 @@ log_debug() {
     fi
 }
 
+# Funktion für Exit mit Pause (damit Terminal offen bleibt)
+exit_with_pause() {
+    local exit_code=${1:-1}
+    log_and_echo ""
+    log_and_echo "Drücken Sie eine beliebige Taste zum Beenden..."
+    read -n 1 -s
+    exit $exit_code
+}
+
 # Redirect stderr auch in Log-Datei (falls möglich)
 if [ "$CAN_LOG" = true ]; then
     exec 2>> "$LOG_FILE" 2>/dev/null || true
@@ -60,8 +69,93 @@ OS="$(uname -s)"
 ARCH="$(uname -m)"
 log_debug "Betriebssystem erkannt: OS=$OS, ARCH=$ARCH"
 
-log_and_echo "Betriebssystem: $OS"
-log_and_echo "Architektur: $ARCH"
+# Sammle System-Informationen
+log_and_echo "System-Informationen:"
+log_and_echo "  Betriebssystem: $OS"
+log_and_echo "  Architektur: $ARCH"
+log_and_echo "  Kernel: $(uname -r 2>/dev/null || echo 'unbekannt')"
+log_and_echo "  Hostname: $(hostname 2>/dev/null || echo 'unbekannt')"
+log_and_echo "  Benutzer: $(whoami 2>/dev/null || echo 'unbekannt')"
+log_and_echo "  Home-Verzeichnis: $HOME"
+log_and_echo "  Arbeitsverzeichnis: $SCRIPT_DIR"
+
+# Prüfe installierte Pakete (Linux)
+if [ "$OS" = "Linux" ]; then
+    log_and_echo ""
+    log_and_echo "Installierte System-Pakete (relevant):"
+    
+    # Python
+    if command -v python3 &> /dev/null; then
+        PYTHON_VER=$(python3 --version 2>&1)
+        PYTHON_PATH=$(which python3)
+        log_and_echo "  ✓ Python: $PYTHON_VER ($PYTHON_PATH)"
+        log_debug "Python gefunden: $PYTHON_VER"
+    else
+        log_and_echo "  ✗ Python: nicht installiert"
+    fi
+    
+    # pip
+    if command -v pip3 &> /dev/null || python3 -m pip --version &> /dev/null; then
+        PIP_VER=$(python3 -m pip --version 2>&1 | head -1)
+        log_and_echo "  ✓ pip: $PIP_VER"
+    else
+        log_and_echo "  ✗ pip: nicht installiert"
+    fi
+    
+    # python3-venv
+    if python3 -m venv --help &> /dev/null 2>&1; then
+        log_and_echo "  ✓ python3-venv: verfügbar"
+    else
+        log_and_echo "  ✗ python3-venv: nicht verfügbar"
+    fi
+    
+    # tkinter
+    if python3 -c "import tkinter" 2>/dev/null; then
+        log_and_echo "  ✓ python3-tk: installiert"
+    else
+        log_and_echo "  ✗ python3-tk: nicht installiert"
+    fi
+    
+    # ffmpeg
+    if command -v ffmpeg &> /dev/null; then
+        FFMPEG_VER=$(ffmpeg -version 2>/dev/null | head -1)
+        log_and_echo "  ✓ ffmpeg: $FFMPEG_VER"
+    else
+        log_and_echo "  ✗ ffmpeg: nicht installiert"
+    fi
+    
+    # yt-dlp
+    if command -v yt-dlp &> /dev/null; then
+        YTDLP_VER=$(yt-dlp --version 2>/dev/null)
+        log_and_echo "  ✓ yt-dlp: $YTDLP_VER (System)"
+    elif python3 -c "import yt_dlp" 2>/dev/null; then
+        YTDLP_VER=$(python3 -c "import yt_dlp; print(yt_dlp.version.__version__)" 2>/dev/null)
+        log_and_echo "  ✓ yt-dlp: $YTDLP_VER (Python)"
+    else
+        log_and_echo "  ✗ yt-dlp: nicht installiert"
+    fi
+    
+    # sudo
+    if command -v sudo &> /dev/null; then
+        SUDO_VER=$(sudo -V 2>/dev/null | head -1 || echo "verfügbar")
+        log_and_echo "  ✓ sudo: $SUDO_VER"
+    else
+        log_and_echo "  ✗ sudo: nicht installiert"
+    fi
+    
+    # Paket-Manager
+    if command -v apt-get &> /dev/null; then
+        APT_VER=$(apt-get --version 2>/dev/null | head -1)
+        log_and_echo "  ✓ apt-get: $APT_VER"
+    elif command -v dnf &> /dev/null; then
+        DNF_VER=$(dnf --version 2>/dev/null | head -1)
+        log_and_echo "  ✓ dnf: $DNF_VER"
+    elif command -v pacman &> /dev/null; then
+        PACMAN_VER=$(pacman --version 2>/dev/null | head -1)
+        log_and_echo "  ✓ pacman: $PACMAN_VER"
+    fi
+fi
+
 log_and_echo ""
 
 # Prüfe Root-Zugriff (sudo oder su)
@@ -95,7 +189,7 @@ elif command -v su &> /dev/null; then
             log_and_echo "❌ sudo Installation fehlgeschlagen"
             log_and_echo "  Bitte installieren Sie sudo manuell oder führen Sie dieses Skript als root aus"
             log_and_echo "  Siehe Log-Datei für Details: $LOG_FILE"
-            exit 1
+            exit_with_pause 1
         fi
     else
         log_and_echo "❌ sudo nicht verfügbar und kann nicht automatisch installiert werden"
@@ -110,7 +204,7 @@ else
     log_and_echo "❌ Weder sudo noch su gefunden"
     log_and_echo "  Bitte installieren Sie sudo oder führen Sie dieses Skript als root aus"
     log_and_echo "  Siehe Log-Datei für Details: $LOG_FILE"
-    exit 1
+    exit_with_pause 1
 fi
 
 log_debug "SUDO_CMD: $SUDO_CMD, IS_ROOT: $IS_ROOT"
@@ -136,12 +230,12 @@ if ! command -v python3 &> /dev/null; then
                         log_and_echo "❌ Fehler bei der Installation von Python3"
                         log_and_echo "  Bitte installieren Sie Python3 manuell: $SUDO_CMD apt-get install python3 python3-pip python3-venv python3-tk"
                         log_and_echo "  Siehe Log-Datei für Details: $LOG_FILE"
-                        exit 1
+                        exit_with_pause 1
                     fi
                 else
                     log_and_echo "❌ Fehler bei apt-get update"
                     log_and_echo "  Siehe Log-Datei für Details: $LOG_FILE"
-                    exit 1
+                    exit_with_pause 1
                 fi
             # Prüfe ob dnf verfügbar ist (Fedora/RHEL)
             elif command -v dnf &> /dev/null; then
@@ -152,7 +246,7 @@ if ! command -v python3 &> /dev/null; then
                     log_and_echo "❌ Fehler bei der Installation von Python3"
                     log_and_echo "  Bitte installieren Sie Python3 manuell: $SUDO_CMD dnf install python3 python3-pip python3-tkinter"
                     log_and_echo "  Siehe Log-Datei für Details: $LOG_FILE"
-                    exit 1
+                    exit_with_pause 1
                 fi
             # Prüfe ob pacman verfügbar ist (Arch Linux)
             elif command -v pacman &> /dev/null; then
@@ -163,24 +257,24 @@ if ! command -v python3 &> /dev/null; then
                     log_and_echo "❌ Fehler bei der Installation von Python3"
                     log_and_echo "  Bitte installieren Sie Python3 manuell: $SUDO_CMD pacman -S python python-pip tk"
                     log_and_echo "  Siehe Log-Datei für Details: $LOG_FILE"
-                    exit 1
+                    exit_with_pause 1
                 fi
             else
-                echo "❌ Paket-Manager nicht erkannt"
-                echo "  Bitte installieren Sie Python3 manuell über Ihren Paket-Manager"
-                exit 1
+                log_and_echo "❌ Paket-Manager nicht erkannt"
+                log_and_echo "  Bitte installieren Sie Python3 manuell über Ihren Paket-Manager"
+                exit_with_pause 1
             fi
             ;;
         Darwin*)
-            echo "❌ Python3 nicht gefunden auf macOS"
-            echo "  Bitte installieren Sie Python3 über Homebrew: brew install python3"
-            echo "  Oder laden Sie es von https://www.python.org/downloads/"
-            exit 1
+            log_and_echo "❌ Python3 nicht gefunden auf macOS"
+            log_and_echo "  Bitte installieren Sie Python3 über Homebrew: brew install python3"
+            log_and_echo "  Oder laden Sie es von https://www.python.org/downloads/"
+            exit_with_pause 1
             ;;
         *)
-            echo "❌ Betriebssystem nicht unterstützt für automatische Python3-Installation"
-            echo "  Bitte installieren Sie Python3 manuell: https://www.python.org/downloads/"
-            exit 1
+            log_and_echo "❌ Betriebssystem nicht unterstützt für automatische Python3-Installation"
+            log_and_echo "  Bitte installieren Sie Python3 manuell: https://www.python.org/downloads/"
+            exit_with_pause 1
             ;;
     esac
 fi
@@ -196,7 +290,7 @@ if [ "$PYTHON_MAJOR" -lt 3 ] || ([ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" 
     log_and_echo "❌ Python 3.8 oder höher ist erforderlich (gefunden: $PYTHON_VERSION)"
     log_and_echo "  Bitte aktualisieren Sie Python3"
     log_and_echo "  Siehe Log-Datei für Details: $LOG_FILE"
-    exit 1
+    exit_with_pause 1
 fi
 
 log_and_echo ""
@@ -228,12 +322,12 @@ if ! python3 -m pip --version &> /dev/null; then
                             log_and_echo "❌ Fehler bei der Installation von pip"
                             log_and_echo "  Bitte installieren Sie pip manuell: $SUDO_CMD apt-get install python3-pip"
                             log_and_echo "  Siehe Log-Datei für Details: $LOG_FILE"
-                            exit 1
+                            exit_with_pause 1
                         fi
                     else
                         log_and_echo "❌ Fehler beim Herunterladen von get-pip.py"
                         log_and_echo "  Siehe Log-Datei für Details: $LOG_FILE"
-                        exit 1
+                        exit_with_pause 1
                     fi
                 fi
             # Prüfe ob dnf verfügbar ist (Fedora/RHEL)
@@ -245,7 +339,7 @@ if ! python3 -m pip --version &> /dev/null; then
                     log_and_echo "❌ Fehler bei der Installation von pip"
                     log_and_echo "  Bitte installieren Sie pip manuell: $SUDO_CMD dnf install python3-pip"
                     log_and_echo "  Siehe Log-Datei für Details: $LOG_FILE"
-                    exit 1
+                    exit_with_pause 1
                 fi
             # Prüfe ob pacman verfügbar ist (Arch Linux)
             elif command -v pacman &> /dev/null; then
@@ -256,43 +350,61 @@ if ! python3 -m pip --version &> /dev/null; then
                     log_and_echo "❌ Fehler bei der Installation von pip"
                     log_and_echo "  Bitte installieren Sie pip manuell: $SUDO_CMD pacman -S python-pip"
                     log_and_echo "  Siehe Log-Datei für Details: $LOG_FILE"
-                    exit 1
+                    exit_with_pause 1
                 fi
             else
-                echo "⚠ Paket-Manager nicht erkannt, versuche get-pip.py..."
-                curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
-                if python3 get-pip.py; then
-                    echo "✓ pip erfolgreich installiert"
-                    rm get-pip.py
+                log_and_echo "⚠ Paket-Manager nicht erkannt, versuche get-pip.py..."
+                if curl -f https://bootstrap.pypa.io/get-pip.py -o get-pip.py 2>&1 | tee -a "$LOG_FILE"; then
+                    if python3 get-pip.py 2>&1 | tee -a "$LOG_FILE"; then
+                        log_and_echo "✓ pip erfolgreich installiert"
+                        rm -f get-pip.py
+                    else
+                        log_and_echo "❌ Fehler bei der Installation von pip"
+                        log_and_echo "  Bitte installieren Sie pip manuell"
+                        log_and_echo "  Siehe Log-Datei für Details: $LOG_FILE"
+                        exit_with_pause 1
+                    fi
                 else
-                    echo "❌ Fehler bei der Installation von pip"
-                    echo "  Bitte installieren Sie pip manuell"
-                    exit 1
+                    log_and_echo "❌ Fehler beim Herunterladen von get-pip.py"
+                    log_and_echo "  Siehe Log-Datei für Details: $LOG_FILE"
+                    exit_with_pause 1
                 fi
             fi
             ;;
         Darwin*)
-            echo "⚠ pip nicht gefunden auf macOS"
-            echo "  Versuche Installation über get-pip.py..."
-            curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
-            if python3 get-pip.py; then
-                echo "✓ pip erfolgreich installiert"
-                rm get-pip.py
+            log_and_echo "⚠ pip nicht gefunden auf macOS"
+            log_and_echo "  Versuche Installation über get-pip.py..."
+            if curl -f https://bootstrap.pypa.io/get-pip.py -o get-pip.py 2>&1 | tee -a "$LOG_FILE"; then
+                if python3 get-pip.py 2>&1 | tee -a "$LOG_FILE"; then
+                    log_and_echo "✓ pip erfolgreich installiert"
+                    rm -f get-pip.py
+                else
+                    log_and_echo "❌ Fehler bei der Installation von pip"
+                    log_and_echo "  Bitte installieren Sie pip manuell: brew install python3"
+                    log_and_echo "  Siehe Log-Datei für Details: $LOG_FILE"
+                    exit_with_pause 1
+                fi
             else
-                echo "❌ Fehler bei der Installation von pip"
-                echo "  Bitte installieren Sie pip manuell: brew install python3"
-                exit 1
+                log_and_echo "❌ Fehler beim Herunterladen von get-pip.py"
+                log_and_echo "  Siehe Log-Datei für Details: $LOG_FILE"
+                exit_with_pause 1
             fi
             ;;
         *)
-            echo "⚠ pip nicht gefunden, versuche get-pip.py..."
-            curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
-            if python3 get-pip.py; then
-                echo "✓ pip erfolgreich installiert"
-                rm get-pip.py
+            log_and_echo "⚠ pip nicht gefunden, versuche get-pip.py..."
+            if curl -f https://bootstrap.pypa.io/get-pip.py -o get-pip.py 2>&1 | tee -a "$LOG_FILE"; then
+                if python3 get-pip.py 2>&1 | tee -a "$LOG_FILE"; then
+                    log_and_echo "✓ pip erfolgreich installiert"
+                    rm -f get-pip.py
+                else
+                    log_and_echo "❌ Fehler bei der Installation von pip"
+                    log_and_echo "  Siehe Log-Datei für Details: $LOG_FILE"
+                    exit_with_pause 1
+                fi
             else
-                echo "❌ Fehler bei der Installation von pip"
-                exit 1
+                log_and_echo "❌ Fehler beim Herunterladen von get-pip.py"
+                log_and_echo "  Siehe Log-Datei für Details: $LOG_FILE"
+                exit_with_pause 1
             fi
             ;;
     esac
@@ -356,22 +468,22 @@ if [ ! -d "venv" ]; then
                     else
                         log_and_echo "❌ venv-Erstellung fehlgeschlagen"
                         log_and_echo "  Siehe Log-Datei für Details: $LOG_FILE"
-                        exit 1
+                        exit_with_pause 1
                     fi
                 else
                     log_and_echo "❌ python3-venv Installation fehlgeschlagen"
                     log_and_echo "  Siehe Log-Datei für Details: $LOG_FILE"
-                    exit 1
+                    exit_with_pause 1
                 fi
             else
                 log_and_echo "  Bitte installieren Sie python3-venv manuell"
                 log_and_echo "  Ubuntu/Debian: $SUDO_CMD apt-get install python3-venv"
                 log_and_echo "  Siehe Log-Datei für Details: $LOG_FILE"
-                exit 1
+                exit_with_pause 1
             fi
         else
             log_and_echo "  Siehe Log-Datei für Details: $LOG_FILE"
-            exit 1
+            exit_with_pause 1
         fi
     fi
     log_and_echo ""
