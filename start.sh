@@ -332,21 +332,43 @@ fi
 # Erstelle Startmenü-Verknüpfung beim ersten Start (nur wenn nicht bereits vorhanden)
 log_and_echo "[INFO] Prüfe Startmenü-Verknüpfung..."
 log_debug "Prüfe ob create_shortcut.py existiert..."
+SHORTCUT_CREATED=false
 if [ -f "create_shortcut.py" ]; then
     log_debug "Rufe create_shortcut.py auf..."
-    if python3 create_shortcut.py 2>&1 | tee -a "$LOG_FILE"; then
-        SHORTCUT_EXIT=${PIPESTATUS[0]}
-        if [ $SHORTCUT_EXIT -eq 0 ]; then
-            log_and_echo -e "${GREEN}✓${NC} Startmenü-Verknüpfung erstellt oder bereits vorhanden"
-        else
-            log_and_echo -e "${YELLOW}⚠${NC} Konnte Startmenü-Verknüpfung nicht erstellen"
-            log_debug "create_shortcut.py Exit-Code: $SHORTCUT_EXIT"
+    SHORTCUT_OUTPUT=$(python3 create_shortcut.py 2>&1)
+    SHORTCUT_EXIT=$?
+    echo "$SHORTCUT_OUTPUT" | tee -a "$LOG_FILE"
+    
+    if [ $SHORTCUT_EXIT -eq 0 ]; then
+        log_and_echo -e "${GREEN}✓${NC} Startmenü-Verknüpfung erstellt oder bereits vorhanden"
+        # Prüfe ob Verknüpfung erstellt wurde (nicht nur "existiert bereits")
+        if echo "$SHORTCUT_OUTPUT" | grep -q "erstellt"; then
+            SHORTCUT_CREATED=true
         fi
     else
         log_and_echo -e "${YELLOW}⚠${NC} Konnte Startmenü-Verknüpfung nicht erstellen"
+        log_debug "create_shortcut.py Exit-Code: $SHORTCUT_EXIT"
     fi
 else
     log_debug "create_shortcut.py nicht gefunden"
+fi
+
+# Aktualisiere Desktop-Datenbank auf Linux (falls Verknüpfung erstellt wurde)
+if [ "$OS" = "Linux" ] && [ "$SHORTCUT_CREATED" = true ]; then
+    log_and_echo "[INFO] Aktualisiere Desktop-Datenbank..."
+    log_debug "Rufe update-desktop-database auf..."
+    DESKTOP_DIR="$HOME/.local/share/applications"
+    if [ -d "$DESKTOP_DIR" ]; then
+        if command -v update-desktop-database &> /dev/null; then
+            if update-desktop-database "$DESKTOP_DIR" 2>&1 | tee -a "$LOG_FILE"; then
+                log_and_echo -e "${GREEN}✓${NC} Desktop-Datenbank aktualisiert"
+            else
+                log_and_echo -e "${YELLOW}⚠${NC} Konnte Desktop-Datenbank nicht aktualisieren"
+            fi
+        else
+            log_debug "update-desktop-database nicht gefunden - überspringe"
+        fi
+    fi
 fi
 log_and_echo ""
 
