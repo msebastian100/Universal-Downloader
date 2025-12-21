@@ -64,6 +64,57 @@ log_and_echo "Betriebssystem: $OS"
 log_and_echo "Architektur: $ARCH"
 log_and_echo ""
 
+# Prüfe Root-Zugriff (sudo oder su)
+SUDO_CMD=""
+IS_ROOT=false
+
+# Prüfe ob wir bereits root sind
+if [ "$EUID" -eq 0 ]; then
+    IS_ROOT=true
+    SUDO_CMD=""
+    log_debug "Bereits als root ausgeführt"
+elif command -v sudo &> /dev/null; then
+    SUDO_CMD="sudo"
+    log_debug "sudo gefunden"
+    # Teste ob sudo funktioniert
+    if sudo -n true 2>/dev/null; then
+        log_debug "sudo funktioniert ohne Passwort"
+    else
+        log_and_echo "⚠ sudo benötigt Passwort - Sie werden möglicherweise nach Ihrem Passwort gefragt"
+    fi
+elif command -v su &> /dev/null; then
+    log_and_echo "⚠ sudo nicht verfügbar, aber su gefunden"
+    log_and_echo "  Versuche sudo zu installieren..."
+    # Versuche sudo zu installieren (benötigt root)
+    if command -v apt-get &> /dev/null; then
+        log_and_echo "  Bitte geben Sie das Root-Passwort ein, um sudo zu installieren:"
+        if su -c "apt-get update && apt-get install -y sudo" 2>&1 | tee -a "$LOG_FILE"; then
+            SUDO_CMD="sudo"
+            log_and_echo "✓ sudo erfolgreich installiert"
+        else
+            log_and_echo "❌ sudo Installation fehlgeschlagen"
+            log_and_echo "  Bitte installieren Sie sudo manuell oder führen Sie dieses Skript als root aus"
+            log_and_echo "  Siehe Log-Datei für Details: $LOG_FILE"
+            exit 1
+        fi
+    else
+        log_and_echo "❌ sudo nicht verfügbar und kann nicht automatisch installiert werden"
+        log_and_echo "  Bitte installieren Sie sudo manuell oder führen Sie dieses Skript als root aus"
+        log_and_echo "  Oder geben Sie das Root-Passwort ein, wenn Sie nach 'su' gefragt werden"
+        # Frage nach Root-Passwort für su
+        log_and_echo ""
+        log_and_echo "Bitte geben Sie das Root-Passwort ein:"
+        SUDO_CMD="su -c"
+    fi
+else
+    log_and_echo "❌ Weder sudo noch su gefunden"
+    log_and_echo "  Bitte installieren Sie sudo oder führen Sie dieses Skript als root aus"
+    log_and_echo "  Siehe Log-Datei für Details: $LOG_FILE"
+    exit 1
+fi
+
+log_debug "SUDO_CMD: $SUDO_CMD, IS_ROOT: $IS_ROOT"
+
 # Prüfe und installiere Python3
 log_and_echo "Prüfe Python3..."
 if ! command -v python3 &> /dev/null; then
@@ -74,16 +125,16 @@ if ! command -v python3 &> /dev/null; then
         Linux*)
             # Prüfe ob apt-get verfügbar ist (Debian/Ubuntu/Mint)
             if command -v apt-get &> /dev/null; then
-                echo "  Installiere Python3 über apt-get..."
+                log_and_echo "  Installiere Python3 über apt-get..."
                 log_debug "Starte apt-get update..."
-                if sudo apt-get update 2>&1 | tee -a "$LOG_FILE"; then
+                if $SUDO_CMD apt-get update 2>&1 | tee -a "$LOG_FILE"; then
                     log_debug "apt-get update erfolgreich"
                     log_debug "Starte apt-get install python3 python3-pip python3-venv python3-tk..."
-                    if sudo apt-get install -y python3 python3-pip python3-venv python3-tk 2>&1 | tee -a "$LOG_FILE"; then
+                    if $SUDO_CMD apt-get install -y python3 python3-pip python3-venv python3-tk 2>&1 | tee -a "$LOG_FILE"; then
                         log_and_echo "✓ Python3 erfolgreich installiert (inkl. tkinter)"
                     else
                         log_and_echo "❌ Fehler bei der Installation von Python3"
-                        log_and_echo "  Bitte installieren Sie Python3 manuell: sudo apt-get install python3 python3-pip python3-venv python3-tk"
+                        log_and_echo "  Bitte installieren Sie Python3 manuell: $SUDO_CMD apt-get install python3 python3-pip python3-venv python3-tk"
                         log_and_echo "  Siehe Log-Datei für Details: $LOG_FILE"
                         exit 1
                     fi
@@ -94,22 +145,24 @@ if ! command -v python3 &> /dev/null; then
                 fi
             # Prüfe ob dnf verfügbar ist (Fedora/RHEL)
             elif command -v dnf &> /dev/null; then
-                echo "  Installiere Python3 über dnf..."
-                if sudo dnf install -y python3 python3-pip python3-tkinter; then
-                    echo "✓ Python3 erfolgreich installiert (inkl. tkinter)"
+                log_and_echo "  Installiere Python3 über dnf..."
+                if $SUDO_CMD dnf install -y python3 python3-pip python3-tkinter 2>&1 | tee -a "$LOG_FILE"; then
+                    log_and_echo "✓ Python3 erfolgreich installiert (inkl. tkinter)"
                 else
-                    echo "❌ Fehler bei der Installation von Python3"
-                    echo "  Bitte installieren Sie Python3 manuell: sudo dnf install python3 python3-pip python3-tkinter"
+                    log_and_echo "❌ Fehler bei der Installation von Python3"
+                    log_and_echo "  Bitte installieren Sie Python3 manuell: $SUDO_CMD dnf install python3 python3-pip python3-tkinter"
+                    log_and_echo "  Siehe Log-Datei für Details: $LOG_FILE"
                     exit 1
                 fi
             # Prüfe ob pacman verfügbar ist (Arch Linux)
             elif command -v pacman &> /dev/null; then
-                echo "  Installiere Python3 über pacman..."
-                if sudo pacman -S --noconfirm python python-pip tk; then
-                    echo "✓ Python3 erfolgreich installiert (inkl. tkinter)"
+                log_and_echo "  Installiere Python3 über pacman..."
+                if $SUDO_CMD pacman -S --noconfirm python python-pip tk 2>&1 | tee -a "$LOG_FILE"; then
+                    log_and_echo "✓ Python3 erfolgreich installiert (inkl. tkinter)"
                 else
-                    echo "❌ Fehler bei der Installation von Python3"
-                    echo "  Bitte installieren Sie Python3 manuell: sudo pacman -S python python-pip tk"
+                    log_and_echo "❌ Fehler bei der Installation von Python3"
+                    log_and_echo "  Bitte installieren Sie Python3 manuell: $SUDO_CMD pacman -S python python-pip tk"
+                    log_and_echo "  Siehe Log-Datei für Details: $LOG_FILE"
                     exit 1
                 fi
             else
@@ -161,7 +214,7 @@ if ! python3 -m pip --version &> /dev/null; then
             if command -v apt-get &> /dev/null; then
                 echo "  Installiere pip über apt-get..."
                 log_debug "Starte apt-get install python3-pip..."
-                if sudo apt-get install -y python3-pip 2>&1 | tee -a "$LOG_FILE"; then
+                if $SUDO_CMD apt-get install -y python3-pip 2>&1 | tee -a "$LOG_FILE"; then
                     log_and_echo "✓ pip erfolgreich installiert"
                 else
                     log_and_echo "⚠ apt-get Installation fehlgeschlagen, versuche get-pip.py..."
@@ -173,7 +226,7 @@ if ! python3 -m pip --version &> /dev/null; then
                             rm -f get-pip.py
                         else
                             log_and_echo "❌ Fehler bei der Installation von pip"
-                            log_and_echo "  Bitte installieren Sie pip manuell: sudo apt-get install python3-pip"
+                            log_and_echo "  Bitte installieren Sie pip manuell: $SUDO_CMD apt-get install python3-pip"
                             log_and_echo "  Siehe Log-Datei für Details: $LOG_FILE"
                             exit 1
                         fi
@@ -185,22 +238,24 @@ if ! python3 -m pip --version &> /dev/null; then
                 fi
             # Prüfe ob dnf verfügbar ist (Fedora/RHEL)
             elif command -v dnf &> /dev/null; then
-                echo "  Installiere pip über dnf..."
-                if sudo dnf install -y python3-pip; then
-                    echo "✓ pip erfolgreich installiert"
+                log_and_echo "  Installiere pip über dnf..."
+                if $SUDO_CMD dnf install -y python3-pip 2>&1 | tee -a "$LOG_FILE"; then
+                    log_and_echo "✓ pip erfolgreich installiert"
                 else
-                    echo "❌ Fehler bei der Installation von pip"
-                    echo "  Bitte installieren Sie pip manuell: sudo dnf install python3-pip"
+                    log_and_echo "❌ Fehler bei der Installation von pip"
+                    log_and_echo "  Bitte installieren Sie pip manuell: $SUDO_CMD dnf install python3-pip"
+                    log_and_echo "  Siehe Log-Datei für Details: $LOG_FILE"
                     exit 1
                 fi
             # Prüfe ob pacman verfügbar ist (Arch Linux)
             elif command -v pacman &> /dev/null; then
-                echo "  Installiere pip über pacman..."
-                if sudo pacman -S --noconfirm python-pip; then
-                    echo "✓ pip erfolgreich installiert"
+                log_and_echo "  Installiere pip über pacman..."
+                if $SUDO_CMD pacman -S --noconfirm python-pip 2>&1 | tee -a "$LOG_FILE"; then
+                    log_and_echo "✓ pip erfolgreich installiert"
                 else
-                    echo "❌ Fehler bei der Installation von pip"
-                    echo "  Bitte installieren Sie pip manuell: sudo pacman -S python-pip"
+                    log_and_echo "❌ Fehler bei der Installation von pip"
+                    log_and_echo "  Bitte installieren Sie pip manuell: $SUDO_CMD pacman -S python-pip"
+                    log_and_echo "  Siehe Log-Datei für Details: $LOG_FILE"
                     exit 1
                 fi
             else
@@ -248,16 +303,76 @@ log_and_echo "✓ pip gefunden: $PIP_VERSION"
 log_debug "pip-Version: $PIP_VERSION"
 log_and_echo ""
 
+# Prüfe und installiere python3-venv falls nötig (für venv-Erstellung)
+if [ "$OS" = "Linux" ]; then
+    log_and_echo "Prüfe python3-venv..."
+    log_debug "Prüfe ob python3-venv installiert ist..."
+    if ! python3 -m venv --help &> /dev/null; then
+        log_and_echo "⚠ python3-venv nicht verfügbar - versuche Installation..."
+        if command -v apt-get &> /dev/null; then
+            PYTHON_MINOR_VERSION=$(python3 -c "import sys; print(sys.version_info.minor)" 2>/dev/null)
+            log_debug "Python Minor-Version: $PYTHON_MINOR_VERSION"
+            if $SUDO_CMD apt-get install -y python3-venv python${PYTHON_MINOR_VERSION}-venv 2>&1 | tee -a "$LOG_FILE"; then
+                log_and_echo "✓ python3-venv erfolgreich installiert"
+            else
+                log_and_echo "⚠ Warnung: python3-venv Installation fehlgeschlagen"
+                log_and_echo "  Versuche venv trotzdem zu erstellen..."
+            fi
+        elif command -v dnf &> /dev/null; then
+            if $SUDO_CMD dnf install -y python3-venv 2>&1 | tee -a "$LOG_FILE"; then
+                log_and_echo "✓ python3-venv erfolgreich installiert"
+            else
+                log_and_echo "⚠ Warnung: python3-venv Installation fehlgeschlagen"
+            fi
+        fi
+    else
+        log_debug "python3-venv ist verfügbar"
+    fi
+    log_and_echo ""
+fi
+
 # Prüfe ob venv existiert
 if [ ! -d "venv" ]; then
     log_and_echo "Erstelle virtuelle Umgebung..."
     log_debug "Erstelle venv in: $SCRIPT_DIR/venv"
-    if python3 -m venv venv 2>&1 | tee -a "$LOG_FILE"; then
+    VENV_OUTPUT=$(python3 -m venv venv 2>&1)
+    VENV_EXIT=$?
+    echo "$VENV_OUTPUT" | tee -a "$LOG_FILE"
+    
+    if [ $VENV_EXIT -eq 0 ] && [ -d "venv" ] && [ -f "venv/bin/activate" ]; then
         log_and_echo "✓ Virtuelle Umgebung erstellt"
     else
         log_and_echo "❌ Fehler beim Erstellen der virtuellen Umgebung"
-        log_and_echo "  Siehe Log-Datei für Details: $LOG_FILE"
-        exit 1
+        log_and_echo "  Fehler: $VENV_OUTPUT"
+        if echo "$VENV_OUTPUT" | grep -q "ensurepip is not available"; then
+            log_and_echo "  python3-venv fehlt - versuche Installation..."
+            if [ "$OS" = "Linux" ] && command -v apt-get &> /dev/null; then
+                PYTHON_MINOR_VERSION=$(python3 -c "import sys; print(sys.version_info.minor)" 2>/dev/null)
+                log_and_echo "  Installiere python${PYTHON_MINOR_VERSION}-venv..."
+                if $SUDO_CMD apt-get install -y python${PYTHON_MINOR_VERSION}-venv 2>&1 | tee -a "$LOG_FILE"; then
+                    log_and_echo "  Versuche venv erneut zu erstellen..."
+                    if python3 -m venv venv 2>&1 | tee -a "$LOG_FILE"; then
+                        log_and_echo "✓ Virtuelle Umgebung erstellt"
+                    else
+                        log_and_echo "❌ venv-Erstellung fehlgeschlagen"
+                        log_and_echo "  Siehe Log-Datei für Details: $LOG_FILE"
+                        exit 1
+                    fi
+                else
+                    log_and_echo "❌ python3-venv Installation fehlgeschlagen"
+                    log_and_echo "  Siehe Log-Datei für Details: $LOG_FILE"
+                    exit 1
+                fi
+            else
+                log_and_echo "  Bitte installieren Sie python3-venv manuell"
+                log_and_echo "  Ubuntu/Debian: $SUDO_CMD apt-get install python3-venv"
+                log_and_echo "  Siehe Log-Datei für Details: $LOG_FILE"
+                exit 1
+            fi
+        else
+            log_and_echo "  Siehe Log-Datei für Details: $LOG_FILE"
+            exit 1
+        fi
     fi
     log_and_echo ""
 else
@@ -299,92 +414,106 @@ log_and_echo "Prüfe System-Abhängigkeiten..."
 log_and_echo ""
 
 # Prüfe yt-dlp (als Python-Modul, da es über pip installiert wird)
-echo "Prüfe yt-dlp..."
+log_and_echo "Prüfe yt-dlp..."
+log_debug "Prüfe yt-dlp Verfügbarkeit..."
 if python3 -c "import yt_dlp; print(yt_dlp.version.__version__)" 2>/dev/null; then
     YTDLP_VERSION=$(python3 -c "import yt_dlp; print(yt_dlp.version.__version__)" 2>/dev/null)
-    echo "✓ yt-dlp installiert (Python-Modul): $YTDLP_VERSION"
+    log_and_echo "✓ yt-dlp installiert (Python-Modul): $YTDLP_VERSION"
+    log_debug "yt-dlp Version: $YTDLP_VERSION"
 elif command -v yt-dlp &> /dev/null; then
-    YTDLP_VERSION=$(yt-dlp --version)
-    echo "✓ yt-dlp installiert (System-Befehl): $YTDLP_VERSION"
+    YTDLP_VERSION=$(yt-dlp --version 2>/dev/null || echo "unbekannt")
+    log_and_echo "✓ yt-dlp installiert (System-Befehl): $YTDLP_VERSION"
+    log_debug "yt-dlp als System-Befehl gefunden"
 else
-    echo "⚠ yt-dlp nicht gefunden"
-    echo "  Versuche Installation über pip..."
-    pip install --upgrade yt-dlp
-    if python3 -c "import yt_dlp" 2>/dev/null; then
-        YTDLP_VERSION=$(python3 -c "import yt_dlp; print(yt_dlp.version.__version__)" 2>/dev/null)
-        echo "✓ yt-dlp erfolgreich installiert: $YTDLP_VERSION"
+    log_and_echo "⚠ yt-dlp nicht gefunden"
+    log_and_echo "  Versuche Installation über pip..."
+    log_debug "Installiere yt-dlp über pip..."
+    if pip install --upgrade yt-dlp 2>&1 | tee -a "$LOG_FILE"; then
+        if python3 -c "import yt_dlp" 2>/dev/null; then
+            YTDLP_VERSION=$(python3 -c "import yt_dlp; print(yt_dlp.version.__version__)" 2>/dev/null)
+            log_and_echo "✓ yt-dlp erfolgreich installiert: $YTDLP_VERSION"
+        else
+            log_and_echo "❌ yt-dlp Installation fehlgeschlagen"
+        fi
     else
-        echo "❌ yt-dlp Installation fehlgeschlagen"
+        log_and_echo "❌ yt-dlp Installation fehlgeschlagen"
+        log_debug "pip install yt-dlp fehlgeschlagen"
     fi
 fi
 
 # Prüfe und installiere ffmpeg falls nötig
+log_debug "Prüfe ffmpeg Verfügbarkeit..."
 if command -v ffmpeg &> /dev/null; then
     FFMPEG_VERSION=$(ffmpeg -version | head -1)
-    echo "✓ ffmpeg bereits installiert: $FFMPEG_VERSION"
+    log_and_echo "✓ ffmpeg bereits installiert: $FFMPEG_VERSION"
+    log_debug "ffmpeg gefunden: $(which ffmpeg)"
 else
-    echo "⚠ ffmpeg nicht gefunden - versuche automatische Installation..."
+    log_and_echo "⚠ ffmpeg nicht gefunden - versuche automatische Installation..."
+    log_debug "ffmpeg nicht gefunden, starte Installation..."
     
-    # Erkenne Betriebssystem
-    OS="$(uname -s)"
     case "${OS}" in
         Linux*)
             # Prüfe ob apt-get verfügbar ist (Debian/Ubuntu/Mint/Ubuntu ARM)
             if command -v apt-get &> /dev/null; then
-                echo "  Installiere ffmpeg über apt-get..."
-                echo "  (Unterstützt: Ubuntu, Ubuntu ARM, Linux Mint, Debian)"
-                if sudo apt-get update && sudo apt-get install -y ffmpeg; then
-                    echo "✓ ffmpeg erfolgreich installiert"
+                log_and_echo "  Installiere ffmpeg über apt-get..."
+                log_and_echo "  (Unterstützt: Ubuntu, Ubuntu ARM, Linux Mint, Debian)"
+                log_debug "Starte apt-get install ffmpeg..."
+                if $SUDO_CMD apt-get update 2>&1 | tee -a "$LOG_FILE" && $SUDO_CMD apt-get install -y ffmpeg 2>&1 | tee -a "$LOG_FILE"; then
+                    log_and_echo "✓ ffmpeg erfolgreich installiert"
                 else
-                    echo "❌ Fehler bei der Installation von ffmpeg"
-                    echo "  Bitte installieren Sie ffmpeg manuell: sudo apt-get install ffmpeg"
-                    echo "  Für Ubuntu ARM: sudo apt-get install ffmpeg (funktioniert gleich)"
+                    log_and_echo "❌ Fehler bei der Installation von ffmpeg"
+                    log_and_echo "  Bitte installieren Sie ffmpeg manuell: $SUDO_CMD apt-get install ffmpeg"
+                    log_and_echo "  Für Ubuntu ARM: $SUDO_CMD apt-get install ffmpeg (funktioniert gleich)"
+                    log_and_echo "  Siehe Log-Datei für Details: $LOG_FILE"
                 fi
             # Prüfe ob dnf verfügbar ist (Fedora/RHEL)
             elif command -v dnf &> /dev/null; then
-                echo "  Installiere ffmpeg über dnf..."
-                if sudo dnf install -y ffmpeg; then
-                    echo "✓ ffmpeg erfolgreich installiert"
+                log_and_echo "  Installiere ffmpeg über dnf..."
+                if $SUDO_CMD dnf install -y ffmpeg 2>&1 | tee -a "$LOG_FILE"; then
+                    log_and_echo "✓ ffmpeg erfolgreich installiert"
                 else
-                    echo "❌ Fehler bei der Installation von ffmpeg"
-                    echo "  Bitte installieren Sie ffmpeg manuell: sudo dnf install ffmpeg"
+                    log_and_echo "❌ Fehler bei der Installation von ffmpeg"
+                    log_and_echo "  Bitte installieren Sie ffmpeg manuell: $SUDO_CMD dnf install ffmpeg"
+                    log_and_echo "  Siehe Log-Datei für Details: $LOG_FILE"
                 fi
             # Prüfe ob pacman verfügbar ist (Arch Linux)
             elif command -v pacman &> /dev/null; then
-                echo "  Installiere ffmpeg über pacman..."
-                if sudo pacman -S --noconfirm ffmpeg; then
-                    echo "✓ ffmpeg erfolgreich installiert"
+                log_and_echo "  Installiere ffmpeg über pacman..."
+                if $SUDO_CMD pacman -S --noconfirm ffmpeg 2>&1 | tee -a "$LOG_FILE"; then
+                    log_and_echo "✓ ffmpeg erfolgreich installiert"
                 else
-                    echo "❌ Fehler bei der Installation von ffmpeg"
-                    echo "  Bitte installieren Sie ffmpeg manuell: sudo pacman -S ffmpeg"
+                    log_and_echo "❌ Fehler bei der Installation von ffmpeg"
+                    log_and_echo "  Bitte installieren Sie ffmpeg manuell: $SUDO_CMD pacman -S ffmpeg"
+                    log_and_echo "  Siehe Log-Datei für Details: $LOG_FILE"
                 fi
             else
-                echo "❌ Paket-Manager nicht erkannt"
-                echo "  Bitte installieren Sie ffmpeg manuell über Ihren Paket-Manager"
+                log_and_echo "❌ Paket-Manager nicht erkannt"
+                log_and_echo "  Bitte installieren Sie ffmpeg manuell über Ihren Paket-Manager"
             fi
             ;;
         Darwin*)
             # macOS - prüfe ob Homebrew installiert ist
             if command -v brew &> /dev/null; then
-                echo "  Installiere ffmpeg über Homebrew..."
-                if brew install ffmpeg; then
-                    echo "✓ ffmpeg erfolgreich installiert"
+                log_and_echo "  Installiere ffmpeg über Homebrew..."
+                if brew install ffmpeg 2>&1 | tee -a "$LOG_FILE"; then
+                    log_and_echo "✓ ffmpeg erfolgreich installiert"
                 else
-                    echo "❌ Fehler bei der Installation von ffmpeg"
-                    echo "  Bitte installieren Sie ffmpeg manuell: brew install ffmpeg"
+                    log_and_echo "❌ Fehler bei der Installation von ffmpeg"
+                    log_and_echo "  Bitte installieren Sie ffmpeg manuell: brew install ffmpeg"
+                    log_and_echo "  Siehe Log-Datei für Details: $LOG_FILE"
                 fi
             else
-                echo "❌ Homebrew nicht gefunden"
-                echo "  Installieren Sie Homebrew: https://brew.sh"
-                echo "  Dann: brew install ffmpeg"
+                log_and_echo "❌ Homebrew nicht gefunden"
+                log_and_echo "  Installieren Sie Homebrew: https://brew.sh"
+                log_and_echo "  Dann: brew install ffmpeg"
             fi
             ;;
         *)
-            echo "❌ Betriebssystem nicht unterstützt für automatische Installation"
-            echo "  Bitte installieren Sie ffmpeg manuell:"
-            echo "    Linux: sudo apt-get install ffmpeg (oder entsprechendes Paket-Manager)"
-            echo "    macOS: brew install ffmpeg"
-            echo "    Windows: https://ffmpeg.org/download.html"
+            log_and_echo "❌ Betriebssystem nicht unterstützt für automatische Installation"
+            log_and_echo "  Bitte installieren Sie ffmpeg manuell:"
+            log_and_echo "    Linux: $SUDO_CMD apt-get install ffmpeg (oder entsprechendes Paket-Manager)"
+            log_and_echo "    macOS: brew install ffmpeg"
+            log_and_echo "    Windows: https://ffmpeg.org/download.html"
             ;;
     esac
 fi
