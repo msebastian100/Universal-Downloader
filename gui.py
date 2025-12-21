@@ -238,8 +238,8 @@ class DeezerDownloaderGUI:
                 if icon_path.exists():
                     icon_path_found = icon_path
                     try:
-                        # Für macOS und Linux: iconphoto verwenden
-                        if sys.platform == "darwin" or sys.platform.startswith("linux"):
+                        # Für macOS: iconphoto verwenden
+                        if sys.platform == "darwin":
                             try:
                                 from PIL import Image, ImageTk
                                 img = Image.open(icon_path)
@@ -261,6 +261,33 @@ class DeezerDownloaderGUI:
                                         self.root.icon_image = photo
                                         icon_set = True
                                         self._safe_log(f"[ICON] Icon geladen (tkinter): {icon_path.name}")
+                                        break
+                                except Exception as e:
+                                    self._safe_log(f"[ICON] Fehler beim Laden von {icon_path.name}: {e}")
+                                    continue
+                        elif sys.platform.startswith("linux"):
+                            # Für Linux: iconphoto verwenden (PNG bevorzugt)
+                            try:
+                                from PIL import Image, ImageTk
+                                img = Image.open(icon_path)
+                                # Linux bevorzugt 48x48 oder 64x64 Icons
+                                img = img.resize((64, 64), Image.Resampling.LANCZOS)
+                                photo = ImageTk.PhotoImage(img)
+                                self.root.iconphoto(True, photo)
+                                # Speichere Referenz, damit das Icon nicht gelöscht wird
+                                self.root.icon_image = photo
+                                icon_set = True
+                                self._safe_log(f"[ICON] Icon geladen (Linux): {icon_path.name}")
+                                break
+                            except ImportError:
+                                # PIL nicht verfügbar, versuche mit tkinter PhotoImage
+                                try:
+                                    if icon_path.suffix.lower() == '.png':
+                                        photo = tk.PhotoImage(file=str(icon_path))
+                                        self.root.iconphoto(True, photo)
+                                        self.root.icon_image = photo
+                                        icon_set = True
+                                        self._safe_log(f"[ICON] Icon geladen (tkinter Linux): {icon_path.name}")
                                         break
                                 except Exception as e:
                                     self._safe_log(f"[ICON] Fehler beim Laden von {icon_path.name}: {e}")
