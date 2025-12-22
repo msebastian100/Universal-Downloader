@@ -446,16 +446,44 @@ def update_via_git(repo_path: Path, repo_url: str) -> Tuple[bool, str]:
                               timeout=30)
         
         # Stelle wichtige Dateien wieder her
+        # WICHTIG: venv wird nicht wiederhergestellt, wenn es bereits existiert und funktioniert
+        # (python.exe könnte gerade in Verwendung sein)
         for item in important_files:
             src = backup_dir / item
             dst = repo_path / item
+            
+            # Spezialbehandlung für venv: Nur wiederherstellen wenn es nicht existiert
+            if item == 'venv' and dst.exists():
+                # Prüfe ob venv funktioniert (hat python.exe)
+                venv_python = dst / 'Scripts' / 'python.exe' if sys.platform == 'win32' else dst / 'bin' / 'python'
+                if venv_python.exists():
+                    print(f"[INFO] {item} existiert bereits und funktioniert - überspringe Wiederherstellung")
+                    continue
+            
             if src.exists():
-                if src.is_dir():
-                    if dst.exists():
-                        shutil.rmtree(dst)
-                    shutil.copytree(src, dst)
-                else:
-                    shutil.copy2(src, dst)
+                try:
+                    if src.is_dir():
+                        if dst.exists():
+                            # Versuche zu löschen, ignoriere Fehler bei geöffneten Dateien
+                            try:
+                                shutil.rmtree(dst)
+                            except (PermissionError, OSError) as e:
+                                print(f"[WARNING] Konnte {item} nicht löschen (möglicherweise geöffnet): {e}")
+                                # Überspringe Wiederherstellung wenn Löschen fehlschlägt
+                                continue
+                        try:
+                            shutil.copytree(src, dst)
+                            print(f"[INFO] {item} wiederhergestellt")
+                        except (PermissionError, OSError) as e:
+                            print(f"[WARNING] Konnte {item} nicht wiederherstellen (möglicherweise geöffnet): {e}")
+                    else:
+                        try:
+                            shutil.copy2(src, dst)
+                            print(f"[INFO] {item} wiederhergestellt")
+                        except (PermissionError, OSError) as e:
+                            print(f"[WARNING] Konnte {item} nicht wiederherstellen (möglicherweise geöffnet): {e}")
+                except Exception as e:
+                    print(f"[WARNING] Fehler beim Wiederherstellen von {item}: {e}")
         
         # Lösche Backup
         shutil.rmtree(backup_dir, ignore_errors=True)
@@ -564,16 +592,44 @@ def update_via_zip(repo_path: Path, repo_url: str) -> Tuple[bool, str]:
                 shutil.copy2(item, dst)
         
         # Stelle wichtige Dateien wieder her
+        # WICHTIG: venv wird nicht wiederhergestellt, wenn es bereits existiert und funktioniert
+        # (python.exe könnte gerade in Verwendung sein)
         for item in important_files:
             src = backup_dir / item
             dst = repo_path / item
+            
+            # Spezialbehandlung für venv: Nur wiederherstellen wenn es nicht existiert
+            if item == 'venv' and dst.exists():
+                # Prüfe ob venv funktioniert (hat python.exe)
+                venv_python = dst / 'Scripts' / 'python.exe' if sys.platform == 'win32' else dst / 'bin' / 'python'
+                if venv_python.exists():
+                    print(f"[INFO] {item} existiert bereits und funktioniert - überspringe Wiederherstellung")
+                    continue
+            
             if src.exists():
-                if src.is_dir():
-                    if dst.exists():
-                        shutil.rmtree(dst)
-                    shutil.copytree(src, dst)
-                else:
-                    shutil.copy2(src, dst)
+                try:
+                    if src.is_dir():
+                        if dst.exists():
+                            # Versuche zu löschen, ignoriere Fehler bei geöffneten Dateien
+                            try:
+                                shutil.rmtree(dst)
+                            except (PermissionError, OSError) as e:
+                                print(f"[WARNING] Konnte {item} nicht löschen (möglicherweise geöffnet): {e}")
+                                # Überspringe Wiederherstellung wenn Löschen fehlschlägt
+                                continue
+                        try:
+                            shutil.copytree(src, dst)
+                            print(f"[INFO] {item} wiederhergestellt")
+                        except (PermissionError, OSError) as e:
+                            print(f"[WARNING] Konnte {item} nicht wiederherstellen (möglicherweise geöffnet): {e}")
+                    else:
+                        try:
+                            shutil.copy2(src, dst)
+                            print(f"[INFO] {item} wiederhergestellt")
+                        except (PermissionError, OSError) as e:
+                            print(f"[WARNING] Konnte {item} nicht wiederherstellen (möglicherweise geöffnet): {e}")
+                except Exception as e:
+                    print(f"[WARNING] Fehler beim Wiederherstellen von {item}: {e}")
         
         # Aufräumen
         shutil.rmtree(temp_dir, ignore_errors=True)
