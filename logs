@@ -1,9 +1,55 @@
-Skript:
-D:\Users\basti\Downloads\Universal-Downloader start launc
-herbs
-Zeile: 1413
-Zeichen: 9
-Fehler: ‘End’ erwartet
-‚Code: 800A03F6
-Quelle: Kompilierungsfehler in Microsoft VBScript
-ok
+update_output.txt
+
+[DEBUG] ==========================================
+[DEBUG] Update-Skript Debug-Informationen
+[DEBUG] ==========================================
+[DEBUG] Skript-Verzeichnis: D:\Users\basti\Downloads\Universal-Downloader
+[DEBUG] Skript-Verzeichnis existiert: True
+[DEBUG] Aktuelles Arbeitsverzeichnis: D:\Users\basti\Downloads\Universal-Downloader
+[DEBUG] Python-Pfad (erste 5): ['D:\\Users\\basti\\Downloads\\Universal-Downloader', 'C:\\Users\\basti\\AppData\\Local\\Programs\\Python\\Python310\\python310.zip', 'C:\\Users\\basti\\AppData\\Local\\Programs\\Python\\Python310\\DLLs', 'C:\\Users\\basti\\AppData\\Local\\Programs\\Python\\Python310\\lib', 'C:\\Users\\basti\\AppData\\Local\\Programs\\Python\\Python310']
+[DEBUG] version.py existiert: True
+[DEBUG] version.py Pfad: D:\Users\basti\Downloads\Universal-Downloader\version.py
+[DEBUG] version.py Größe: 1482 Bytes
+[DEBUG] updater.py existiert: True
+[DEBUG] updater.py Pfad: D:\Users\basti\Downloads\Universal-Downloader\updater.py
+[DEBUG] updater.py Größe: 8481 Bytes
+[DEBUG] ==========================================
+[DEBUG] Versuche Import von version und updater...
+[DEBUG] Lade version.py direkt über importlib...
+[DEBUG] ✓ version.py direkt geladen
+[DEBUG] Lade updater.py direkt über importlib...
+[DEBUG] Direkter Import fehlgeschlagen: No module named 'requests'
+[DEBUG] Traceback: Traceback (most recent call last):
+  File "D:\Users\basti\Downloads\Universal-Downloader\update_from_github.py", line 125, in <module>
+    spec.loader.exec_module(updater_module)
+  File "<frozen importlib._bootstrap_external>", line 883, in exec_module
+  File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+  File "D:\Users\basti\Downloads\Universal-Downloader\updater.py", line 9, in <module>
+    import requests
+ModuleNotFoundError: No module named 'requests'
+
+[DEBUG] ✗ updater.py Import fehlgeschlagen: cannot import name 'UpdateChecker' from 'updater' (D:\Users\basti\Downloads\Universal-Downloader\updater.py)
+[DEBUG] Traceback: Traceback (most recent call last):
+  File "D:\Users\basti\Downloads\Universal-Downloader\update_from_github.py", line 138, in <module>
+    from updater import UpdateChecker
+ImportError: cannot import name 'UpdateChecker' from 'updater' (D:\Users\basti\Downloads\Universal-Downloader\updater.py)
+
+[ERROR] Version-Module nicht importiert: updater.py fehlt; 
+[DEBUG] Finale Prüfung:
+[DEBUG]   version_imported: True
+[DEBUG]   updater_imported: False
+[DEBUG]   version_file.exists(): True
+[DEBUG]   updater_file.exists(): True
+[DEBUG] Python-Pfad: ['D:\\Users\\basti\\Downloads\\Universal-Downloader', 'C:\\Users\\basti\\AppData\\Local\\Programs\\Python\\Python310\\python310.zip', 'C:\\Users\\basti\\AppData\\Local\\Programs\\Python\\Python310\\DLLs', 'C:\\Users\\basti\\AppData\\Local\\Programs\\Python\\Python310\\lib', 'C:\\Users\\basti\\AppData\\Local\\Programs\\Python\\Python310', 'C:\\Users\\basti\\AppData\\Local\\Programs\\Python\\Python310\\lib\\site-packages', 'C:\\Users\\basti\\AppData\\Local\\Programs\\Python\\Python310\\lib\\site-packages\\win32', 'C:\\Users\\basti\\AppData\\Local\\Programs\\Python\\Python310\\lib\\site-packages\\win32\\lib', 'C:\\Users\\basti\\AppData\\Local\\Programs\\Python\\Python310\\lib\\site-packages\\Pythonwin']
+[DEBUG] Skript-Verzeichnis: D:\Users\basti\Downloads\Universal-Downloader
+[DEBUG] Aktuelles Arbeitsverzeichnis: D:\Users\basti\Downloads\Universal-Downloader
+[DEBUG] __file__: D:\Users\basti\Downloads\Universal-Downloader\update_from_github.py
+[DEBUG] sys.argv[0]: D:\Users\basti\Downloads\Universal-Downloader\update_from_github.py
+[DEBUG] version.py Pfad: D:\Users\basti\Downloads\Universal-Downloader\version.py
+[DEBUG] version.py Größe: 1482 Bytes
+[DEBUG] updater.py Pfad: D:\Users\basti\Downloads\Universal-Downloader\updater.py
+[ERROR] Import endgültig fehlgeschlagen
+
+
+update_result.txt
+1 
