@@ -1032,7 +1032,7 @@ if [ "$ALL_OK" = true ]; then
     log_and_echo ""
     log_and_echo "Starten Sie die Anwendung mit:"
     if [ "$OS" = "Linux" ]; then
-        log_and_echo "  ./start.sh"
+        log_and_echo "  ./start_launcher.sh"
         log_and_echo "  Oder über das Startmenü: Universal Downloader"
     elif [ "$OS" = "Windows_NT" ] || [ "$OS" = "MINGW" ] || [ "$OS" = "MSYS" ]; then
         log_and_echo "  start_launcher.vbs"

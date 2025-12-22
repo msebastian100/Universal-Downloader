@@ -107,25 +107,14 @@ python3 check_dependencies.py
 
 ### Grafische Benutzeroberfläche (GUI)
 
-**Empfohlene Methode:**
-```bash
-python3 start.py
-```
+**Empfohlene Methode - Plattform-spezifische Launcher:**
 
-Das `start.py` Skript:
-- Prüft automatisch alle Abhängigkeiten
-- Installiert fehlende Pakete bei Bedarf
-- Startet die GUI mit korrekter Konfiguration
+Die Anwendung kann über plattform-spezifische Launcher gestartet werden, die automatisch `start.py` ausführen:
 
-**Alternative (direkt):**
+**Linux/macOS (mit Shell-Launcher):**
 ```bash
-python3 gui.py
-```
-
-**Linux/macOS (mit Shell-Skript):**
-```bash
-chmod +x start.sh
-./start.sh
+chmod +x start_launcher.sh
+./start_launcher.sh
 ```
 
 **Windows (mit VBS-Launcher):**
@@ -133,6 +122,25 @@ chmod +x start.sh
 # Doppelklick auf start_launcher.vbs
 # Oder:
 cscript start_launcher.vbs
+```
+
+**Was machen die Launcher?**
+- Beide Launcher (`start_launcher.sh` und `start_launcher.vbs`) führen automatisch `start.py` aus
+- `start.py` prüft alle Abhängigkeiten
+- Installiert fehlende Pakete bei Bedarf
+- Startet die GUI mit korrekter Konfiguration
+- Führt Update-Checks durch (Windows)
+
+**Alternative Methoden:**
+
+**Direkt mit Python:**
+```bash
+python3 start.py
+```
+
+**Oder direkt die GUI:**
+```bash
+python3 gui.py
 ```
 
 #### 🎵 Deezer-Tab

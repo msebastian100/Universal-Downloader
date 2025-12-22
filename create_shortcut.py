@@ -168,10 +168,10 @@ def create_linux_desktop():
     """Erstellt Linux .desktop Datei im Startmenü"""
     try:
         script_dir = Path(__file__).parent.absolute()
-        start_script = script_dir / "start.sh"
+        start_script = script_dir / "start_launcher.sh"
         
         if not start_script.exists():
-            print(f"[WARNING] start.sh nicht gefunden: {start_script}")
+            print(f"[WARNING] start_launcher.sh nicht gefunden: {start_script}")
             return False
         
         # Startmenü-Pfad
