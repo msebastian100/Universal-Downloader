@@ -1,39 +1,58 @@
+==========================================
+Universal Downloader - Update-Check
+==========================================
+
+[DEBUG] Python: "D:\Users\basti\Downloads\Universal-Downloader\venv\Scripts\python.exe"
+[DEBUG] Skript: "D:\Users\basti\Downloads\Universal-Downloader\update_from_github.py"
+
+Fuehre Update-Check aus...
+
 [DEBUG] ==========================================
 [DEBUG] Update-Skript Debug-Informationen
 [DEBUG] ==========================================
-[DEBUG] Skript-Verzeichnis: D:\Users\basti\Downloads\Universal-Downloader-main\Universal-Downloader-main
+[DEBUG] Skript-Verzeichnis: D:\Users\basti\Downloads\Universal-Downloader
 [DEBUG] Skript-Verzeichnis existiert: True
-[DEBUG] Aktuelles Arbeitsverzeichnis: D:\Users\basti\Downloads\Universal-Downloader-main\Universal-Downloader-main
-[DEBUG] Python-Pfad (erste 5): ['D:\\Users\\basti\\Downloads\\Universal-Downloader-main\\Universal-Downloader-main', 'C:\\Users\\basti\\AppData\\Local\\Programs\\Python\\Python310\\python310.zip', 'C:\\Users\\basti\\AppData\\Local\\Programs\\Python\\Python310\\DLLs', 'C:\\Users\\basti\\AppData\\Local\\Programs\\Python\\Python310\\lib', 'C:\\Users\\basti\\AppData\\Local\\Programs\\Python\\Python310']
+[DEBUG] Aktuelles Arbeitsverzeichnis: D:\Users\basti\Downloads\Universal-Downloader
+[DEBUG] Python-Pfad (erste 5): ['D:\\Users\\basti\\Downloads\\Universal-Downloader', 'C:\\Users\\basti\\AppData\\Local\\Programs\\Python\\Python310\\python310.zip', 'C:\\Users\\basti\\AppData\\Local\\Programs\\Python\\Python310\\DLLs', 'C:\\Users\\basti\\AppData\\Local\\Programs\\Python\\Python310\\lib', 'C:\\Users\\basti\\AppData\\Local\\Programs\\Python\\Python310']
 [DEBUG] version.py existiert: True
-[DEBUG] version.py Pfad: D:\Users\basti\Downloads\Universal-Downloader-main\Universal-Downloader-main\version.py
-[DEBUG] version.py Größe: 1535 Bytes
+[DEBUG] version.py Pfad: D:\Users\basti\Downloads\Universal-Downloader\version.py
+[DEBUG] version.py Größe: 1482 Bytes
 [DEBUG] updater.py existiert: True
-[DEBUG] updater.py Pfad: D:\Users\basti\Downloads\Universal-Downloader-main\Universal-Downloader-main\updater.py
-[DEBUG] updater.py Größe: 8694 Bytes
+[DEBUG] updater.py Pfad: D:\Users\basti\Downloads\Universal-Downloader\updater.py
+[DEBUG] updater.py Größe: 8481 Bytes
 [DEBUG] ==========================================
 [DEBUG] Versuche Import von version und updater...
 [DEBUG] Lade version.py direkt über importlib...
 [DEBUG] ✓ version.py direkt geladen
 [DEBUG] Lade updater.py direkt über importlib...
 [DEBUG] ✓ updater.py direkt geladen
-fatal: not a git repository (or any of the parent directories): .git
 [INFO] Prüfe auf Updates...
-[INFO] Repository-Pfad: D:\Users\basti\Downloads\Universal-Downloader-main\Universal-Downloader-main
+[INFO] Repository-Pfad: D:\Users\basti\Downloads\Universal-Downloader
 [INFO] Repository-URL: https://github.com/msebastian100/Universal-Downloader
 [INFO] Prüfe auf Git-Commits...
-[DEBUG] Git-Verzeichnis existiert: True, has_valid_repo: False
-[INFO] Git-Repository ist unvollständig - initialisiere neu...
-[WARNING] Konnte .git nicht löschen: [WinError 32] Der Prozess kann nicht auf die Datei zugreifen, da sie von einem anderen Prozess verwendet wird: 'D:\\Users\\basti\\Downloads\\Universal-Downloader-main\\Universal-Downloader-main\\.git\\index.lock'
 [INFO] Initialisiere Git-Repository...
-[WARNING] Konnte Git-Status nicht prüfen: Command '['git', 'remote', 'add', 'origin', 'https://github.com/msebastian100/Universal-Downloader']' returned non-zero exit status 128.
-[DEBUG] Traceback: Traceback (most recent call last):
-  File "D:\Users\basti\Downloads\Universal-Downloader-main\Universal-Downloader-main\update_from_github.py", line 590, in check_and_update
-    subprocess.run(['git', 'remote', 'add', 'origin', repo_url],
-  File "C:\Users\basti\AppData\Local\Programs\Python\Python310\lib\subprocess.py", line 526, in run
-    raise CalledProcessError(retcode, process.args,
-subprocess.CalledProcessError: Command '['git', 'remote', 'add', 'origin', 'https://github.com/msebastian100/Universal-Downloader']' returned non-zero exit status 128.
+Initialized empty Git repository in D:/Users/basti/Downloads/Universal-Downloader/.git/
+[DEBUG] is_new_repo gesetzt auf: True
+[INFO] Hole neueste Änderungen von GitHub...
+[DEBUG] is_new_repo: True, has_local_head: False
+[INFO] Repository wurde neu initialisiert - Update erforderlich
+[DEBUG] update_needed nach Git-Prüfung: True
+[INFO] Verwende Git für Update...
+From https://github.com/msebastian100/Universal-Downloader
+ * branch            main       -> FETCH_HEAD
+[INFO] Lokales Repository hat noch keinen Commit - Update erforderlich
+[WARNING] git reset --hard fehlgeschlagen, versuche mit --force...
+[INFO] Log-Datei ist geöffnet - überspringe diese Datei beim Reset
+Unlink of file 'vbs.log.txt' failed. Should I try again? (y/n) n
+error: unable to unlink old 'vbs.log.txt': Invalid argument
+fatal: ambiguous argument 'HEAD': unknown revision or path not in the working tree.
+Use '--' to separate paths from revisions, like this:
+'git <command> [<revision>...] -- [<file>...]'
+[ERROR] Fehler: [WinError 5] Zugriff verweigert: 'D:\\Users\\basti\\Downloads\\Universal-Downloader\\venv\\Lib\\site-packages\\charset_normalizer\\md.cp310-win_amd64.pyd'
 
-[INFO] Keine Updates verfügbar
+[INFO] Fehler: [WinError 5] Zugriff verweigert: 'D:\\Users\\basti\\Downloads\\Universal-Downloader\\venv\\Lib\\site-packages\\charset_normalizer\\md.cp310-win_amd64.pyd'
 
-[INFO] Bereits auf dem neuesten Stand
+==========================================
+Update-Check beendet mit Fehler (Code: 1
+==========================================
+Drücken Sie eine beliebige Taste . . .
