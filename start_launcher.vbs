@@ -793,11 +793,27 @@ If Not fso.FolderExists(venvPath) Then
     venvNeedsCreation = True
 Else
     ' Prüfe ob venv gültig ist (enthält Scripts/python.exe oder bin/python)
+    ' Optimiert: Prüfe zuerst den wahrscheinlicheren Windows-Pfad und validiere Python
     Dim venvPythonPath
     venvPythonPath = venvPath & "\Scripts\python.exe"
-    If Not fso.FileExists(venvPythonPath) Then
+    If fso.FileExists(venvPythonPath) Then
+        ' Prüfe ob Python auch wirklich funktioniert (schnelle Validierung)
+        If IsValidPythonMain(venvPythonPath) Then
+            WriteLog "[OK] venv existiert und ist gültig"
+        Else
+            WriteLog "[WARNING] venv existiert, aber Python ist ungültig - wird neu erstellt..."
+            venvNeedsCreation = True
+        End If
+    Else
         venvPythonPath = venvPath & "\bin\python"
-        If Not fso.FileExists(venvPythonPath) Then
+        If fso.FileExists(venvPythonPath) Then
+            If IsValidPythonMain(venvPythonPath) Then
+                WriteLog "[OK] venv existiert und ist gültig"
+            Else
+                WriteLog "[WARNING] venv existiert, aber Python ist ungültig - wird neu erstellt..."
+                venvNeedsCreation = True
+            End If
+        Else
             WriteLog "[WARNING] venv existiert, aber ist ungültig - wird neu erstellt..."
             venvNeedsCreation = True
         End If
