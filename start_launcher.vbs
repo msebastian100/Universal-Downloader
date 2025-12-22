@@ -268,7 +268,6 @@ If checkUpdates Then
             whereLinesUpdate = Split(whereOutputUpdate, vbCrLf)
             Dim lineUpdate
             For Each lineUpdate In whereLinesUpdate
-                Dim candidatePath
                 candidatePath = Trim(lineUpdate)
                 If Len(candidatePath) > 0 Then
                     ' Prüfe ob es wirklich funktioniert (nicht WindowsApps-Stub)
@@ -570,6 +569,9 @@ Function IsValidPythonMain(pythonPath)
     On Error Goto 0
 End Function
 
+' Deklariere candidatePath einmal für den gesamten Python-Suchbereich
+Dim candidatePath
+
 ' Methode 1: PATH
 WriteLog "[INFO] Methode 1: Prüfe pythonw.exe im PATH..."
 On Error Resume Next
@@ -587,7 +589,6 @@ If whereResult.ExitCode = 0 And Len(Trim(whereOutput)) > 0 Then
     whereLines = Split(whereOutput, vbCrLf)
     Dim line
     For Each line In whereLines
-        Dim candidatePath
         candidatePath = Trim(line)
         If Len(candidatePath) > 0 Then
             ' Prüfe ob es wirklich funktioniert (nicht WindowsApps-Stub)
