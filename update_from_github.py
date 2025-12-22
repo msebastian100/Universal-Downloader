@@ -568,16 +568,39 @@ def check_and_update(repo_path: Optional[Path] = None,
             if not git_dir.exists() or not has_valid_repo:
                 if not has_valid_repo and git_dir.exists():
                     print("[INFO] Git-Repository ist unvollständig - initialisiere neu...")
+                    # Versuche zuerst, index.lock zu löschen (kann Git-Operationen blockieren)
+                    index_lock = git_dir / 'index.lock'
+                    if index_lock.exists():
+                        try:
+                            import time
+                            import os
+                            # Warte kurz, falls die Datei gerade geschrieben wird
+                            time.sleep(0.5)
+                            index_lock.unlink()
+                            print("[INFO] index.lock Datei gelöscht")
+                        except Exception as e:
+                            print(f"[WARNING] Konnte index.lock nicht löschen: {e}")
+                    
                     # Lösche unvollständiges .git Verzeichnis
                     import shutil
                     try:
                         shutil.rmtree(git_dir)
+                        print("[INFO] Unvollständiges .git Verzeichnis gelöscht")
                     except Exception as e:
                         print(f"[WARNING] Konnte .git nicht löschen: {e}")
+                        # Versuche erneut, index.lock zu löschen und dann nochmal
+                        if index_lock.exists():
+                            try:
+                                index_lock.unlink()
+                                shutil.rmtree(git_dir)
+                                print("[INFO] .git Verzeichnis nach Löschen von index.lock gelöscht")
+                            except Exception as e2:
+                                print(f"[WARNING] Konnte .git auch nach Löschen von index.lock nicht löschen: {e2}")
                 
                 print("[INFO] Initialisiere Git-Repository...")
                 if not git_dir.exists():
                     subprocess.run(['git', 'init'], cwd=repo_path, check=True, timeout=10)
+                
                 # Prüfe ob remote bereits existiert
                 check_remote = subprocess.run(
                     ['git', 'remote', 'get-url', 'origin'],
@@ -587,12 +610,29 @@ def check_and_update(repo_path: Optional[Path] = None,
                     timeout=5
                 )
                 if check_remote.returncode != 0:
-                    subprocess.run(['git', 'remote', 'add', 'origin', repo_url], 
-                                  cwd=repo_path, check=True, timeout=10)
+                    # Remote existiert nicht, füge ihn hinzu
+                    add_remote_result = subprocess.run(
+                        ['git', 'remote', 'add', 'origin', repo_url], 
+                        cwd=repo_path, 
+                        capture_output=True,
+                        text=True,
+                        timeout=10
+                    )
+                    if add_remote_result.returncode != 0:
+                        # Wenn add fehlschlägt, könnte der Remote bereits existieren (aber get-url hat fehlgeschlagen)
+                        # Versuche set-url stattdessen
+                        print(f"[WARNING] git remote add fehlgeschlagen: {add_remote_result.stderr}")
+                        print("[INFO] Versuche git remote set-url stattdessen...")
+                        subprocess.run(['git', 'remote', 'set-url', 'origin', repo_url], 
+                                      cwd=repo_path, 
+                                      capture_output=True,
+                                      timeout=10)
                 else:
                     # Remote existiert bereits, aktualisiere URL falls nötig
                     subprocess.run(['git', 'remote', 'set-url', 'origin', repo_url], 
-                                  cwd=repo_path, check=True, timeout=10)
+                                  cwd=repo_path, 
+                                  capture_output=True,
+                                  timeout=10)
                 is_new_repo = True
                 print(f"[DEBUG] is_new_repo gesetzt auf: {is_new_repo}")
             
