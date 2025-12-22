@@ -4085,13 +4085,21 @@ class DeezerDownloaderGUI:
         """Zeigt die Download-Queue an"""
         queue_window = tk.Toplevel(self.root)
         queue_window.title("Download-Queue")
-        queue_window.geometry("700x500")
+        queue_window.geometry("700x450")
         queue_window.transient(self.root)
         
         frame = ttk.Frame(queue_window, padding="10")
         frame.pack(fill=tk.BOTH, expand=True)
         
-        ttk.Label(frame, text="Download-Queue:", font=("Arial", 10, "bold")).pack(anchor=tk.W, pady=(0, 5))
+        # Header-Zeile mit Label und Buttons
+        header_frame = ttk.Frame(frame)
+        header_frame.pack(fill=tk.X, pady=(0, 5))
+        
+        ttk.Label(header_frame, text="Download-Queue:", font=("Arial", 10, "bold")).pack(side=tk.LEFT)
+        
+        # Button-Frame rechts
+        button_frame = ttk.Frame(header_frame)
+        button_frame.pack(side=tk.RIGHT)
         
         # Treeview für bessere Anzeige
         columns = ("Status", "URL", "Qualität", "Format", "Hinzugefügt")
@@ -4160,6 +4168,7 @@ class DeezerDownloaderGUI:
                         self.video_download_queue.pop(i)
                         break
                 refresh_queue()
+                self._update_queue_status()
         
         def clear_queue():
             if messagebox.askyesno("Bestätigen", "Queue wirklich löschen?"):
