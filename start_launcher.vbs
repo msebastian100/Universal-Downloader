@@ -982,10 +982,10 @@ If fso.FileExists(requirementsFile) Then
             End If
         Next
         
-        ' Installiere/aktualisiere requirements.txt nur wenn Pakete fehlen
+        ' Installiere requirements.txt nur wenn Pakete fehlen (ohne --upgrade für schnellere Installation)
         If Not packagesInstalled Then
             Dim pipInstallCmd
-            pipInstallCmd = fullPythonPath & " -m pip install --upgrade -r """ & requirementsFile & """"
+            pipInstallCmd = fullPythonPath & " -m pip install -r """ & requirementsFile & """"
             WriteLog "[INFO] =========================================="
             WriteLog "[INFO] Starte requirements.txt Installation..."
             WriteLog "[INFO] Befehl: " & pipInstallCmd

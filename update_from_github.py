@@ -333,7 +333,9 @@ def update_via_git(repo_path: Path, repo_url: str) -> Tuple[bool, str]:
             'Downloads',
             '.deezer_config.json',
             'ffmpeg',
-            'venv'
+            'venv',
+            'vbs.log.txt',  # VBS-Launcher Log-Datei (kann während Update geöffnet sein)
+            'logs'  # Log-Verzeichnis
         ]
         
         for item in important_files:
@@ -348,10 +350,30 @@ def update_via_git(repo_path: Path, repo_url: str) -> Tuple[bool, str]:
                     shutil.copy2(src, dst)
         
         # Führe Hard-Reset durch (überschreibt lokale Änderungen)
-        subprocess.run(['git', 'reset', '--hard', 'origin/main'], 
-                      cwd=repo_path, 
-                      check=True, 
-                      timeout=30)
+        # Ignoriere Fehler bei geöffneten Dateien (z.B. vbs.log.txt)
+        reset_result = subprocess.run(['git', 'reset', '--hard', 'origin/main'], 
+                                      cwd=repo_path, 
+                                      capture_output=True,
+                                      text=True,
+                                      timeout=30)
+        if reset_result.returncode != 0:
+            # Wenn Reset fehlschlägt (z.B. wegen geöffneter Dateien), versuche es mit --force
+            print("[WARNING] git reset --hard fehlgeschlagen, versuche mit --force...")
+            if 'vbs.log.txt' in reset_result.stderr or 'Unlink' in reset_result.stderr:
+                print("[INFO] Log-Datei ist geöffnet - überspringe diese Datei beim Reset")
+                # Versuche Reset ohne die geöffnete Datei
+                subprocess.run(['git', 'checkout', 'origin/main', '--', '.'], 
+                              cwd=repo_path, 
+                              timeout=30)
+                # Entferne geöffnete Dateien aus dem Index
+                subprocess.run(['git', 'reset', 'HEAD', 'vbs.log.txt'], 
+                              cwd=repo_path, 
+                              timeout=5)
+            else:
+                # Bei anderen Fehlern, versuche es nochmal mit --force
+                subprocess.run(['git', 'reset', '--hard', 'origin/main'], 
+                              cwd=repo_path, 
+                              timeout=30)
         
         # Stelle wichtige Dateien wieder her
         for item in important_files:
@@ -425,7 +447,9 @@ def update_via_zip(repo_path: Path, repo_url: str) -> Tuple[bool, str]:
             'Downloads',
             '.deezer_config.json',
             'ffmpeg',
-            'venv'
+            'venv',
+            'vbs.log.txt',  # VBS-Launcher Log-Datei (kann während Update geöffnet sein)
+            'logs'  # Log-Verzeichnis
         ]
         
         for item in important_files:
