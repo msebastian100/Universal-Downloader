@@ -810,21 +810,12 @@ If venvNeedsCreation Then
     WriteLog "[INFO] =========================================="
     On Error Resume Next
     
-    ' Prüfe ob venv-Modul verfügbar ist
-    Dim venvCheckCmd
-    venvCheckCmd = fullPythonPath & " -m venv --help"
+    ' Prüfe ob venv-Modul verfügbar ist (optimiert: überspringe --help Check, direkt versuchen)
+    ' venv sollte standardmäßig verfügbar sein, wenn Python installiert ist
     Dim venvCheckResult
-    Set venvCheckResult = WshShell.Exec(venvCheckCmd)
-    Dim venvCheckOutput
-    venvCheckOutput = venvCheckResult.StdOut.ReadAll
-    Dim venvCheckError
-    venvCheckError = venvCheckResult.StdErr.ReadAll
-    venvCheckResult.WaitOnReturn = True
-    If Len(venvCheckError) > 0 Then
-        WriteLog "[DEBUG] venv --help StdErr: " & venvCheckError
-    End If
+    venvCheckResult = 0 ' Optimierung: Gehe davon aus, dass venv verfügbar ist
     
-    If venvCheckResult.ExitCode = 0 Then
+    If venvCheckResult = 0 Then
         Dim venvCmd
         venvCmd = fullPythonPath & " -m venv """ & venvPath & """"
         WriteLog "[INFO] venv-Befehl: " & venvCmd
@@ -833,8 +824,8 @@ If venvNeedsCreation Then
         WriteLog "[INFO] venv Exit-Code: " & venvResult
         
         If venvResult = 0 Then
-            ' Warte kurz, damit venv vollständig erstellt wird
-            WScript.Sleep 2000
+            ' Warte kurz, damit venv vollständig erstellt wird (optimiert: reduziert von 2000ms auf 500ms)
+            WScript.Sleep 500
             WriteLog "[DEBUG] =========================================="
             WriteLog "[DEBUG] venv-Erstellung Details:"
             WriteLog "[DEBUG] =========================================="
