@@ -1,3 +1,12 @@
+==========================================
+Universal Downloader - Update-Check
+==========================================
+
+[DEBUG] Python: "D:\Users\basti\Downloads\Universal-Downloader\venv\Scripts\python.exe"
+[DEBUG] Skript: "D:\Users\basti\Downloads\Universal-Downloader\update_from_github.py"
+
+Fuehre Update-Check aus...
+
 [DEBUG] ==========================================
 [DEBUG] Update-Skript Debug-Informationen
 [DEBUG] ==========================================
@@ -18,40 +27,30 @@
 [DEBUG] Lade updater.py direkt über importlib...
 D:\Users\basti\Downloads\Universal-Downloader\venv\lib\site-packages\requests\__init__.py:86: RequestsDependencyWarning: Unable to find acceptable character detection dependency (chardet or charset_normalizer).
   warnings.warn(
-[DEBUG] Direkter Import fehlgeschlagen: No module named 'certifi'
-[DEBUG] Traceback: Traceback (most recent call last):
-  File "D:\Users\basti\Downloads\Universal-Downloader\update_from_github.py", line 125, in <module>
-    spec.loader.exec_module(updater_module)
-  File "<frozen importlib._bootstrap_external>", line 883, in exec_module
-  File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
-  File "D:\Users\basti\Downloads\Universal-Downloader\updater.py", line 9, in <module>
-    import requests
-  File "D:\Users\basti\Downloads\Universal-Downloader\venv\lib\site-packages\requests\__init__.py", line 151, in <module>
-    from . import packages, utils
-  File "D:\Users\basti\Downloads\Universal-Downloader\venv\lib\site-packages\requests\utils.py", line 24, in <module>
-    from . import certs
-  File "D:\Users\basti\Downloads\Universal-Downloader\venv\lib\site-packages\requests\certs.py", line 14, in <module>
-    from certifi import where
-ModuleNotFoundError: No module named 'certifi'
+[DEBUG] ✓ updater.py direkt geladen
+[INFO] Prüfe auf Updates...
+[INFO] Repository-Pfad: D:\Users\basti\Downloads\Universal-Downloader
+[INFO] Repository-URL: https://github.com/msebastian100/Universal-Downloader
+[INFO] Prüfe auf Git-Commits...
+[DEBUG] Git-Verzeichnis existiert: True, has_valid_repo: True
+[INFO] Hole neueste Änderungen von GitHub...
+[DEBUG] is_new_repo: False, has_local_head: True
+[DEBUG] Commits hinter origin/main: 1
+[INFO] 1 neue Commit(s) verfügbar
+[DEBUG] update_needed nach Git-Prüfung: True
+[INFO] Verwende Git für Update...
+From https://github.com/msebastian100/Universal-Downloader
+ * branch            main       -> FETCH_HEAD
+[WARNING] git reset --hard fehlgeschlagen, versuche sanftere Methode...
+[INFO] Dateien sind geöffnet (z.B. vbs.log.txt oder venv) - überspringe diese beim Reset
+[WARNING] git checkout fehlgeschlagen: error: unable to unlink old 'vbs.log.txt': Invalid argument
 
-[DEBUG] ✗ updater.py Import fehlgeschlagen: cannot import name 'UpdateChecker' from 'updater' (D:\Users\basti\Downloads\Universal-Downloader\updater.py)
-[DEBUG] Traceback: Traceback (most recent call last):
-  File "D:\Users\basti\Downloads\Universal-Downloader\update_from_github.py", line 138, in <module>
-    from updater import UpdateChecker
-ImportError: cannot import name 'UpdateChecker' from 'updater' (D:\Users\basti\Downloads\Universal-Downloader\updater.py)
+[INFO] vbs.log.txt aus Index entfernt
+[ERROR] Fehler: [WinError 5] Zugriff verweigert: 'D:\\Users\\basti\\Downloads\\Universal-Downloader\\venv\\Scripts\\python.exe'
 
-[ERROR] Version-Module nicht importiert: updater.py fehlt; 
-[DEBUG] Finale Prüfung:
-[DEBUG]   version_imported: True
-[DEBUG]   updater_imported: False
-[DEBUG]   version_file.exists(): True
-[DEBUG]   updater_file.exists(): True
-[DEBUG] Python-Pfad: ['D:\\Users\\basti\\Downloads\\Universal-Downloader', 'C:\\Users\\basti\\AppData\\Local\\Programs\\Python\\Python310\\python310.zip', 'C:\\Users\\basti\\AppData\\Local\\Programs\\Python\\Python310\\DLLs', 'C:\\Users\\basti\\AppData\\Local\\Programs\\Python\\Python310\\lib', 'C:\\Users\\basti\\AppData\\Local\\Programs\\Python\\Python310', 'D:\\Users\\basti\\Downloads\\Universal-Downloader\\venv', 'D:\\Users\\basti\\Downloads\\Universal-Downloader\\venv\\lib\\site-packages', 'D:\\Users\\basti\\Downloads\\Universal-Downloader\\venv\\lib\\site-packages\\win32', 'D:\\Users\\basti\\Downloads\\Universal-Downloader\\venv\\lib\\site-packages\\win32\\lib', 'D:\\Users\\basti\\Downloads\\Universal-Downloader\\venv\\lib\\site-packages\\Pythonwin']
-[DEBUG] Skript-Verzeichnis: D:\Users\basti\Downloads\Universal-Downloader
-[DEBUG] Aktuelles Arbeitsverzeichnis: D:\Users\basti\Downloads\Universal-Downloader
-[DEBUG] __file__: D:\Users\basti\Downloads\Universal-Downloader\update_from_github.py
-[DEBUG] sys.argv[0]: D:\Users\basti\Downloads\Universal-Downloader\update_from_github.py
-[DEBUG] version.py Pfad: D:\Users\basti\Downloads\Universal-Downloader\version.py
-[DEBUG] version.py Größe: 1535 Bytes
-[DEBUG] updater.py Pfad: D:\Users\basti\Downloads\Universal-Downloader\updater.py
-[ERROR] Import endgültig fehlgeschlagen
+[INFO] Fehler: [WinError 5] Zugriff verweigert: 'D:\\Users\\basti\\Downloads\\Universal-Downloader\\venv\\Scripts\\python.exe'
+
+==========================================
+Update-Check beendet mit Fehler (Code: 1
+==========================================
+Drücken Sie eine beliebige Taste . . .
