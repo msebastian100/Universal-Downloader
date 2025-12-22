@@ -1,99 +1,26 @@
-[2025-12-21 14:48:05] ==========================================
-[2025-12-21 14:48:05] Universal Downloader - Installation
-[2025-12-21 14:48:05] ==========================================
-[2025-12-21 14:48:05] Log-Datei: /home/basti/Downloads/Universal-Downloader-main/install_debug_2025-12-21_14-48-05.log
-[2025-12-21 14:48:05] 
-[2025-12-21 14:48:05] [DEBUG] Betriebssystem erkannt: OS=Linux, ARCH=aarch64
-[2025-12-21 14:48:05] System-Informationen:
-[2025-12-21 14:48:05]   Betriebssystem: Linux
-[2025-12-21 14:48:05]   Architektur: aarch64
-[2025-12-21 14:48:05]   Kernel: 6.8.0-90-generic
-[2025-12-21 14:48:05]   Hostname: basti
-[2025-12-21 14:48:05]   Benutzer: basti
-[2025-12-21 14:48:05]   Home-Verzeichnis: /home/basti
-[2025-12-21 14:48:05]   Arbeitsverzeichnis: /home/basti/Downloads/Universal-Downloader-main
-[2025-12-21 14:48:05] 
-[2025-12-21 14:48:05] Installierte System-Pakete (relevant):
-[2025-12-21 14:48:05]   ✓ Python: Python 3.12.3 (/usr/bin/python3)
-[2025-12-21 14:48:05] [DEBUG] Python gefunden: Python 3.12.3
-[2025-12-21 14:48:06]   ✓ pip: pip 24.0 from /usr/lib/python3/dist-packages/pip (python 3.12)
-[2025-12-21 14:48:06]   ⚠ python3-venv: verfügbar (aber python12-venv fehlt möglicherweise)
-[2025-12-21 14:48:06] [DEBUG] python3-venv generisch verfügbar, aber spezifisches Paket fehlt
-[2025-12-21 14:48:06]   ✗ python3-tk: nicht installiert
-[2025-12-21 14:48:07]   ✓ ffmpeg: ffmpeg version 6.1.1-3ubuntu5 Copyright (c) 2000-2023 the FFmpeg developers
-[2025-12-21 14:48:07]   ✗ yt-dlp: nicht installiert
-[2025-12-21 14:48:07]   ✓ sudo: Sudo-Version 1.9.15p5
-[2025-12-21 14:48:07]   ✓ apt-get: apt 2.8.3 (arm64)
-[2025-12-21 14:48:07] 
-[2025-12-21 14:48:07] [DEBUG] sudo gefunden
-[2025-12-21 14:48:07] ⚠ sudo benötigt Passwort - Sie werden möglicherweise nach Ihrem Passwort gefragt
-[2025-12-21 14:48:07] [DEBUG] SUDO_CMD: sudo, IS_ROOT: false
-[2025-12-21 14:48:07] Prüfe Python3...
-[2025-12-21 14:48:07] ✓ Python gefunden: Python 3.12.3
-[2025-12-21 14:48:07] [DEBUG] Python-Version: Python 3.12.3
-[2025-12-21 14:48:07] 
-[2025-12-21 14:48:07] Prüfe pip...
-[2025-12-21 14:48:07] [DEBUG] Prüfe pip Verfügbarkeit...
-[2025-12-21 14:48:08] ✓ pip gefunden: pip 24.0 from /usr/lib/python3/dist-packages/pip (python 3.12)
-[2025-12-21 14:48:08] [DEBUG] pip-Version: pip 24.0 from /usr/lib/python3/dist-packages/pip (python 3.12)
-[2025-12-21 14:48:08] 
-[2025-12-21 14:48:08] Prüfe python3-venv...
-[2025-12-21 14:48:08] [DEBUG] Prüfe ob python3-venv installiert ist...
-[2025-12-21 14:48:08] [DEBUG] Python Version: 3.12
-[2025-12-21 14:48:08] [DEBUG] Architektur: aarch64
-[2025-12-21 14:48:08] [DEBUG] Prüfe ob python12-venv installiert ist...
-[2025-12-21 14:48:08] [DEBUG] python12-venv ist NICHT installiert
-[2025-12-21 14:48:08] ⚠ python12-venv nicht installiert - versuche Installation...
-[2025-12-21 14:48:08] [DEBUG] Starte Installation von python12-venv...
-[2025-12-21 14:48:08] [DEBUG] Befehl: sudo apt-get install -y python12-venv
-OK:1 http://ports.ubuntu.com/ubuntu-ports noble InRelease
-OK:2 http://ports.ubuntu.com/ubuntu-ports noble-updates InRelease
-OK:3 http://ports.ubuntu.com/ubuntu-ports noble-backports InRelease
-OK:4 http://ports.ubuntu.com/ubuntu-ports noble-security InRelease
-OK:5 http://ports.ubuntu.com/ubuntu-ports noble-proposed InRelease
-Holen:6 https://esm.ubuntu.com/cis/ubuntu noble InRelease [4.587 B]
-Holen:7 https://esm.ubuntu.com/apps/ubuntu noble-apps-security InRelease [8.371 B]
-Holen:8 https://esm.ubuntu.com/apps/ubuntu noble-apps-updates InRelease [8.220 B]
-Holen:9 https://esm.ubuntu.com/infra/ubuntu noble-infra-security InRelease [8.214 B]
-Holen:10 https://esm.ubuntu.com/infra/ubuntu noble-infra-updates InRelease [8.213 B]
-Es wurden 37,6 kB in 2 s geholt (20,9 kB/s).
-Paketlisten werden gelesen…
-[2025-12-21 14:48:24] [DEBUG] apt-get update erfolgreich
-Paketlisten werden gelesen…
-Abhängigkeitsbaum wird aufgebaut…
-Statusinformationen werden eingelesen…
-E: Paket python12-venv kann nicht gefunden werden.
-[2025-12-21 14:48:25] ✓ python12-venv erfolgreich installiert
-[2025-12-21 14:48:25] 
-[2025-12-21 14:48:25] Erstelle virtuelle Umgebung...
-[2025-12-21 14:48:25] [DEBUG] Erstelle venv in: /home/basti/Downloads/Universal-Downloader-main/venv
-[2025-12-21 14:48:25] [DEBUG] Python-Version: 3.12
-[2025-12-21 14:48:25] [DEBUG] Architektur: aarch64
-The virtual environment was not created successfully because ensurepip is not
-available.  On Debian/Ubuntu systems, you need to install the python3-venv
-package using the following command.
+==========================================
+Universal Downloader - Update-Check
+==========================================
 
-    apt install python3.12-venv
+[ERROR] Konnte Version-Module nicht importieren
 
-You may need to use sudo with that command.  After installing the python3-venv
-package, recreate your virtual environment.
+==========================================
+Update-Check beendet mit Fehler (Code: 1
+==========================================
+Drücken Sie eine beliebige Taste . . .
 
-Failing command: /home/basti/Downloads/Universal-Downloader-main/venv/bin/python3
-[2025-12-21 14:48:25] [DEBUG] venv Exit-Code: 1
-[2025-12-21 14:48:25] ❌ Fehler beim Erstellen der virtuellen Umgebung
-[2025-12-21 14:48:25]   Fehler: The virtual environment was not created successfully because ensurepip is not
-available.  On Debian/Ubuntu systems, you need to install the python3-venv
-package using the following command.
 
-    apt install python3.12-venv
-
-You may need to use sudo with that command.  After installing the python3-venv
-package, recreate your virtual environment.
-
-Failing command: /home/basti/Downloads/Universal-Downloader-main/venv/bin/python3
-[2025-12-21 14:48:25] [DEBUG] venv-Verzeichnis existiert: ja
-[2025-12-21 14:48:25] [DEBUG] venv/bin/activate existiert: nein
-[2025-12-21 14:48:25]   Unbekannter Fehler beim Erstellen der venv
-[2025-12-21 14:48:25]   Siehe Log-Datei für Details: /home/basti/Downloads/Universal-Downloader-main/install_debug_2025-12-21_14-48-05.log
-[2025-12-21 14:48:25] 
-[2025-12-21 14:48:25] Drücken Sie eine beliebige Taste zum Beenden...
+Fehler
+Download fehlgeschlagen:
+[download) 100960f 1.12GiB in at 19.97MiB/s
+(VideoConvertor) Not converting media file
+1: Skandal.mp4•; already is in
+target format mp4
+[Metadata) The info-json can only be attached to mkv/mka
+files
+[Metadata) Adding metadata to
+1: Skandal.mpv
+ERROR: Postprocessing: ffmpeg not found. Please install or
+provide the path using --ffmpeg-location
+OK
+x
