@@ -1138,15 +1138,18 @@ If checkUpdates Then
             tempBatStream.WriteLine "findstr /i /c:""keine updates"" /c:""bereits auf dem neuesten stand"" /c:""no updates available"" /c:""already up to date"" """ & tempLogFile & """ >nul 2>&1"
             tempBatStream.WriteLine "if !errorlevel!==0 ("
             tempBatStream.WriteLine "    echo Update-Check abgeschlossen - Bereits auf dem neuesten Stand"
+            tempBatStream.WriteLine "    echo =========================================="
+            tempBatStream.WriteLine "    timeout /t 1 /nobreak >nul"
+            tempBatStream.WriteLine "    exit /b 0"
             tempBatStream.WriteLine ") else ("
             tempBatStream.WriteLine "    if !UPDATE_RESULT!==0 ("
             tempBatStream.WriteLine "        echo Update-Check abgeschlossen"
             tempBatStream.WriteLine "    ) else ("
             tempBatStream.WriteLine "        echo Update-Check beendet mit Fehler (Code: !UPDATE_RESULT!)"
             tempBatStream.WriteLine "    )"
+            tempBatStream.WriteLine "    echo =========================================="
+            tempBatStream.WriteLine "    pause"
             tempBatStream.WriteLine ")"
-            tempBatStream.WriteLine "echo =========================================="
-            tempBatStream.WriteLine "pause"
             tempBatStream.Close
             
             On Error Resume Next
