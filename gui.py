@@ -4187,16 +4187,17 @@ class DeezerDownloaderGUI:
     
     def _start_video_download_internal(self, url: str, skip_queue_check: bool = False):
         """Interne Methode zum Starten eines Downloads (mit oder ohne Queue-Prüfung)"""
-        # Kopiere die gesamte Logik von start_video_download, aber mit skip_queue_check Parameter
-        # Für jetzt: Rufe einfach die ursprüngliche Methode auf, aber setze Flag
-        if skip_queue_check:
-            # Temporärer Flag um Queue-Prüfung zu überspringen
-            self._internal_download = True
+        # Setze URL
+        self.video_url_var.set(url)
         
-        # Rufe ursprüngliche start_video_download auf, aber mit geänderter Queue-Prüfung
-        # Besser: Extrahiere die gesamte Logik hier
-        # Für jetzt: Verwende einen Workaround
-        pass  # Wird weiter unten implementiert
+        # Rufe die ursprüngliche start_video_download Logik auf, aber überspringe Queue-Prüfung
+        # Wir verwenden einen Flag um die Queue-Prüfung zu überspringen
+        self._skip_queue_check = True
+        try:
+            # Rufe die ursprüngliche Methode auf (sie prüft jetzt den Flag)
+            self.start_video_download()
+        finally:
+            self._skip_queue_check = False
     
     def show_scheduled_downloads(self):
         """Zeigt Dialog für geplante Downloads"""
