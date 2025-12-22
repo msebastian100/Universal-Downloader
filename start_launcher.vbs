@@ -128,6 +128,7 @@ Function RunPythonCommand(cmd, description, showWindow)
         WriteLog "[DEBUG] StdErr:"
         Dim errorLines
         errorLines = Split(errorOutput, vbCrLf)
+        ' line wurde bereits oben deklariert, wiederverwenden
         For Each line In errorLines
             If Len(Trim(line)) > 0 Then
                 WriteLog "[DEBUG]   [ERROR] " & line
@@ -1325,17 +1326,14 @@ If fso.FileExists(requirementsFile) Then
         ' Prüfe ob wichtige Pakete bereits installiert sind
         Dim packagesInstalled
         packagesInstalled = True
-        Dim testPackages
+        ' Deklariere Variablen einmal für Paket-Prüfung
+        Dim testPackages, testPackage, testCmd, testResult, testOutput, testError
         testPackages = Array("requests", "yt_dlp", "mutagen")
         WriteLog "[INFO] Prüfe ob Pakete bereits installiert sind..."
         For Each testPackage In testPackages
-            Dim testCmd
             testCmd = fullPythonPath & " -c ""import " & testPackage & """"
-            Dim testResult
             Set testResult = WshShell.Exec(testCmd)
-            Dim testOutput
             testOutput = testResult.StdOut.ReadAll
-            Dim testError
             testError = testResult.StdErr.ReadAll
             testResult.WaitOnReturn = True
             If testResult.ExitCode <> 0 Then
@@ -1370,15 +1368,13 @@ If fso.FileExists(requirementsFile) Then
             WriteLog "[DEBUG] =========================================="
             WriteLog "[DEBUG] Paket-Verfügbarkeits-Prüfung:"
             WriteLog "[DEBUG] =========================================="
-            Dim testPackages
+            ' testPackages, testPackage, testCmd, testResult, testOutput, testError wurden bereits oben deklariert
             testPackages = Array("requests", "yt_dlp", "mutagen")
             Dim allPackagesOk
             allPackagesOk = True
             For Each testPackage In testPackages
                 On Error Resume Next
-                Dim testCmd
                 testCmd = fullPythonPath & " -c ""import " & testPackage & """"
-                Dim testResult
                 Set testResult = WshShell.Exec(testCmd)
                 testResult.StdOut.ReadAll
                 testResult.WaitOnReturn = True
@@ -1388,7 +1384,6 @@ If fso.FileExists(requirementsFile) Then
                 Else
                     WriteLog "[WARNING] Paket " & testPackage & " nicht verfügbar"
                     WriteLog "[DEBUG]   ✗ " & testPackage & " konnte nicht importiert werden (Exit-Code: " & testResult.ExitCode & ")"
-                    Dim testError
                     testError = testResult.StdErr.ReadAll
                     If Len(testError) > 0 Then
                         WriteLog "[DEBUG]   Fehler-Ausgabe: " & testError
