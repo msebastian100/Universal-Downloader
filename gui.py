@@ -4151,9 +4151,6 @@ class DeezerDownloaderGUI:
         
         refresh_queue()
         
-        button_frame = ttk.Frame(frame)
-        button_frame.pack(fill=tk.X)
-        
         def remove_selected():
             selection = queue_tree.selection()
             if selection:
