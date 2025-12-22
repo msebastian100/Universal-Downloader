@@ -1,99 +1,263 @@
-[2025-12-21 14:48:05] ==========================================
-[2025-12-21 14:48:05] Universal Downloader - Installation
-[2025-12-21 14:48:05] ==========================================
-[2025-12-21 14:48:05] Log-Datei: /home/basti/Downloads/Universal-Downloader-main/install_debug_2025-12-21_14-48-05.log
-[2025-12-21 14:48:05] 
-[2025-12-21 14:48:05] [DEBUG] Betriebssystem erkannt: OS=Linux, ARCH=aarch64
-[2025-12-21 14:48:05] System-Informationen:
-[2025-12-21 14:48:05]   Betriebssystem: Linux
-[2025-12-21 14:48:05]   Architektur: aarch64
-[2025-12-21 14:48:05]   Kernel: 6.8.0-90-generic
-[2025-12-21 14:48:05]   Hostname: basti
-[2025-12-21 14:48:05]   Benutzer: basti
-[2025-12-21 14:48:05]   Home-Verzeichnis: /home/basti
-[2025-12-21 14:48:05]   Arbeitsverzeichnis: /home/basti/Downloads/Universal-Downloader-main
-[2025-12-21 14:48:05] 
-[2025-12-21 14:48:05] Installierte System-Pakete (relevant):
-[2025-12-21 14:48:05]   ✓ Python: Python 3.12.3 (/usr/bin/python3)
-[2025-12-21 14:48:05] [DEBUG] Python gefunden: Python 3.12.3
-[2025-12-21 14:48:06]   ✓ pip: pip 24.0 from /usr/lib/python3/dist-packages/pip (python 3.12)
-[2025-12-21 14:48:06]   ⚠ python3-venv: verfügbar (aber python12-venv fehlt möglicherweise)
-[2025-12-21 14:48:06] [DEBUG] python3-venv generisch verfügbar, aber spezifisches Paket fehlt
-[2025-12-21 14:48:06]   ✗ python3-tk: nicht installiert
-[2025-12-21 14:48:07]   ✓ ffmpeg: ffmpeg version 6.1.1-3ubuntu5 Copyright (c) 2000-2023 the FFmpeg developers
-[2025-12-21 14:48:07]   ✗ yt-dlp: nicht installiert
-[2025-12-21 14:48:07]   ✓ sudo: Sudo-Version 1.9.15p5
-[2025-12-21 14:48:07]   ✓ apt-get: apt 2.8.3 (arm64)
-[2025-12-21 14:48:07] 
-[2025-12-21 14:48:07] [DEBUG] sudo gefunden
-[2025-12-21 14:48:07] ⚠ sudo benötigt Passwort - Sie werden möglicherweise nach Ihrem Passwort gefragt
-[2025-12-21 14:48:07] [DEBUG] SUDO_CMD: sudo, IS_ROOT: false
-[2025-12-21 14:48:07] Prüfe Python3...
-[2025-12-21 14:48:07] ✓ Python gefunden: Python 3.12.3
-[2025-12-21 14:48:07] [DEBUG] Python-Version: Python 3.12.3
-[2025-12-21 14:48:07] 
-[2025-12-21 14:48:07] Prüfe pip...
-[2025-12-21 14:48:07] [DEBUG] Prüfe pip Verfügbarkeit...
-[2025-12-21 14:48:08] ✓ pip gefunden: pip 24.0 from /usr/lib/python3/dist-packages/pip (python 3.12)
-[2025-12-21 14:48:08] [DEBUG] pip-Version: pip 24.0 from /usr/lib/python3/dist-packages/pip (python 3.12)
-[2025-12-21 14:48:08] 
-[2025-12-21 14:48:08] Prüfe python3-venv...
-[2025-12-21 14:48:08] [DEBUG] Prüfe ob python3-venv installiert ist...
-[2025-12-21 14:48:08] [DEBUG] Python Version: 3.12
-[2025-12-21 14:48:08] [DEBUG] Architektur: aarch64
-[2025-12-21 14:48:08] [DEBUG] Prüfe ob python12-venv installiert ist...
-[2025-12-21 14:48:08] [DEBUG] python12-venv ist NICHT installiert
-[2025-12-21 14:48:08] ⚠ python12-venv nicht installiert - versuche Installation...
-[2025-12-21 14:48:08] [DEBUG] Starte Installation von python12-venv...
-[2025-12-21 14:48:08] [DEBUG] Befehl: sudo apt-get install -y python12-venv
-OK:1 http://ports.ubuntu.com/ubuntu-ports noble InRelease
-OK:2 http://ports.ubuntu.com/ubuntu-ports noble-updates InRelease
-OK:3 http://ports.ubuntu.com/ubuntu-ports noble-backports InRelease
-OK:4 http://ports.ubuntu.com/ubuntu-ports noble-security InRelease
-OK:5 http://ports.ubuntu.com/ubuntu-ports noble-proposed InRelease
-Holen:6 https://esm.ubuntu.com/cis/ubuntu noble InRelease [4.587 B]
-Holen:7 https://esm.ubuntu.com/apps/ubuntu noble-apps-security InRelease [8.371 B]
-Holen:8 https://esm.ubuntu.com/apps/ubuntu noble-apps-updates InRelease [8.220 B]
-Holen:9 https://esm.ubuntu.com/infra/ubuntu noble-infra-security InRelease [8.214 B]
-Holen:10 https://esm.ubuntu.com/infra/ubuntu noble-infra-updates InRelease [8.213 B]
-Es wurden 37,6 kB in 2 s geholt (20,9 kB/s).
-Paketlisten werden gelesen…
-[2025-12-21 14:48:24] [DEBUG] apt-get update erfolgreich
-Paketlisten werden gelesen…
-Abhängigkeitsbaum wird aufgebaut…
-Statusinformationen werden eingelesen…
-E: Paket python12-venv kann nicht gefunden werden.
-[2025-12-21 14:48:25] ✓ python12-venv erfolgreich installiert
-[2025-12-21 14:48:25] 
-[2025-12-21 14:48:25] Erstelle virtuelle Umgebung...
-[2025-12-21 14:48:25] [DEBUG] Erstelle venv in: /home/basti/Downloads/Universal-Downloader-main/venv
-[2025-12-21 14:48:25] [DEBUG] Python-Version: 3.12
-[2025-12-21 14:48:25] [DEBUG] Architektur: aarch64
-The virtual environment was not created successfully because ensurepip is not
-available.  On Debian/Ubuntu systems, you need to install the python3-venv
-package using the following command.
+[2025/12/19 23:39:45] ==========================================
+[2025/12/19 23:39:45] Launcher gestartet: D:\Users\basti\Downloads\Universal-Downloader\start_launcher.vbs
+[2025/12/19 23:39:45] Verzeichnis: D:\Users\basti\Downloads\Universal-Downloader
+[2025/12/19 23:39:45] [OK] start.py gefunden: D:\Users\basti\Downloads\Universal-Downloader\start.py
+[2025/12/19 23:39:45] [INFO] Starte Python-Suche...
+[2025/12/19 23:39:45] [INFO] Methode 1: Prüfe pythonw.exe im PATH...
+[2025/12/19 23:39:45] [OK] Python gefunden (Methode 1): pythonw.exe im PATH
+[2025/12/19 23:39:45] [INFO] Starte Anwendung mit: pythonw.exe D:\Users\basti\Downloads\Universal-Downloader\start.py
+[2025/12/19 23:39:45] [INFO] Start-Befehl ausgeführt, Exit-Code: 0
+[2025/12/19 23:39:45] [OK] Launcher beendet erfolgreich
+[2025/12/22 22:19:04] ==========================================
+[2025/12/22 22:19:05] Launcher gestartet: D:\Users\basti\Downloads\Universal-Downloader\start_launcher.vbs
+[2025/12/22 22:19:05] Verzeichnis: D:\Users\basti\Downloads\Universal-Downloader
+[2025/12/22 22:19:05] Log-Datei: D:\Users\basti\Downloads\Universal-Downloader\vbs.log.txt
+[2025/12/22 22:19:05] [INFO] Icon gefunden: D:\Users\basti\Downloads\Universal-Downloader\icon.ico
+[2025/12/22 22:19:05] [OK] start.py gefunden: D:\Users\basti\Downloads\Universal-Downloader\start.py
+[2025/12/22 22:19:05] [OK] requirements.txt gefunden: D:\Users\basti\Downloads\Universal-Downloader\requirements.txt
+[2025/12/22 22:19:05] [INFO] Prüfe auf Updates...
+[2025/12/22 22:19:05] [INFO] Starte Update-Check...
+[2025/12/22 22:19:05] [INFO] Python für Update-Check: C:\Users\basti\AppData\Local\Programs\Python\Python310\python.exe
+[2025/12/22 22:19:08] [INFO] Update-Skript Ausgabe: [ERROR] Konnte Version-Module nicht importieren
 
-    apt install python3.12-venv
+[2025/12/22 22:19:08] [WARNING] Update-Check fehlgeschlagen (Exit-Code: 1)
+[2025/12/22 22:19:08] 
+[2025/12/22 22:19:08] [INFO] ==========================================
+[2025/12/22 22:19:08] [INFO] Starte Python-Suche auf allen Laufwerken...
+[2025/12/22 22:19:08] [INFO] ==========================================
+[2025/12/22 22:19:08] [INFO] Methode 1: Prüfe pythonw.exe im PATH...
+[2025/12/22 22:19:08] [INFO] pythonw.exe --version Ausgabe: Python 3.10.11
 
-You may need to use sudo with that command.  After installing the python3-venv
-package, recreate your virtual environment.
+[2025/12/22 22:19:08] [INFO] pythonw.exe --version Exit-Code: 0
+[2025/12/22 22:19:08] [OK] Python gefunden (Methode 1): pythonw.exe im PATH
+[2025/12/22 22:19:09] [INFO] where pythonw.exe Ausgabe: C:\Users\basti\AppData\Local\Programs\Python\Python310\pythonw.exe
+C:\Users\basti\AppData\Local\Microsoft\WindowsApps\pythonw.exe
 
-Failing command: /home/basti/Downloads/Universal-Downloader-main/venv/bin/python3
-[2025-12-21 14:48:25] [DEBUG] venv Exit-Code: 1
-[2025-12-21 14:48:25] ❌ Fehler beim Erstellen der virtuellen Umgebung
-[2025-12-21 14:48:25]   Fehler: The virtual environment was not created successfully because ensurepip is not
-available.  On Debian/Ubuntu systems, you need to install the python3-venv
-package using the following command.
+[2025/12/22 22:19:09] [INFO] where pythonw.exe Exit-Code: 0
+[2025/12/22 22:19:09] [INFO] ==========================================
+[2025/12/22 22:19:09] [INFO] Python gefunden: C:\Users\basti\AppData\Local\Programs\Python\Python310\pythonw.exe
+[2025/12/22 22:19:09] [INFO] Arbeitsverzeichnis: D:\Users\basti\Downloads\Universal-Downloader
+[2025/12/22 22:19:09] [INFO] ==========================================
+[2025/12/22 22:19:09] [INFO] Erstelle/aktualisiere Shortcut: D:\Users\basti\Downloads\Universal-Downloader\Universal Downloader.lnk
+[2025/12/22 22:19:09] [OK] Shortcut erstellt: D:\Users\basti\Downloads\Universal-Downloader\Universal Downloader.lnk
+[2025/12/22 22:19:09] [INFO] Shortcut zeigt auf: D:\Users\basti\Downloads\Universal-Downloader\start_launcher.vbs
+[2025/12/22 22:19:09] [INFO] VBS startet dann: C:\Users\basti\AppData\Local\Programs\Python\Python310\pythonw.exe D:\Users\basti\Downloads\Universal-Downloader\start.py
+[2025/12/22 22:19:09] [INFO] Shortcut Icon: D:\Users\basti\Downloads\Universal-Downloader\icon.ico
+[2025/12/22 22:19:09] [INFO] Startmenü-Verknüpfung existiert bereits: C:\Users\basti\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Universal Downloader.lnk
+[2025/12/22 22:19:09] [INFO] venv nicht gefunden - wird erstellt...
+[2025/12/22 22:19:09] [INFO] ==========================================
+[2025/12/22 22:19:09] [INFO] Erstelle virtuelle Umgebung (venv)...
+[2025/12/22 22:19:09] [INFO] ==========================================
+[2025/12/22 22:19:09] [INFO] venv-Befehl: C:\Users\basti\AppData\Local\Programs\Python\Python310\pythonw.exe -m venv "D:\Users\basti\Downloads\Universal-Downloader\venv"
+[2025/12/22 22:19:18] [INFO] venv Exit-Code: 0
+[2025/12/22 22:19:20] [OK] venv erfolgreich erstellt
+[2025/12/22 22:19:20] [INFO] Verwende venv Python: D:\Users\basti\Downloads\Universal-Downloader\venv\Scripts\python.exe
+[2025/12/22 22:19:20] [INFO] ==========================================
+[2025/12/22 22:19:20] [INFO] Prüfe pip...
+[2025/12/22 22:19:20] [INFO] ==========================================
+[2025/12/22 22:19:21] [INFO] pip --version Ausgabe: pip 23.0.1 from D:\Users\basti\Downloads\Universal-Downloader\venv\lib\site-packages\pip (python 3.10)
 
-    apt install python3.12-venv
 
-You may need to use sudo with that command.  After installing the python3-venv
-package, recreate your virtual environment.
+[2025/12/22 22:19:21] [INFO] pip --version Exit-Code: 0
+[2025/12/22 22:19:21] [OK] pip verfügbar
+[2025/12/22 22:19:21] [INFO] ==========================================
+[2025/12/22 22:19:21] [INFO] Prüfe requirements.txt...
+[2025/12/22 22:19:21] [INFO] ==========================================
+[2025/12/22 22:19:22] [OK] pip verfügbar
+[2025/12/22 22:19:22] [INFO] ==========================================
+[2025/12/22 22:19:22] [INFO] Starte requirements.txt Installation...
+[2025/12/22 22:19:22] [INFO] Befehl: D:\Users\basti\Downloads\Universal-Downloader\venv\Scripts\python.exe -m pip install --upgrade -r "D:\Users\basti\Downloads\Universal-Downloader\requirements.txt"
+[2025/12/22 22:19:22] [INFO] ==========================================
+[2025/12/22 22:20:08] [INFO] pip install Exit-Code: 0
+[2025/12/22 22:20:08] [OK] requirements.txt erfolgreich installiert/aktualisiert
+[2025/12/22 22:20:08] [INFO] Prüfe wichtige Pakete...
+[2025/12/22 22:20:08] [OK] Paket requests verfügbar
+[2025/12/22 22:20:09] [OK] Paket yt_dlp verfügbar
+[2025/12/22 22:20:09] [OK] Paket mutagen verfügbar
+[2025/12/22 22:20:09] [INFO] ==========================================
+[2025/12/22 22:20:10] [INFO] Prüfe tkinter...
+[2025/12/22 22:20:10] [INFO] ==========================================
+[2025/12/22 22:20:10] [INFO] tkinter-Check Exit-Code: 0
+[2025/12/22 22:20:10] [OK] tkinter verfügbar
+[2025/12/22 22:20:10] [INFO] ==========================================
+[2025/12/22 22:20:10] [INFO] Prüfe ffmpeg...
+[2025/12/22 22:20:10] [INFO] ==========================================
+[2025/12/22 22:20:10] [INFO] ffmpeg-Check Exit-Code: 0
+[2025/12/22 22:20:10] [OK] ffmpeg verfügbar
+[2025/12/22 22:20:10] [INFO] ==========================================
+[2025/12/22 22:20:10] [INFO] Starte Anwendung...
+[2025/12/22 22:20:10] [INFO] Start-Befehl: "D:\Users\basti\Downloads\Universal-Downloader\venv\Scripts\python.exe" "D:\Users\basti\Downloads\Universal-Downloader\start.py"
+[2025/12/22 22:20:10] [INFO] Arbeitsverzeichnis: D:\Users\basti\Downloads\Universal-Downloader
+[2025/12/22 22:20:10] [INFO] ==========================================
+[2025/12/22 22:20:10] [INFO] Setze Umgebungsvariable: UNIVERSAL_DOWNLOADER_STARTED_BY_LAUNCHER=1
+[2025/12/22 22:20:10] [INFO] Start-Befehl ausgeführt (ShellExecute), Exit-Code: 0
+[2025/12/22 22:20:13] [INFO] tasklist Ausgabe: "python.exe","3148","Console","1","3,992 K"
+"python.exe","31116","Console","1","76,432 K"
 
-Failing command: /home/basti/Downloads/Universal-Downloader-main/venv/bin/python3
-[2025-12-21 14:48:25] [DEBUG] venv-Verzeichnis existiert: ja
-[2025-12-21 14:48:25] [DEBUG] venv/bin/activate existiert: nein
-[2025-12-21 14:48:25]   Unbekannter Fehler beim Erstellen der venv
-[2025-12-21 14:48:25]   Siehe Log-Datei für Details: /home/basti/Downloads/Universal-Downloader-main/install_debug_2025-12-21_14-48-05.log
-[2025-12-21 14:48:25] 
-[2025-12-21 14:48:25] Drücken Sie eine beliebige Taste zum Beenden...
+[2025/12/22 22:20:13] [INFO] tasklist Exit-Code: 0
+[2025/12/22 22:20:13] [OK] Python-Prozess läuft: python.exe
+[2025/12/22 22:20:13] [OK] ==========================================
+[2025/12/22 22:20:13] [OK] Launcher beendet erfolgreich
+[2025/12/22 22:20:13] [OK] ==========================================
+[2025/12/22 22:20:53] ==========================================
+[2025/12/22 22:20:53] Launcher gestartet: D:\Users\basti\Downloads\Universal-Downloader\start_launcher.vbs
+[2025/12/22 22:20:53] Verzeichnis: D:\Users\basti\Downloads\Universal-Downloader
+[2025/12/22 22:20:53] Log-Datei: D:\Users\basti\Downloads\Universal-Downloader\vbs.log.txt
+[2025/12/22 22:20:53] [INFO] Icon gefunden: D:\Users\basti\Downloads\Universal-Downloader\icon.ico
+[2025/12/22 22:20:53] [OK] start.py gefunden: D:\Users\basti\Downloads\Universal-Downloader\start.py
+[2025/12/22 22:20:53] [OK] requirements.txt gefunden: D:\Users\basti\Downloads\Universal-Downloader\requirements.txt
+[2025/12/22 22:20:53] [INFO] Prüfe auf Updates...
+[2025/12/22 22:20:53] [INFO] Starte Update-Check...
+[2025/12/22 22:20:53] [INFO] Python für Update-Check: C:\Users\basti\AppData\Local\Programs\Python\Python310\python.exe
+[2025/12/22 22:21:02] [INFO] Update-Skript Ausgabe: [ERROR] Konnte Version-Module nicht importieren
+
+[2025/12/22 22:21:02] [WARNING] Update-Check fehlgeschlagen (Exit-Code: 1)
+[2025/12/22 22:21:02] 
+[2025/12/22 22:21:02] [INFO] ==========================================
+[2025/12/22 22:21:02] [INFO] Starte Python-Suche auf allen Laufwerken...
+[2025/12/22 22:21:02] [INFO] ==========================================
+[2025/12/22 22:21:02] [INFO] Methode 1: Prüfe pythonw.exe im PATH...
+[2025/12/22 22:21:02] [INFO] pythonw.exe --version Ausgabe: Python 3.10.11
+
+[2025/12/22 22:21:02] [INFO] pythonw.exe --version Exit-Code: 0
+[2025/12/22 22:21:02] [OK] Python gefunden (Methode 1): pythonw.exe im PATH
+[2025/12/22 22:21:02] [INFO] where pythonw.exe Ausgabe: C:\Users\basti\AppData\Local\Programs\Python\Python310\pythonw.exe
+C:\Users\basti\AppData\Local\Microsoft\WindowsApps\pythonw.exe
+
+[2025/12/22 22:21:02] [INFO] where pythonw.exe Exit-Code: 0
+[2025/12/22 22:21:02] [INFO] ==========================================
+[2025/12/22 22:21:02] [INFO] Python gefunden: C:\Users\basti\AppData\Local\Programs\Python\Python310\pythonw.exe
+[2025/12/22 22:21:02] [INFO] Arbeitsverzeichnis: D:\Users\basti\Downloads\Universal-Downloader
+[2025/12/22 22:21:02] [INFO] ==========================================
+[2025/12/22 22:21:02] [INFO] Shortcut existiert bereits und zeigt korrekt auf VBS
+[2025/12/22 22:21:02] [INFO] Startmenü-Verknüpfung existiert bereits: C:\Users\basti\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Universal Downloader.lnk
+[2025/12/22 22:21:02] [OK] venv existiert bereits
+[2025/12/22 22:21:02] [INFO] Verwende venv Python: D:\Users\basti\Downloads\Universal-Downloader\venv\Scripts\python.exe
+[2025/12/22 22:21:02] [INFO] ==========================================
+[2025/12/22 22:21:02] [INFO] Prüfe pip...
+[2025/12/22 22:21:02] [INFO] ==========================================
+[2025/12/22 22:21:03] [INFO] pip --version Ausgabe: pip 23.0.1 from D:\Users\basti\Downloads\Universal-Downloader\venv\lib\site-packages\pip (python 3.10)
+
+
+[2025/12/22 22:21:03] [INFO] pip --version Exit-Code: 0
+[2025/12/22 22:21:03] [OK] pip verfügbar
+[2025/12/22 22:21:03] [INFO] ==========================================
+[2025/12/22 22:21:03] [INFO] Prüfe requirements.txt...
+[2025/12/22 22:21:03] [INFO] ==========================================
+[2025/12/22 22:21:04] [OK] pip verfügbar
+[2025/12/22 22:21:04] [INFO] ==========================================
+[2025/12/22 22:21:04] [INFO] Starte requirements.txt Installation...
+[2025/12/22 22:21:04] [INFO] Befehl: D:\Users\basti\Downloads\Universal-Downloader\venv\Scripts\python.exe -m pip install --upgrade -r "D:\Users\basti\Downloads\Universal-Downloader\requirements.txt"
+[2025/12/22 22:21:04] [INFO] ==========================================
+[2025/12/22 22:21:07] [INFO] pip install Exit-Code: 0
+[2025/12/22 22:21:07] [OK] requirements.txt erfolgreich installiert/aktualisiert
+[2025/12/22 22:21:07] [INFO] Prüfe wichtige Pakete...
+[2025/12/22 22:21:07] [OK] Paket requests verfügbar
+[2025/12/22 22:21:08] [OK] Paket yt_dlp verfügbar
+[2025/12/22 22:21:08] [OK] Paket mutagen verfügbar
+[2025/12/22 22:21:08] [INFO] ==========================================
+[2025/12/22 22:21:08] [INFO] Prüfe tkinter...
+[2025/12/22 22:21:08] [INFO] ==========================================
+[2025/12/22 22:21:09] [INFO] tkinter-Check Exit-Code: 0
+[2025/12/22 22:21:09] [OK] tkinter verfügbar
+[2025/12/22 22:21:09] [INFO] ==========================================
+[2025/12/22 22:21:09] [INFO] Prüfe ffmpeg...
+[2025/12/22 22:21:09] [INFO] ==========================================
+[2025/12/22 22:21:09] [INFO] ffmpeg-Check Exit-Code: 0
+[2025/12/22 22:21:09] [OK] ffmpeg verfügbar
+[2025/12/22 22:21:09] [INFO] ==========================================
+[2025/12/22 22:21:09] [INFO] Starte Anwendung...
+[2025/12/22 22:21:09] [INFO] Start-Befehl: "D:\Users\basti\Downloads\Universal-Downloader\venv\Scripts\python.exe" "D:\Users\basti\Downloads\Universal-Downloader\start.py"
+[2025/12/22 22:21:09] [INFO] Arbeitsverzeichnis: D:\Users\basti\Downloads\Universal-Downloader
+[2025/12/22 22:21:09] [INFO] ==========================================
+[2025/12/22 22:21:09] [INFO] Setze Umgebungsvariable: UNIVERSAL_DOWNLOADER_STARTED_BY_LAUNCHER=1
+[2025/12/22 22:21:09] [INFO] Start-Befehl ausgeführt (ShellExecute), Exit-Code: 0
+[2025/12/22 22:21:12] [INFO] tasklist Ausgabe: "python.exe","8704","Console","1","3,996 K"
+"python.exe","28440","Console","1","79,964 K"
+
+[2025/12/22 22:21:12] [INFO] tasklist Exit-Code: 0
+[2025/12/22 22:21:12] [OK] Python-Prozess läuft: python.exe
+[2025/12/22 22:21:12] [OK] ==========================================
+[2025/12/22 22:21:12] [OK] Launcher beendet erfolgreich
+[2025/12/22 22:21:12] [OK] ==========================================
+[2025/12/22 22:21:32] ==========================================
+[2025/12/22 22:21:32] Launcher gestartet: D:\Users\basti\Downloads\Universal-Downloader\start_launcher.vbs
+[2025/12/22 22:21:32] Verzeichnis: D:\Users\basti\Downloads\Universal-Downloader
+[2025/12/22 22:21:32] Log-Datei: D:\Users\basti\Downloads\Universal-Downloader\vbs.log.txt
+[2025/12/22 22:21:32] [INFO] Icon gefunden: D:\Users\basti\Downloads\Universal-Downloader\icon.ico
+[2025/12/22 22:21:32] [OK] start.py gefunden: D:\Users\basti\Downloads\Universal-Downloader\start.py
+[2025/12/22 22:21:32] [OK] requirements.txt gefunden: D:\Users\basti\Downloads\Universal-Downloader\requirements.txt
+[2025/12/22 22:21:32] [INFO] Prüfe auf Updates...
+[2025/12/22 22:21:32] [INFO] Starte Update-Check...
+[2025/12/22 22:21:32] [INFO] Python für Update-Check: C:\Users\basti\AppData\Local\Programs\Python\Python310\python.exe
+[2025/12/22 22:21:38] [INFO] Update-Skript Ausgabe: [ERROR] Konnte Version-Module nicht importieren
+
+[2025/12/22 22:21:38] [WARNING] Update-Check fehlgeschlagen (Exit-Code: 1)
+[2025/12/22 22:21:38] 
+[2025/12/22 22:21:38] [INFO] ==========================================
+[2025/12/22 22:21:38] [INFO] Starte Python-Suche auf allen Laufwerken...
+[2025/12/22 22:21:38] [INFO] ==========================================
+[2025/12/22 22:21:38] [INFO] Methode 1: Prüfe pythonw.exe im PATH...
+[2025/12/22 22:21:38] [INFO] pythonw.exe --version Ausgabe: Python 3.10.11
+
+[2025/12/22 22:21:38] [INFO] pythonw.exe --version Exit-Code: 0
+[2025/12/22 22:21:38] [OK] Python gefunden (Methode 1): pythonw.exe im PATH
+[2025/12/22 22:21:39] [INFO] where pythonw.exe Ausgabe: C:\Users\basti\AppData\Local\Programs\Python\Python310\pythonw.exe
+C:\Users\basti\AppData\Local\Microsoft\WindowsApps\pythonw.exe
+
+[2025/12/22 22:21:39] [INFO] where pythonw.exe Exit-Code: 0
+[2025/12/22 22:21:39] [INFO] ==========================================
+[2025/12/22 22:21:39] [INFO] Python gefunden: C:\Users\basti\AppData\Local\Programs\Python\Python310\pythonw.exe
+[2025/12/22 22:21:39] [INFO] Arbeitsverzeichnis: D:\Users\basti\Downloads\Universal-Downloader
+[2025/12/22 22:21:39] [INFO] ==========================================
+[2025/12/22 22:21:39] [INFO] Shortcut existiert bereits und zeigt korrekt auf VBS
+[2025/12/22 22:21:39] [INFO] Startmenü-Verknüpfung existiert bereits: C:\Users\basti\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Universal Downloader.lnk
+[2025/12/22 22:21:39] [OK] venv existiert bereits
+[2025/12/22 22:21:39] [INFO] Verwende venv Python: D:\Users\basti\Downloads\Universal-Downloader\venv\Scripts\python.exe
+[2025/12/22 22:21:39] [INFO] ==========================================
+[2025/12/22 22:21:39] [INFO] Prüfe pip...
+[2025/12/22 22:21:39] [INFO] ==========================================
+[2025/12/22 22:21:40] [INFO] pip --version Ausgabe: pip 23.0.1 from D:\Users\basti\Downloads\Universal-Downloader\venv\lib\site-packages\pip (python 3.10)
+
+
+[2025/12/22 22:21:40] [INFO] pip --version Exit-Code: 0
+[2025/12/22 22:21:40] [OK] pip verfügbar
+[2025/12/22 22:21:40] [INFO] ==========================================
+[2025/12/22 22:21:40] [INFO] Prüfe requirements.txt...
+[2025/12/22 22:21:40] [INFO] ==========================================
+[2025/12/22 22:21:41] [OK] pip verfügbar
+[2025/12/22 22:21:41] [INFO] ==========================================
+[2025/12/22 22:21:41] [INFO] Starte requirements.txt Installation...
+[2025/12/22 22:21:41] [INFO] Befehl: D:\Users\basti\Downloads\Universal-Downloader\venv\Scripts\python.exe -m pip install --upgrade -r "D:\Users\basti\Downloads\Universal-Downloader\requirements.txt"
+[2025/12/22 22:21:41] [INFO] ==========================================
+[2025/12/22 22:21:44] [INFO] pip install Exit-Code: 0
+[2025/12/22 22:21:44] [OK] requirements.txt erfolgreich installiert/aktualisiert
+[2025/12/22 22:21:44] [INFO] Prüfe wichtige Pakete...
+[2025/12/22 22:21:44] [OK] Paket requests verfügbar
+[2025/12/22 22:21:45] [OK] Paket yt_dlp verfügbar
+[2025/12/22 22:21:46] [OK] Paket mutagen verfügbar
+[2025/12/22 22:21:46] [INFO] ==========================================
+[2025/12/22 22:21:46] [INFO] Prüfe tkinter...
+[2025/12/22 22:21:46] [INFO] ==========================================
+[2025/12/22 22:21:46] [INFO] tkinter-Check Exit-Code: 0
+[2025/12/22 22:21:46] [OK] tkinter verfügbar
+[2025/12/22 22:21:46] [INFO] ==========================================
+[2025/12/22 22:21:46] [INFO] Prüfe ffmpeg...
+[2025/12/22 22:21:46] [INFO] ==========================================
+[2025/12/22 22:21:46] [INFO] ffmpeg-Check Exit-Code: 0
+[2025/12/22 22:21:46] [OK] ffmpeg verfügbar
+[2025/12/22 22:21:47] [INFO] ==========================================
+[2025/12/22 22:21:47] [INFO] Starte Anwendung...
+[2025/12/22 22:21:47] [INFO] Start-Befehl: "D:\Users\basti\Downloads\Universal-Downloader\venv\Scripts\python.exe" "D:\Users\basti\Downloads\Universal-Downloader\start.py"
+[2025/12/22 22:21:47] [INFO] Arbeitsverzeichnis: D:\Users\basti\Downloads\Universal-Downloader
+[2025/12/22 22:21:47] [INFO] ==========================================
+[2025/12/22 22:21:47] [INFO] Setze Umgebungsvariable: UNIVERSAL_DOWNLOADER_STARTED_BY_LAUNCHER=1
+[2025/12/22 22:21:47] [INFO] Start-Befehl ausgeführt (ShellExecute), Exit-Code: 0
+[2025/12/22 22:21:49] [INFO] tasklist Ausgabe: "python.exe","13752","Console","1","3,996 K"
+"python.exe","11020","Console","1","77,224 K"
+
+[2025/12/22 22:21:49] [INFO] tasklist Exit-Code: 0
+[2025/12/22 22:21:49] [OK] Python-Prozess läuft: python.exe
+[2025/12/22 22:21:49] [OK] ==========================================
+[2025/12/22 22:21:49] [OK] Launcher beendet erfolgreich
+[2025/12/22 22:21:49] [OK] ==========================================
