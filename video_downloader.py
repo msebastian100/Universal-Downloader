@@ -349,19 +349,20 @@ class VideoDownloader:
                 if account:
                     cookies_file = self._get_cookies_file(account)
             
+            # Verwende yt_dlp_helper für korrekten Aufruf (besonders wichtig auf Windows)
+            from yt_dlp_helper import get_ytdlp_command
+            
             # Für Playlist-URLs: Nimm das erste Video oder verwende --flat-playlist
             if check_series:
                 # Bei Serien/Playlists: Hole nur das erste Video für Info
-                cmd = [
-                    'yt-dlp',
+                args = [
                     '--dump-json',
                     '--yes-playlist',
                     '--playlist-end', '1',  # Nur erstes Video
                     '--no-warnings',
                 ]
             else:
-                cmd = [
-                    'yt-dlp',
+                args = [
                     '--dump-json',
                     '--no-playlist',
                     '--no-warnings',
@@ -369,23 +370,34 @@ class VideoDownloader:
             
             # Füge Cookies hinzu falls vorhanden
             if cookies_file:
-                cmd.extend(['--cookies', cookies_file])
+                args.extend(['--cookies', cookies_file])
                 # Spezielle Optionen für ARD Plus
                 if service == 'ARD Plus':
-                    cmd.extend(['--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'])
-                    cmd.extend(['--add-header', 'Referer:https://www.ardplus.de/'])
+                    args.extend(['--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'])
+                    args.extend(['--add-header', 'Referer:https://www.ardplus.de/'])
             
             # URL hinzufügen
-            cmd.append(url)
+            args.append(url)
+            
+            # Hole yt-dlp Befehl (behandelt Windows/Python-Modul korrekt)
+            cmd = get_ytdlp_command()
+            if cmd is None:
+                # Fallback: Verwende yt_dlp direkt als Modul
+                cmd = [sys.executable, '-m', 'yt_dlp']
+            
+            # Kombiniere Befehl mit Argumenten
+            full_cmd = cmd + args
             
             kwargs = {
                 'capture_output': True,
                 'text': True,
+                'encoding': 'utf-8',  # Explizit UTF-8 für Windows
+                'errors': 'replace',  # Ersetze ungültige Zeichen statt Fehler
                 'timeout': 30
             }
             if platform.system() == 'Windows':
                 kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
-            result = subprocess.run(cmd, **kwargs)
+            result = subprocess.run(full_cmd, **kwargs)
             
             # Lösche temporäre Cookies-Datei falls vorhanden
             if cookies_file and os.path.exists(cookies_file):
@@ -908,37 +920,51 @@ class VideoDownloader:
                     series_url
                 ]
             
+            # Verwende yt_dlp_helper für korrekten Aufruf (besonders wichtig auf Windows)
+            from yt_dlp_helper import get_ytdlp_command
+            
+            # Konvertiere cmd zu args (ohne 'yt-dlp')
+            args = cmd[1:] if cmd[0] == 'yt-dlp' else cmd
+            yt_cmd = get_ytdlp_command()
+            if yt_cmd is None:
+                yt_cmd = [sys.executable, '-m', 'yt_dlp']
+            full_cmd = yt_cmd + args
+            
             kwargs = {
                 'capture_output': True,
                 'text': True,
+                'encoding': 'utf-8',  # Explizit UTF-8 für Windows
+                'errors': 'replace',  # Ersetze ungültige Zeichen statt Fehler
                 'timeout': 120
             }
             if platform.system() == 'Windows':
                 kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
-            result = subprocess.run(cmd, **kwargs)
+            result = subprocess.run(full_cmd, **kwargs)
             
             # Wenn der erste Versuch fehlschlägt und es eine ARD Sammlung ist, versuche alternative Methoden
             if result.returncode != 0 and 'ardmediathek.de' in series_url.lower():
-                error_output = result.stderr.lower()
+                error_output = result.stderr.lower() if result.stderr else ''
                 if 'unsupported url' in error_output or 'no video found' in error_output:
                     # Versuche ohne expliziten Extractor (lass yt-dlp automatisch erkennen)
                     self.log("Erster Versuch fehlgeschlagen, versuche ohne expliziten Extractor...")
-                    cmd_alt = [
-                        'yt-dlp',
+                    args_alt = [
                         '--dump-json',
                         '--flat-playlist',
                         '--yes-playlist',
                         '--playlist-end', '500',
                         series_url
                     ]
+                    full_cmd_alt = yt_cmd + args_alt
                     kwargs = {
                         'capture_output': True,
                         'text': True,
+                        'encoding': 'utf-8',  # Explizit UTF-8 für Windows
+                        'errors': 'replace',  # Ersetze ungültige Zeichen statt Fehler
                         'timeout': 120
                     }
                     if platform.system() == 'Windows':
                         kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
-                    result = subprocess.run(cmd_alt, **kwargs)
+                    result = subprocess.run(full_cmd_alt, **kwargs)
                     
                     # Wenn das auch fehlschlägt, versuche die Seite direkt zu parsen
                     if result.returncode != 0:
