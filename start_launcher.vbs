@@ -493,32 +493,89 @@ If pythonExe = "" Then
         installResult = WshShell.Run(installCmd, 1, True)
         WriteLog "[INFO] Installations-Befehl beendet mit Exit-Code: " & installResult
         
-        WScript.Sleep 3000
+        ' Warte länger nach Installation (PATH muss aktualisiert werden)
+        WriteLog "[INFO] Warte auf Abschluss der Python-Installation..."
+        WScript.Sleep 5000
         
-        WriteLog "[INFO] Prüfe ob Python jetzt verfügbar ist..."
-        On Error Resume Next
-        Set pythonCheck = WshShell.Exec("python.exe --version")
-        pythonCheck.StdOut.ReadAll
-        pythonCheck.WaitOnReturn = True
-        If pythonCheck.ExitCode = 0 Then
-            pythonExe = "python.exe"
-            WriteLog "[OK] Python erfolgreich installiert: python.exe"
-            MsgBox "Python wurde erfolgreich installiert!" & vbCrLf & _
-                   "Die Anwendung wird jetzt gestartet.", vbInformation, "Erfolg"
-        Else
-            Set pythonCheck2 = WshShell.Exec("pythonw.exe --version")
-            pythonCheck2.StdOut.ReadAll
-            pythonCheck2.WaitOnReturn = True
-            If pythonCheck2.ExitCode = 0 Then
-                pythonExe = "pythonw.exe"
-                WriteLog "[OK] Python erfolgreich installiert: pythonw.exe"
-                MsgBox "Python wurde erfolgreich installiert!" & vbCrLf & _
-                       "Die Anwendung wird jetzt gestartet.", vbInformation, "Erfolg"
+        ' Aktualisiere Umgebungsvariablen (PATH)
+        WriteLog "[INFO] Aktualisiere Umgebungsvariablen..."
+        Dim envPath
+        envPath = WshShell.ExpandEnvironmentStrings("%PATH%")
+        WriteLog "[INFO] Aktueller PATH: " & envPath
+        
+        ' Prüfe ob Python jetzt verfügbar ist (mehrere Versuche)
+        Dim pythonFoundAfterInstall
+        pythonFoundAfterInstall = False
+        Dim maxRetries
+        maxRetries = 5
+        Dim retryCount
+        retryCount = 0
+        
+        Do While retryCount < maxRetries And Not pythonFoundAfterInstall
+            retryCount = retryCount + 1
+            WriteLog "[INFO] Versuch " & retryCount & " von " & maxRetries & ": Prüfe Python..."
+            
+            On Error Resume Next
+            Set pythonCheck = WshShell.Exec("python.exe --version")
+            pythonCheck.StdOut.ReadAll
+            pythonCheck.WaitOnReturn = True
+            If pythonCheck.ExitCode = 0 Then
+                pythonExe = "python.exe"
+                pythonFoundAfterInstall = True
+                WriteLog "[OK] Python erfolgreich installiert: python.exe"
             Else
-                WriteLog "[ERROR] Python-Installation fehlgeschlagen"
+                Set pythonCheck2 = WshShell.Exec("pythonw.exe --version")
+                pythonCheck2.StdOut.ReadAll
+                pythonCheck2.WaitOnReturn = True
+                If pythonCheck2.ExitCode = 0 Then
+                    pythonExe = "pythonw.exe"
+                    pythonFoundAfterInstall = True
+                    WriteLog "[OK] Python erfolgreich installiert: pythonw.exe"
+                End If
+            End If
+            On Error Goto 0
+            
+            If Not pythonFoundAfterInstall And retryCount < maxRetries Then
+                WriteLog "[INFO] Python noch nicht im PATH - warte 2 Sekunden..."
+                WScript.Sleep 2000
+            End If
+        Loop
+        
+        If pythonFoundAfterInstall Then
+            MsgBox "Python wurde erfolgreich installiert!" & vbCrLf & _
+                   "Die Anwendung wird jetzt konfiguriert.", vbInformation, "Erfolg"
+        Else
+            WriteLog "[ERROR] Python-Installation fehlgeschlagen - Python nicht im PATH gefunden"
+            WriteLog "[INFO] Versuche Python in typischen Installationspfaden zu finden..."
+            
+            ' Versuche Python in typischen Pfaden zu finden
+            Dim commonPythonPaths
+            commonPythonPaths = Array( _
+                WshShell.ExpandEnvironmentStrings("%LOCALAPPDATA%\Programs\Python\Python311\python.exe"), _
+                WshShell.ExpandEnvironmentStrings("%LOCALAPPDATA%\Programs\Python\Python311\pythonw.exe"), _
+                WshShell.ExpandEnvironmentStrings("%PROGRAMFILES%\Python311\python.exe"), _
+                WshShell.ExpandEnvironmentStrings("%PROGRAMFILES%\Python311\pythonw.exe") _
+            )
+            
+            Dim foundPythonPath
+            foundPythonPath = ""
+            For Each testPath In commonPythonPaths
+                If fso.FileExists(testPath) Then
+                    foundPythonPath = testPath
+                    pythonExe = testPath
+                    pythonFoundAfterInstall = True
+                    WriteLog "[OK] Python gefunden in: " & foundPythonPath
+                    Exit For
+                End If
+            Next
+            
+            If Not pythonFoundAfterInstall Then
                 MsgBox "Python-Installation fehlgeschlagen oder noch nicht abgeschlossen." & vbCrLf & vbCrLf & _
-                       "Bitte installieren Sie Python manuell von:" & vbCrLf & _
-                       "https://www.python.org/downloads/", vbCritical, "Fehler"
+                       "Bitte:" & vbCrLf & _
+                       "1. Starten Sie den PC neu" & vbCrLf & _
+                       "2. Oder installieren Sie Python manuell von:" & vbCrLf & _
+                       "   https://www.python.org/downloads/" & vbCrLf & vbCrLf & _
+                       "Wichtig: Aktivieren Sie 'Add Python to PATH' bei der Installation!", vbCritical, "Fehler"
                 If fso.FileExists(installerPath) Then fso.DeleteFile installerPath
                 If Not logStream Is Nothing Then logStream.Close
                 WScript.Quit
@@ -695,27 +752,47 @@ If venvNeedsCreation Then
     WriteLog "[INFO] Erstelle virtuelle Umgebung (venv)..."
     WriteLog "[INFO] =========================================="
     On Error Resume Next
-    Dim venvCmd
-    venvCmd = fullPythonPath & " -m venv """ & venvPath & """"
-    WriteLog "[INFO] venv-Befehl: " & venvCmd
-    Dim venvResult
-    venvResult = WshShell.Run(venvCmd, 1, True) ' 1 = sichtbar
-    WriteLog "[INFO] venv Exit-Code: " & venvResult
-    If venvResult = 0 Then
-        WriteLog "[OK] venv erfolgreich erstellt"
-        ' Prüfe ob venv jetzt verfügbar ist
-        venvPythonPath = venvPath & "\Scripts\python.exe"
-        If Not fso.FileExists(venvPythonPath) Then
-            venvPythonPath = venvPath & "\bin\python"
-        End If
-        If fso.FileExists(venvPythonPath) Then
-            ' Verwende venv Python für weitere Installationen
-            fullPythonPath = venvPythonPath
-            WriteLog "[INFO] Verwende venv Python: " & fullPythonPath
+    
+    ' Prüfe ob venv-Modul verfügbar ist
+    Dim venvCheckCmd
+    venvCheckCmd = fullPythonPath & " -m venv --help"
+    Dim venvCheckResult
+    Set venvCheckResult = WshShell.Exec(venvCheckCmd)
+    venvCheckResult.StdOut.ReadAll
+    venvCheckResult.WaitOnReturn = True
+    
+    If venvCheckResult.ExitCode = 0 Then
+        Dim venvCmd
+        venvCmd = fullPythonPath & " -m venv """ & venvPath & """"
+        WriteLog "[INFO] venv-Befehl: " & venvCmd
+        Dim venvResult
+        venvResult = WshShell.Run(venvCmd, 1, True) ' 1 = sichtbar
+        WriteLog "[INFO] venv Exit-Code: " & venvResult
+        
+        If venvResult = 0 Then
+            ' Warte kurz, damit venv vollständig erstellt wird
+            WScript.Sleep 2000
+            
+            ' Prüfe ob venv jetzt verfügbar ist
+            venvPythonPath = venvPath & "\Scripts\python.exe"
+            If Not fso.FileExists(venvPythonPath) Then
+                venvPythonPath = venvPath & "\bin\python"
+            End If
+            If fso.FileExists(venvPythonPath) Then
+                ' Verwende venv Python für weitere Installationen
+                fullPythonPath = venvPythonPath
+                WriteLog "[OK] venv erfolgreich erstellt"
+                WriteLog "[INFO] Verwende venv Python: " & fullPythonPath
+            Else
+                WriteLog "[WARNING] venv erstellt, aber Python nicht gefunden - verwende System-Python"
+            End If
+        Else
+            WriteLog "[WARNING] venv-Erstellung fehlgeschlagen (Exit-Code: " & venvResult & ")"
+            WriteLog "[INFO] Verwende System-Python weiterhin (venv ist optional)"
         End If
     Else
-        WriteLog "[WARNING] venv-Erstellung fehlgeschlagen (Exit-Code: " & venvResult & ")"
-        WriteLog "[INFO] Verwende System-Python weiterhin"
+        WriteLog "[WARNING] venv-Modul nicht verfügbar - überspringe venv-Erstellung"
+        WriteLog "[INFO] Verwende System-Python (venv ist optional, aber empfohlen)"
     End If
     On Error Goto 0
 Else
@@ -746,15 +823,67 @@ WriteLog "[INFO] pip --version Exit-Code: " & pipCheck.ExitCode
 If pipCheck.ExitCode <> 0 Then
     WriteLog "[WARNING] pip nicht verfügbar - versuche Installation..."
     Dim ensurepipCmd
-    ensurepipCmd = fullPythonPath & " -m ensurepip --upgrade"
+    ensurepipCmd = fullPythonPath & " -m ensurepip --upgrade --default-pip"
     WriteLog "[INFO] ensurepip-Befehl: " & ensurepipCmd
     Dim ensurepipResult
     ensurepipResult = WshShell.Run(ensurepipCmd, 1, True) ' 1 = sichtbar
     WriteLog "[INFO] ensurepip Exit-Code: " & ensurepipResult
+    
     If ensurepipResult = 0 Then
-        WriteLog "[OK] pip erfolgreich installiert"
+        ' Prüfe nochmal ob pip jetzt verfügbar ist
+        WScript.Sleep 1000
+        Set pipCheck = WshShell.Exec(fullPythonPath & " -m pip --version")
+        pipCheck.StdOut.ReadAll
+        pipCheck.WaitOnReturn = True
+        If pipCheck.ExitCode = 0 Then
+            WriteLog "[OK] pip erfolgreich installiert"
+        Else
+            WriteLog "[WARNING] pip-Installation scheint fehlgeschlagen zu sein"
+            WriteLog "[INFO] Versuche pip manuell zu installieren..."
+            ' Versuche get-pip.py herunterzuladen und auszuführen
+            Dim getPipUrl, getPipPath
+            getPipUrl = "https://bootstrap.pypa.io/get-pip.py"
+            getPipPath = scriptPath & "\get-pip.py"
+            Dim downloadPipCmd
+            downloadPipCmd = "powershell.exe -Command ""[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '" & getPipUrl & "' -OutFile '" & getPipPath & "'"""
+            Dim downloadPipResult
+            downloadPipResult = WshShell.Run(downloadPipCmd, 0, True)
+            If downloadPipResult = 0 And fso.FileExists(getPipPath) Then
+                Dim installPipCmd
+                installPipCmd = fullPythonPath & " """ & getPipPath & """"
+                Dim installPipResult
+                installPipResult = WshShell.Run(installPipCmd, 1, True)
+                If installPipResult = 0 Then
+                    WriteLog "[OK] pip über get-pip.py erfolgreich installiert"
+                Else
+                    WriteLog "[WARNING] pip-Installation über get-pip.py fehlgeschlagen"
+                End If
+                If fso.FileExists(getPipPath) Then fso.DeleteFile getPipPath
+            End If
+        End If
     Else
         WriteLog "[WARNING] pip-Installation fehlgeschlagen (Exit-Code: " & ensurepipResult & ")"
+        WriteLog "[INFO] Versuche pip manuell zu installieren..."
+        ' Versuche get-pip.py herunterzuladen und auszuführen
+        Dim getPipUrl2, getPipPath2
+        getPipUrl2 = "https://bootstrap.pypa.io/get-pip.py"
+        getPipPath2 = scriptPath & "\get-pip.py"
+        Dim downloadPipCmd2
+        downloadPipCmd2 = "powershell.exe -Command ""[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '" & getPipUrl2 & "' -OutFile '" & getPipPath2 & "'"""
+        Dim downloadPipResult2
+        downloadPipResult2 = WshShell.Run(downloadPipCmd2, 0, True)
+        If downloadPipResult2 = 0 And fso.FileExists(getPipPath2) Then
+            Dim installPipCmd2
+            installPipCmd2 = fullPythonPath & " """ & getPipPath2 & """"
+            Dim installPipResult2
+            installPipResult2 = WshShell.Run(installPipCmd2, 1, True)
+            If installPipResult2 = 0 Then
+                WriteLog "[OK] pip über get-pip.py erfolgreich installiert"
+            Else
+                WriteLog "[ERROR] pip-Installation fehlgeschlagen - requirements.txt kann nicht installiert werden"
+            End If
+            If fso.FileExists(getPipPath2) Then fso.DeleteFile getPipPath2
+        End If
     End If
 Else
     WriteLog "[OK] pip verfügbar"
@@ -783,10 +912,50 @@ If fso.FileExists(requirementsFile) Then
         Dim pipResult
         pipResult = WshShell.Run(pipInstallCmd, 1, True) ' 1 = sichtbar, damit Ausgabe gesehen wird
         WriteLog "[INFO] pip install Exit-Code: " & pipResult
+        
+        ' Prüfe ob Installation erfolgreich war
         If pipResult = 0 Then
             WriteLog "[OK] requirements.txt erfolgreich installiert/aktualisiert"
+            
+            ' Prüfe ob wichtige Pakete jetzt verfügbar sind
+            WriteLog "[INFO] Prüfe wichtige Pakete..."
+            Dim testPackages
+            testPackages = Array("requests", "yt_dlp", "mutagen")
+            Dim allPackagesOk
+            allPackagesOk = True
+            For Each testPackage In testPackages
+                On Error Resume Next
+                Dim testCmd
+                testCmd = fullPythonPath & " -c ""import " & testPackage & """"
+                Dim testResult
+                Set testResult = WshShell.Exec(testCmd)
+                testResult.StdOut.ReadAll
+                testResult.WaitOnReturn = True
+                If testResult.ExitCode = 0 Then
+                    WriteLog "[OK] Paket " & testPackage & " verfügbar"
+                Else
+                    WriteLog "[WARNING] Paket " & testPackage & " nicht verfügbar"
+                    allPackagesOk = False
+                End If
+                On Error Goto 0
+            Next
+            
+            If Not allPackagesOk Then
+                WriteLog "[WARNING] Einige Pakete fehlen noch - versuche erneute Installation..."
+                pipResult = WshShell.Run(pipInstallCmd, 1, True)
+                WriteLog "[INFO] Zweiter Installationsversuch Exit-Code: " & pipResult
+            End If
         Else
             WriteLog "[WARNING] requirements.txt Installation fehlgeschlagen (Exit-Code: " & pipResult & ")"
+            WriteLog "[INFO] Versuche erneut mit --user Flag..."
+            Dim pipInstallCmdUser
+            pipInstallCmdUser = fullPythonPath & " -m pip install --user --upgrade -r """ & requirementsFile & """"
+            pipResult = WshShell.Run(pipInstallCmdUser, 1, True)
+            If pipResult = 0 Then
+                WriteLog "[OK] requirements.txt erfolgreich installiert (--user)"
+            Else
+                WriteLog "[ERROR] requirements.txt Installation fehlgeschlagen auch mit --user Flag"
+            End If
         End If
     Else
         WriteLog "[WARNING] pip nicht verfügbar - überspringe requirements.txt Installation"
