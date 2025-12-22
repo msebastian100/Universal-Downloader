@@ -308,7 +308,7 @@ If Not pythonFound Then
     
     If Not pythonFound Then
         WriteLog "[INFO] python.exe nicht im PATH gefunden oder ungültig"
-        ' Methode 3: Typische Installationspfade
+        ' Methode 3: Typische Installationspfade (optimiert: prüfe häufige Versionen zuerst)
         Err.Clear
         WriteLog "[INFO] Methode 3: Suche in typischen Installationspfaden..."
         Dim searchPaths, searchPath, folder, subfolder
@@ -319,10 +319,14 @@ If Not pythonFound Then
         )
         ' HINWEIS: WindowsApps wird ausgeschlossen, da es nur Stubs enthält
         
+        ' Häufige Python-Versionen (neuere zuerst, da wahrscheinlicher)
+        Dim commonVersions, versionName
+        commonVersions = Array("Python312", "Python311", "Python310", "Python39", "Python38", "Python313", "Python314")
+        
         For Each searchPath In searchPaths
             WriteLog "[INFO] Prüfe Pfad: " & searchPath
             If fso.FolderExists(searchPath) Then
-                Set folder = fso.GetFolder(searchPath)
+                ' Prüfe zuerst direkt im Hauptverzeichnis
                 Dim testPythonPath
                 testPythonPath = searchPath & "\pythonw.exe"
                 If fso.FileExists(testPythonPath) Then
@@ -333,14 +337,45 @@ If Not pythonFound Then
                         Exit For
                     End If
                 End If
-                For Each subfolder In folder.SubFolders
-                    testPythonPath = subfolder.Path & "\pythonw.exe"
+                
+                ' Prüfe häufige Versionen zuerst (optimiert)
+                Set folder = fso.GetFolder(searchPath)
+                Dim versionFound
+                versionFound = False
+                For Each versionName In commonVersions
+                    testPythonPath = searchPath & "\" & versionName & "\pythonw.exe"
                     If fso.FileExists(testPythonPath) Then
                         If IsValidPythonMain(testPythonPath) Then
                             pythonExe = testPythonPath
-                            WriteLog "[OK] Python gefunden (Methode 3): " & pythonExe
+                            WriteLog "[OK] Python gefunden (Methode 3, " & versionName & "): " & pythonExe
                             pythonFound = True
+                            versionFound = True
                             Exit For
+                        End If
+                    End If
+                Next
+                If versionFound Then Exit For
+                
+                ' Fallback: Durchsuche alle Unterordner (langsamer, nur wenn häufige Versionen nicht gefunden)
+                For Each subfolder In folder.SubFolders
+                    ' Überspringe bereits geprüfte häufige Versionen
+                    Dim skipFolder
+                    skipFolder = False
+                    For Each versionName In commonVersions
+                        If InStr(subfolder.Name, versionName) > 0 Then
+                            skipFolder = True
+                            Exit For
+                        End If
+                    Next
+                    If Not skipFolder Then
+                        testPythonPath = subfolder.Path & "\pythonw.exe"
+                        If fso.FileExists(testPythonPath) Then
+                            If IsValidPythonMain(testPythonPath) Then
+                                pythonExe = testPythonPath
+                                WriteLog "[OK] Python gefunden (Methode 3): " & pythonExe
+                                pythonFound = True
+                                Exit For
+                            End If
                         End If
                     End If
                 Next
@@ -959,28 +994,41 @@ If fso.FileExists(requirementsFile) Then
     If pipCheck.ExitCode = 0 Then
         WriteLog "[OK] pip verfügbar"
         
-        ' Prüfe ob wichtige Pakete bereits installiert sind
+        ' Prüfe ob wichtige Pakete bereits installiert sind (optimiert: alle in einem Befehl)
         Dim packagesInstalled
         packagesInstalled = True
         ' Deklariere Variablen einmal für Paket-Prüfung
-        Dim testPackages, testPackage, testCmd, testResult, testOutput, testError
-        testPackages = Array("requests", "yt_dlp", "mutagen")
+        Dim testCmd, testResult, testOutput, testError
         WriteLog "[INFO] Prüfe ob Pakete bereits installiert sind..."
-        For Each testPackage In testPackages
-            testCmd = fullPythonPath & " -c ""import " & testPackage & """"
-            Set testResult = WshShell.Exec(testCmd)
-            testOutput = testResult.StdOut.ReadAll
-            testError = testResult.StdErr.ReadAll
-            testResult.WaitOnReturn = True
-            If testResult.ExitCode <> 0 Then
-                packagesInstalled = False
-                WriteLog "[INFO] Paket " & testPackage & " fehlt - Installation erforderlich"
-                If Len(testError) > 0 Then
-                    WriteLog "[DEBUG] Import-Fehler: " & testError
+        ' Prüfe alle drei Pakete in einem Python-Befehl (schneller als einzeln)
+        testCmd = fullPythonPath & " -c ""import requests, yt_dlp, mutagen; print('OK')"""
+        Set testResult = WshShell.Exec(testCmd)
+        testOutput = testResult.StdOut.ReadAll
+        testError = testResult.StdErr.ReadAll
+        testResult.WaitOnReturn = True
+        If testResult.ExitCode <> 0 Then
+            packagesInstalled = False
+            WriteLog "[INFO] Mindestens ein Paket fehlt - Installation erforderlich"
+            If Len(testError) > 0 Then
+                ' Versuche herauszufinden, welches Paket fehlt (für besseres Logging)
+                Dim missingPackage
+                missingPackage = ""
+                If InStr(testError, "requests") > 0 Then
+                    missingPackage = "requests"
+                ElseIf InStr(testError, "yt_dlp") > 0 Or InStr(testError, "yt-dlp") > 0 Then
+                    missingPackage = "yt_dlp"
+                ElseIf InStr(testError, "mutagen") > 0 Then
+                    missingPackage = "mutagen"
                 End If
-                Exit For
+                If Len(missingPackage) > 0 Then
+                    WriteLog "[INFO] Paket " & missingPackage & " fehlt"
+                Else
+                    WriteLog "[DEBUG] Import-Fehler: " & Left(testError, 200)
+                End If
             End If
-        Next
+        Else
+            WriteLog "[OK] Alle wichtigen Pakete sind installiert"
+        End If
         
         ' Installiere requirements.txt nur wenn Pakete fehlen (ohne --upgrade für schnellere Installation)
         If Not packagesInstalled Then
