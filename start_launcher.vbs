@@ -916,9 +916,7 @@ If InStr(pythonExe, "\") > 0 Then
     fullPythonPath = pythonExe
 Else
     On Error Resume Next
-    Dim whereResult
     Set whereResult = WshShell.Exec("where " & pythonExe)
-    Dim whereOutput
     whereOutput = whereResult.StdOut.ReadAll
     whereResult.WaitOnReturn = True
     WriteLog "[INFO] where " & pythonExe & " Ausgabe: " & whereOutput
