@@ -937,43 +937,61 @@ Else
 End If
 
 ' WICHTIG: Aktualisiere Update-Check Python-Pfad mit dem gefundenen Python (falls gültig)
-' Dies stellt sicher, dass der Update-Check das gleiche Python verwendet wie die Hauptanwendung
+' PRIORITÄT: Verwende venv-Python wenn verfügbar (hat alle Abhängigkeiten wie requests installiert)
 WriteLog "[DEBUG] =========================================="
 WriteLog "[DEBUG] Aktualisiere Update-Check Python-Pfad..."
 WriteLog "[DEBUG] =========================================="
-WriteLog "[DEBUG] Gefundener Python-Pfad: " & fullPythonPath
-If Len(fullPythonPath) > 0 And InStr(LCase(fullPythonPath), "windowsapps") = 0 Then
-    ' Konvertiere pythonw.exe zu python.exe für Update-Check (sichtbare Ausgabe)
-    Dim updatePythonPath
-    updatePythonPath = fullPythonPath
-    WriteLog "[DEBUG] Original-Pfad: " & updatePythonPath
-    If InStr(LCase(updatePythonPath), "pythonw.exe") > 0 Then
-        updatePythonPath = Replace(LCase(updatePythonPath), "pythonw.exe", "python.exe")
-        WriteLog "[DEBUG] Konvertiert zu: " & updatePythonPath
-        ' Prüfe ob python.exe existiert
-        If Not fso.FileExists(updatePythonPath) Then
-            WriteLog "[DEBUG] python.exe nicht gefunden, verwende pythonw.exe"
-            ' Fallback: Verwende pythonw.exe
-            updatePythonPath = fullPythonPath
-        Else
-            WriteLog "[DEBUG] python.exe gefunden"
+
+' Prüfe zuerst, ob venv existiert und verwende es für Update-Check (hat alle Abhängigkeiten)
+Dim venvPythonPathUpdate
+venvPythonPathUpdate = scriptPath & "\venv\Scripts\python.exe"
+If fso.FileExists(venvPythonPathUpdate) Then
+    WriteLog "[DEBUG] venv-Python gefunden: " & venvPythonPathUpdate
+    If IsValidPythonMain(venvPythonPathUpdate) Then
+        fullPythonPathUpdate = venvPythonPathUpdate
+        WriteLog "[INFO] Update-Check verwendet venv-Python (hat alle Abhängigkeiten): " & fullPythonPathUpdate
+        WriteLog "[DEBUG] ✓ venv-Python-Validierung erfolgreich"
+    Else
+        WriteLog "[WARNING] venv-Python gefunden, aber Validierung fehlgeschlagen"
+    End If
+End If
+
+' Falls venv-Python nicht verfügbar oder ungültig, verwende das gefundene System-Python
+If Len(fullPythonPathUpdate) = 0 Or Not IsValidPythonMain(fullPythonPathUpdate) Then
+    WriteLog "[DEBUG] Gefundener Python-Pfad: " & fullPythonPath
+    If Len(fullPythonPath) > 0 And InStr(LCase(fullPythonPath), "windowsapps") = 0 Then
+        ' Konvertiere pythonw.exe zu python.exe für Update-Check (sichtbare Ausgabe)
+        Dim updatePythonPath
+        updatePythonPath = fullPythonPath
+        WriteLog "[DEBUG] Original-Pfad: " & updatePythonPath
+        If InStr(LCase(updatePythonPath), "pythonw.exe") > 0 Then
+            updatePythonPath = Replace(LCase(updatePythonPath), "pythonw.exe", "python.exe")
+            WriteLog "[DEBUG] Konvertiert zu: " & updatePythonPath
+            ' Prüfe ob python.exe existiert
+            If Not fso.FileExists(updatePythonPath) Then
+                WriteLog "[DEBUG] python.exe nicht gefunden, verwende pythonw.exe"
+                ' Fallback: Verwende pythonw.exe
+                updatePythonPath = fullPythonPath
+            Else
+                WriteLog "[DEBUG] python.exe gefunden"
+            End If
         End If
-    End If
-    ' Prüfe ob das Python wirklich funktioniert
-    WriteLog "[DEBUG] Validiere Python-Pfad: " & updatePythonPath
-    If IsValidPython(updatePythonPath) Then
-        fullPythonPathUpdate = updatePythonPath
-        WriteLog "[INFO] Update-Check Python-Pfad aktualisiert: " & fullPythonPathUpdate
-        WriteLog "[DEBUG] ✓ Python-Validierung erfolgreich"
+        ' Prüfe ob das Python wirklich funktioniert
+        WriteLog "[DEBUG] Validiere Python-Pfad: " & updatePythonPath
+        If IsValidPythonMain(updatePythonPath) Then
+            fullPythonPathUpdate = updatePythonPath
+            WriteLog "[INFO] Update-Check Python-Pfad aktualisiert: " & fullPythonPathUpdate
+            WriteLog "[DEBUG] ✓ Python-Validierung erfolgreich"
+        Else
+            WriteLog "[WARNING] Update-Check Python-Pfad konnte nicht validiert werden"
+            WriteLog "[DEBUG] ✗ Python-Validierung fehlgeschlagen"
+        End If
     Else
-        WriteLog "[WARNING] Update-Check Python-Pfad konnte nicht validiert werden"
-        WriteLog "[DEBUG] ✗ Python-Validierung fehlgeschlagen"
-    End If
-Else
-    If InStr(LCase(fullPythonPath), "windowsapps") > 0 Then
-        WriteLog "[DEBUG] ✗ Python-Pfad enthält WindowsApps (Stub) - überspringe"
-    Else
-        WriteLog "[DEBUG] ✗ Kein Python-Pfad gefunden"
+        If InStr(LCase(fullPythonPath), "windowsapps") > 0 Then
+            WriteLog "[DEBUG] ✗ Python-Pfad enthält WindowsApps (Stub) - überspringe"
+        Else
+            WriteLog "[DEBUG] ✗ Kein Python-Pfad gefunden"
+        End If
     End If
 End If
 WriteLog "[DEBUG] =========================================="
