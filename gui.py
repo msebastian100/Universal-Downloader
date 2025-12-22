@@ -4009,6 +4009,7 @@ class DeezerDownloaderGUI:
                           f"Download wurde zur Warteschlange hinzugefügt.\n\n"
                           f"URL: {url[:80]}{'...' if len(url) > 80 else ''}\n\n"
                           f"Downloads in Queue: {len(self.video_download_queue)}")
+        self._update_queue_status()
     
     def _process_download_queue(self):
         """Startet automatisch den nächsten Download aus der Queue"""
