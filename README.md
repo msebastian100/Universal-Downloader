@@ -10,25 +10,6 @@ Ein Universal-Downloader für Musik, Hörbücher und Videos - für privaten Gebr
 - 🎬 **YouTube**: Videos und Playlists
 - 📺 **Öffentlich-rechtliche Sender**: ARD, ZDF, ORF, SWR, BR, WDR, MDR, NDR, HR, RBB, SR, Phoenix, Arte, Tagesschau, RocketBeans TV
 
-## 📦 Ausführbare Dateien erstellen
-
-Sie können ausführbare Dateien für Windows (.exe) und Linux (.deb) erstellen:
-
-### Windows .exe
-```bash
-python build_windows.py
-```
-Die .exe Datei befindet sich in `dist/UniversalDownloader.exe`
-
-### Linux .deb
-```bash
-chmod +x build_linux.sh
-./build_linux.sh
-```
-Das .deb Paket befindet sich in `deb_build/universal-downloader_1.0.0_all.deb`
-
-**Detaillierte Anleitung:** Siehe [BUILD.md](BUILD.md)
-
 ## ⚠️ Wichtiger Hinweis
 
 Dieser Downloader ist **nur für privaten Gebrauch** bestimmt. Bitte beachten Sie:
@@ -73,40 +54,51 @@ Dieser Downloader ist **nur für privaten Gebrauch** bestimmt. Bitte beachten Si
 
 ## Installation
 
-1. **Python 3.8 oder höher erforderlich**
+### Voraussetzungen
+- **Python 3.8 oder höher** erforderlich
+- **ffmpeg** (wird automatisch installiert, falls möglich)
+- **tkinter** (GUI-Bibliothek - normalerweise mit Python installiert)
 
-2. **Abhängigkeiten installieren:**
+### Automatische Installation (empfohlen)
 
-**Option 1: Automatisches Installationsskript (empfohlen)**
+**Linux/macOS:**
 ```bash
 chmod +x install.sh
 ./install.sh
 ```
 
-**Option 2: Manuelle Installation**
+**Windows:**
 ```bash
-# Virtuelle Umgebung erstellen (empfohlen)
+# Führen Sie install.sh in Git Bash oder WSL aus
+# Oder installieren Sie manuell (siehe unten)
+```
+
+Das Installationsskript:
+- Erstellt eine virtuelle Umgebung (`venv`)
+- Installiert alle Python-Abhängigkeiten
+- Installiert ffmpeg (falls möglich)
+- Installiert fehlende System-Pakete (z.B. `python3-tk` auf Linux)
+- Erstellt Desktop-Verknüpfungen
+
+### Manuelle Installation
+
+**1. Virtuelle Umgebung erstellen:**
+```bash
 python3 -m venv venv
 source venv/bin/activate  # Linux/Mac
 # oder: venv\Scripts\activate  # Windows
+```
 
-# Abhängigkeiten installieren
+**2. Abhängigkeiten installieren:**
+```bash
 pip install -r requirements.txt
 ```
 
-3. **System-Abhängigkeiten:**
-   - **ffmpeg** (für MP3-Konvertierung und Video-Processing)
-     - **Wird automatisch installiert** beim Ausführen von `./install.sh` (Linux/macOS)
-     - **Linux Mint/Ubuntu**: Automatisch über `apt-get` (benötigt `sudo`)
-     - **macOS**: Automatisch über `brew` (falls Homebrew installiert ist)
-     - **Windows**: Download von https://ffmpeg.org/download.html und zu PATH hinzufügen
-     - Falls automatische Installation fehlschlägt, installieren Sie ffmpeg manuell
-   
-   - **Python 3.8+** (auf allen Plattformen verfügbar)
-   - **tkinter** (GUI-Bibliothek - normalerweise mit Python installiert)
-     - **Linux Mint/Ubuntu**: Falls fehlend: `sudo apt-get install python3-tk`
+**3. System-Abhängigkeiten:**
+   - **ffmpeg**: Download von https://ffmpeg.org/download.html und zu PATH hinzufügen
+   - **python3-tk** (Linux): `sudo apt-get install python3-tk`
 
-4. **Abhängigkeiten prüfen:**
+**4. Abhängigkeiten prüfen:**
 ```bash
 python3 check_dependencies.py
 ```
@@ -115,13 +107,32 @@ python3 check_dependencies.py
 
 ### Grafische Benutzeroberfläche (GUI)
 
+**Empfohlene Methode:**
 ```bash
 python3 start.py
 ```
 
-**Oder direkt:**
+Das `start.py` Skript:
+- Prüft automatisch alle Abhängigkeiten
+- Installiert fehlende Pakete bei Bedarf
+- Startet die GUI mit korrekter Konfiguration
+
+**Alternative (direkt):**
 ```bash
 python3 gui.py
+```
+
+**Linux/macOS (mit Shell-Skript):**
+```bash
+chmod +x start.sh
+./start.sh
+```
+
+**Windows (mit VBS-Launcher):**
+```bash
+# Doppelklick auf start_launcher.vbs
+# Oder:
+cscript start_launcher.vbs
 ```
 
 #### 🎵 Deezer-Tab
@@ -268,6 +279,12 @@ Wenn Sie ein Familien-Abo haben:
 - Die Deezer API könnte temporär nicht verfügbar sein
 - Versuchen Sie es später erneut
 
+## 📦 Ausführbare Dateien erstellen (optional)
+
+Falls Sie eine ausführbare Datei erstellen möchten, siehe [BUILD.md](BUILD.md) für detaillierte Anleitungen.
+
+**Hinweis:** Für normale Nutzung ist keine EXE-Erstellung erforderlich. Verwenden Sie einfach `python3 start.py`.
+
 ## 📜 Lizenz
 
 Dieses Projekt ist unter der **MIT License** lizenziert. Siehe [LICENSE](LICENSE) für Details.
@@ -279,7 +296,6 @@ Dieses Projekt ist unter der **MIT License** lizenziert. Siehe [LICENSE](LICENSE
 
 ## 🔗 GitHub Repository
 
-Falls Sie das Projekt auf GitHub hosten:
 - Repository-URL: Siehe `version.py` (GITHUB_REPO_URL)
 - Releases: Automatische Update-Prüfung über GitHub Releases
 - Setup-Anleitung: Siehe [GITHUB_SETUP.md](GITHUB_SETUP.md)
