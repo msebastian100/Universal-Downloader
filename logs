@@ -1,9 +1,9 @@
 Skript:
 D:\Users\basti\Downloads\Universal-Downloader start launc
 herbs
-Zeile: 919
+Zeile: 1413
 Zeichen: 9
-Fehler: Name erneut definiert
-‚Code: 80040411
+Fehler: ‘End’ erwartet
+‚Code: 800A03F6
 Quelle: Kompilierungsfehler in Microsoft VBScript
 ok
