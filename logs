@@ -8,19 +8,3 @@ Universal Downloader - Update-Check
 Update-Check beendet mit Fehler (Code: 1
 ==========================================
 Drücken Sie eine beliebige Taste . . .
-
-
-Fehler
-Download fehlgeschlagen:
-[download) 100960f 1.12GiB in at 19.97MiB/s
-(VideoConvertor) Not converting media file
-1: Skandal.mp4•; already is in
-target format mp4
-[Metadata) The info-json can only be attached to mkv/mka
-files
-[Metadata) Adding metadata to
-1: Skandal.mpv
-ERROR: Postprocessing: ffmpeg not found. Please install or
-provide the path using --ffmpeg-location
-OK
-x
