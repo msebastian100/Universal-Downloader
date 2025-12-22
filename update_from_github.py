@@ -349,6 +349,28 @@ def update_via_git(repo_path: Path, repo_url: str) -> Tuple[bool, str]:
                 else:
                     shutil.copy2(src, dst)
         
+        # Erstelle .git/info/exclude Einträge für wichtige Dateien (verhindert dass Git sie überschreibt)
+        git_info_dir = repo_path / '.git' / 'info'
+        git_info_dir.mkdir(parents=True, exist_ok=True)
+        git_exclude = git_info_dir / 'exclude'
+        
+        if git_exclude.exists():
+            with open(git_exclude, 'r', encoding='utf-8') as f:
+                exclude_content = f.read()
+        else:
+            exclude_content = ''
+        
+        # Füge wichtige Dateien/Verzeichnisse zu exclude hinzu (falls nicht schon vorhanden)
+        exclude_additions = []
+        for item in important_files:
+            if item not in exclude_content:
+                exclude_additions.append(item)
+        
+        if exclude_additions:
+            with open(git_exclude, 'a', encoding='utf-8') as f:
+                for item in exclude_additions:
+                    f.write(f'\n{item}\n')
+        
         # Führe Hard-Reset durch (überschreibt lokale Änderungen)
         # Ignoriere Fehler bei geöffneten Dateien (z.B. vbs.log.txt, venv-Dateien)
         reset_result = subprocess.run(['git', 'reset', '--hard', 'origin/main'], 
