@@ -199,6 +199,8 @@ Else
 End If
 
 ' Prüfe auf Updates (nur wenn nicht --no-update Parameter übergeben wurde)
+' HINWEIS: Update-Check wird NACH venv-Erstellung und requirements.txt Installation durchgeführt
+' damit das venv-Python mit allen Abhängigkeiten verwendet werden kann
 Dim checkUpdates
 checkUpdates = True
 If WScript.Arguments.Count > 0 Then
@@ -207,333 +209,7 @@ If WScript.Arguments.Count > 0 Then
     End If
 End If
 
-If checkUpdates Then
-    WriteLog "[INFO] Prüfe auf Updates..."
-    
-    ' Prüfe ob update_from_github.py existiert
-    If fso.FileExists(updateScript) Then
-        WriteLog "[INFO] Starte Update-Check..."
-        
-        ' Finde Python für Update-Check (verwende python.exe statt pythonw.exe für sichtbare Ausgabe)
-        Dim pythonExeUpdate, fullPythonPathUpdate
-        pythonExeUpdate = "python.exe"
-        fullPythonPathUpdate = ""
-        
-        ' Hilfsfunktion: Prüft ob ein Python-Pfad wirklich funktioniert (nicht nur Stub)
-        Function IsValidPython(pythonPath)
-            IsValidPython = False
-            On Error Resume Next
-            ' Prüfe ob Pfad WindowsApps enthält (Stub)
-            If InStr(LCase(pythonPath), "windowsapps") > 0 Then
-                Exit Function
-            End If
-            ' Prüfe ob Datei existiert
-            If Not fso.FileExists(pythonPath) Then
-                Exit Function
-            End If
-        ' Prüfe ob Python wirklich funktioniert (--version sollte Ausgabe geben)
-        Dim testResult
-        Set testResult = WshShell.Exec("""" & pythonPath & """ --version")
-        Dim testOutput
-        testOutput = testResult.StdOut.ReadAll
-        Dim testError
-        testError = testResult.StdErr.ReadAll
-        testResult.WaitOnReturn = True
-        ' Prüfe Exit-Code UND ob Ausgabe vorhanden ist
-        If testResult.ExitCode = 0 And Len(Trim(testOutput)) > 0 Then
-            ' Prüfe ob Ausgabe wie eine Version aussieht (enthält "Python" oder Zahlen)
-            If InStr(testOutput, "Python") > 0 Or InStr(testOutput, ".") > 0 Then
-                IsValidPython = True
-            End If
-        End If
-        ' Debug-Logging für Python-Validierung
-        If Not IsValidPython Then
-            WriteLog "[DEBUG] Python-Validierung fehlgeschlagen für: " & pythonPath
-            WriteLog "[DEBUG]   Exit-Code: " & testResult.ExitCode
-            WriteLog "[DEBUG]   StdOut: " & testOutput
-            WriteLog "[DEBUG]   StdErr: " & testError
-        End If
-            On Error Goto 0
-        End Function
-        
-        ' Methode 1: Prüfe python.exe im PATH
-        On Error Resume Next
-        Dim whereResultUpdate
-        Set whereResultUpdate = WshShell.Exec("where " & pythonExeUpdate)
-        Dim whereOutputUpdate
-        whereOutputUpdate = whereResultUpdate.StdOut.ReadAll
-        whereResultUpdate.WaitOnReturn = True
-        
-        If whereResultUpdate.ExitCode = 0 And Len(Trim(whereOutputUpdate)) > 0 Then
-            Dim whereLinesUpdate
-            whereLinesUpdate = Split(whereOutputUpdate, vbCrLf)
-            Dim lineUpdate
-            For Each lineUpdate In whereLinesUpdate
-                candidatePath = Trim(lineUpdate)
-                If Len(candidatePath) > 0 Then
-                    ' Prüfe ob es wirklich funktioniert (nicht WindowsApps-Stub)
-                    If IsValidPython(candidatePath) Then
-                        fullPythonPathUpdate = candidatePath
-                        Exit For
-                    End If
-                End If
-            Next
-        End If
-        On Error Goto 0
-        
-        ' Methode 2: Prüfe pythonw.exe als Fallback
-        If Len(fullPythonPathUpdate) = 0 Then
-            On Error Resume Next
-            Set whereResultUpdate = WshShell.Exec("where pythonw.exe")
-            whereOutputUpdate = whereResultUpdate.StdOut.ReadAll
-            whereResultUpdate.WaitOnReturn = True
-            If whereResultUpdate.ExitCode = 0 And Len(Trim(whereOutputUpdate)) > 0 Then
-                whereLinesUpdate = Split(whereOutputUpdate, vbCrLf)
-                Dim lineUpdate2
-                For Each lineUpdate2 In whereLinesUpdate
-                    candidatePath = Trim(lineUpdate2)
-                    If Len(candidatePath) > 0 Then
-                        ' Prüfe ob es wirklich funktioniert (nicht WindowsApps-Stub)
-                        If IsValidPython(candidatePath) Then
-                            fullPythonPathUpdate = candidatePath
-                            Exit For
-                        End If
-                    End If
-                Next
-            End If
-            On Error Goto 0
-        End If
-        
-        ' Methode 3: Prüfe typische Installationspfade
-        If Len(fullPythonPathUpdate) = 0 Then
-            Dim commonPathsUpdate
-            commonPathsUpdate = Array( _
-                WshShell.ExpandEnvironmentStrings("%LOCALAPPDATA%\Programs\Python"), _
-                WshShell.ExpandEnvironmentStrings("%PROGRAMFILES%\Python"), _
-                WshShell.ExpandEnvironmentStrings("%PROGRAMFILES(X86)%\Python") _
-            )
-            
-            Dim pathUpdate, foundUpdate, folderUpdateUpdate, subfolderUpdate
-            foundUpdate = False
-            For Each pathUpdate In commonPathsUpdate
-                If fso.FolderExists(pathUpdate) Then
-                    Set folderUpdateUpdate = fso.GetFolder(pathUpdate)
-                    For Each subfolderUpdate In folderUpdateUpdate.SubFolders
-                        Dim testPythonPathUpdate
-                        testPythonPathUpdate = subfolderUpdate.Path & "\python.exe"
-                        If fso.FileExists(testPythonPathUpdate) Then
-                            If IsValidPython(testPythonPathUpdate) Then
-                                fullPythonPathUpdate = testPythonPathUpdate
-                                foundUpdate = True
-                                Exit For
-                            End If
-                        End If
-                    Next
-                    If foundUpdate Then Exit For
-                End If
-            Next
-        End If
-        
-        ' Methode 4: Verwende das gleiche Python wie für die Hauptanwendung (falls bereits gefunden)
-        ' HINWEIS: pythonExe wird später gesetzt, daher prüfen wir hier nur, ob wir es später verwenden können
-        ' Für jetzt: Wenn kein Python gefunden wurde, verwende python.exe als letzten Fallback
-        ' (wird später durch die Haupt-Python-Suche überschrieben, wenn ein gültiges Python gefunden wird)
-        If Len(fullPythonPathUpdate) = 0 Then
-            ' Versuche python.exe, aber nur wenn es nicht WindowsApps ist
-            On Error Resume Next
-            Dim testPythonExe
-            Set whereResultUpdate = WshShell.Exec("where python.exe")
-            whereOutputUpdate = whereResultUpdate.StdOut.ReadAll
-            whereResultUpdate.WaitOnReturn = True
-            If whereResultUpdate.ExitCode = 0 And Len(Trim(whereOutputUpdate)) > 0 Then
-                whereLinesUpdate = Split(whereOutputUpdate, vbCrLf)
-                For Each lineUpdate In whereLinesUpdate
-                    candidatePath = Trim(lineUpdate)
-                    If Len(candidatePath) > 0 And IsValidPython(candidatePath) Then
-                        fullPythonPathUpdate = candidatePath
-                        Exit For
-                    End If
-                Next
-            End If
-            On Error Goto 0
-            ' Letzter Fallback: python.exe (wird später durch Haupt-Python-Suche überschrieben)
-            If Len(fullPythonPathUpdate) = 0 Then
-                fullPythonPathUpdate = pythonExeUpdate
-            End If
-        End If
-        
-        WriteLog "[INFO] Python für Update-Check: " & fullPythonPathUpdate
-        WriteLog "[DEBUG] Update-Check Python-Validierung:"
-        If Len(fullPythonPathUpdate) > 0 Then
-            If IsValidPython(fullPythonPathUpdate) Then
-                WriteLog "[DEBUG]   ✓ Python ist gültig und funktioniert"
-            Else
-                WriteLog "[DEBUG]   ✗ Python ist ungültig oder funktioniert nicht"
-            End If
-        Else
-            WriteLog "[DEBUG]   ✗ Kein Python-Pfad gefunden"
-        End If
-        
-        ' Führe Update-Check aus (sichtbar, damit Benutzer den Fortschritt sieht)
-        Dim updateResult, updateOutput, updateDetected, updateInstalled
-        updateDetected = False
-        updateInstalled = False
-        
-        ' Erstelle temporäre Batch-Datei für sichtbare Ausgabe mit Logging
-        Dim tempBatFile, tempLogFile, tempResultFile
-        tempBatFile = scriptPath & "\update_temp.bat"
-        tempLogFile = scriptPath & "\update_output.txt"
-        tempResultFile = scriptPath & "\update_result.txt"
-        Dim tempBatStream
-        Set tempBatStream = fso.CreateTextFile(tempBatFile, True)
-        tempBatStream.WriteLine "@echo off"
-        tempBatStream.WriteLine "setlocal enabledelayedexpansion"
-        tempBatStream.WriteLine "cd /d """ & scriptPath & """"
-        tempBatStream.WriteLine "echo =========================================="
-        tempBatStream.WriteLine "echo Universal Downloader - Update-Check"
-        tempBatStream.WriteLine "echo =========================================="
-        tempBatStream.WriteLine "echo."
-        tempBatStream.WriteLine "echo [DEBUG] Arbeitsverzeichnis: %CD%"
-        tempBatStream.WriteLine "echo [DEBUG] Python: """ & fullPythonPathUpdate & """"
-        tempBatStream.WriteLine "echo [DEBUG] Skript: """ & updateScript & """"
-        tempBatStream.WriteLine "echo [DEBUG] =========================================="
-        tempBatStream.WriteLine "cd /d """ & scriptPath & """"
-        tempBatStream.WriteLine "echo [DEBUG] Nach cd: %CD%"
-        tempBatStream.WriteLine "if exist version.py (echo [DEBUG] ✓ version.py gefunden) else (echo [DEBUG] ✗ version.py nicht gefunden)"
-        tempBatStream.WriteLine "if exist updater.py (echo [DEBUG] ✓ updater.py gefunden) else (echo [DEBUG] ✗ updater.py nicht gefunden)"
-        tempBatStream.WriteLine "echo [DEBUG] Python: """ & fullPythonPathUpdate & """"
-        tempBatStream.WriteLine "echo [DEBUG] Skript: """ & updateScript & """"
-        tempBatStream.WriteLine "echo [DEBUG] =========================================="
-        tempBatStream.WriteLine "echo."
-        tempBatStream.WriteLine "echo Fuehre Update-Check aus..."
-        tempBatStream.WriteLine "echo."
-        ' Führe Python-Skript aus - zeige direkt an UND logge in Datei
-        ' Methode: Führe aus, zeige an, dann logge auch
-        tempBatStream.WriteLine """" & fullPythonPathUpdate & """ """ & updateScript & """"
-        tempBatStream.WriteLine "set UPDATE_RESULT=!errorlevel!"
-        tempBatStream.WriteLine "echo !UPDATE_RESULT! > """ & tempResultFile & """"
-        ' Führe nochmal aus für Log-Datei (mit vollständiger Ausgabe)
-        tempBatStream.WriteLine """" & fullPythonPathUpdate & """ """ & updateScript & """ > """ & tempLogFile & """ 2>&1"
-        tempBatStream.WriteLine "echo."
-        tempBatStream.WriteLine "echo =========================================="
-        tempBatStream.WriteLine "echo."
-        tempBatStream.WriteLine "echo =========================================="
-        tempBatStream.WriteLine "findstr /i /c:""keine updates"" /c:""bereits auf dem neuesten stand"" /c:""no updates available"" /c:""already up to date"" """ & tempLogFile & """ >nul 2>&1"
-        tempBatStream.WriteLine "if !errorlevel!==0 ("
-        tempBatStream.WriteLine "    echo Update-Check abgeschlossen - Bereits auf dem neuesten Stand"
-        tempBatStream.WriteLine ") else ("
-        tempBatStream.WriteLine "    if !UPDATE_RESULT!==0 ("
-        tempBatStream.WriteLine "        echo Update-Check abgeschlossen"
-        tempBatStream.WriteLine "    ) else ("
-        tempBatStream.WriteLine "        echo Update-Check beendet mit Fehler (Code: !UPDATE_RESULT!)"
-        tempBatStream.WriteLine "    )"
-        tempBatStream.WriteLine ")"
-        tempBatStream.WriteLine "echo =========================================="
-        tempBatStream.WriteLine "pause"
-        tempBatStream.Close
-        
-        On Error Resume Next
-        ' Führe Update-Check in sichtbarem Fenster aus
-        updateResult = WshShell.Run("""" & tempBatFile & """", 1, True) ' 1 = sichtbar
-        On Error Goto 0
-        
-        ' Lese Exit-Code aus Result-Datei
-        If fso.FileExists(tempResultFile) Then
-            Dim resultStream
-            Set resultStream = fso.OpenTextFile(tempResultFile, 1, False)
-            Dim resultCode
-            resultCode = Trim(resultStream.ReadAll)
-            resultStream.Close
-            If IsNumeric(resultCode) Then
-                updateResult = CInt(resultCode)
-            End If
-            fso.DeleteFile tempResultFile
-        End If
-        
-        ' Lese Ausgabe aus Log-Datei
-        Dim updateStdOut, updateStdErr
-        updateStdOut = ""
-        updateStdErr = ""
-        If fso.FileExists(tempLogFile) Then
-            Dim logStreamUpdate
-            Set logStreamUpdate = fso.OpenTextFile(tempLogFile, 1, False)
-            updateStdOut = logStreamUpdate.ReadAll
-            logStreamUpdate.Close
-            fso.DeleteFile tempLogFile
-        End If
-        
-        ' Lösche temporäre Batch-Datei
-        If fso.FileExists(tempBatFile) Then
-            fso.DeleteFile tempBatFile
-        End If
-        
-        ' Schreibe Ausgabe ins Log
-        If Len(updateStdOut) > 0 Then
-            WriteLog "[INFO] Update-Skript Ausgabe: " & updateStdOut
-        End If
-        If Len(updateStdErr) > 0 Then
-            WriteLog "[WARNING] Update-Skript Fehler: " & updateStdErr
-        End If
-        
-        ' Prüfe ob Update erkannt oder installiert wurde
-        Dim updateOutputLower
-        updateOutputLower = LCase(updateStdOut & " " & updateStdErr)
-        
-        ' Prüfe ob "keine Updates verfügbar" oder "bereits auf dem neuesten Stand" in der Ausgabe steht
-        Dim noUpdateAvailable
-        noUpdateAvailable = (InStr(updateOutputLower, "keine updates") > 0 Or _
-                           InStr(updateOutputLower, "bereits auf dem neuesten stand") > 0 Or _
-                           InStr(updateOutputLower, "no updates available") > 0 Or _
-                           InStr(updateOutputLower, "already up to date") > 0)
-        
-        ' Prüfe ob Update installiert wurde (Exit-Code 0 + entsprechende Meldung)
-        If updateResult = 0 Then
-            If InStr(updateOutputLower, "update erfolgreich abgeschlossen") > 0 Or _
-               InStr(updateOutputLower, "update erfolgreich") > 0 Or _
-               InStr(updateOutputLower, "erfolgreich aktualisiert") > 0 Or _
-               InStr(updateOutputLower, "successfully updated") > 0 Or _
-               InStr(updateOutputLower, "update completed") > 0 Then
-                updateInstalled = True
-                updateDetected = True
-                WriteLog "[OK] Update wurde erfolgreich installiert!"
-            ElseIf InStr(updateOutputLower, "update verfügbar") > 0 Or _
-                   InStr(updateOutputLower, "update available") > 0 Or _
-                   (InStr(updateOutputLower, "version") > 0 And (InStr(updateOutputLower, "→") > 0 Or InStr(updateOutputLower, "->") > 0)) Then
-                updateDetected = True
-                WriteLog "[INFO] Update wurde erkannt!"
-            End If
-        End If
-        
-        ' Behandle verschiedene Exit-Codes
-        If updateResult = 0 Then
-            ' Exit-Code 0: Erfolg
-            If updateInstalled Then
-                WriteLog "[OK] Update-Check abgeschlossen - Update wurde installiert"
-                ' Zeige Meldung an Benutzer
-                Dim updateMsg
-                updateMsg = "Update wurde erkannt und erfolgreich installiert!" & vbCrLf & vbCrLf & _
-                           "Die Anwendung wird jetzt neu gestartet, um die Änderungen zu übernehmen." & vbCrLf & vbCrLf & _
-                           "Bitte warten Sie einen Moment..."
-                MsgBox updateMsg, vbInformation, "Update installiert"
-            ElseIf updateDetected Then
-                WriteLog "[INFO] Update wurde erkannt, aber nicht installiert"
-                MsgBox "Ein Update wurde erkannt, konnte aber nicht automatisch installiert werden." & vbCrLf & vbCrLf & _
-                       "Bitte aktualisieren Sie manuell über Git oder laden Sie die neueste Version herunter.", vbInformation, "Update erkannt"
-            Else
-                WriteLog "[OK] Update-Check abgeschlossen - Bereits auf dem neuesten Stand"
-            End If
-        ElseIf updateResult = 1 And noUpdateAvailable Then
-            ' Exit-Code 1 mit "keine Updates verfügbar" ist normal, kein Fehler
-            WriteLog "[OK] Update-Check abgeschlossen - Bereits auf dem neuesten Stand"
-        Else
-            ' Andere Exit-Codes sind Fehler
-            WriteLog "[WARNING] Update-Check fehlgeschlagen (Exit-Code: " & updateResult & ")"
-        End If
-    Else
-        WriteLog "[WARNING] update_from_github.py nicht gefunden - überspringe Update-Check"
-    End If
-    WriteLog ""
-End If
+' Update-Check wird später durchgeführt (nach venv-Erstellung und requirements.txt Installation)
 
 ' Versuche Python zu finden (auf allen Laufwerken)
 pythonExe = ""
@@ -1438,6 +1114,203 @@ If fso.FileExists(requirementsFile) Then
     On Error Goto 0
 Else
     WriteLog "[WARNING] requirements.txt nicht gefunden: " & requirementsFile
+End If
+
+' ==========================================
+' Update-Check (NACH venv-Erstellung und requirements.txt Installation)
+' ==========================================
+If checkUpdates Then
+    WriteLog "[INFO] Prüfe auf Updates..."
+    
+    ' Prüfe ob update_from_github.py existiert
+    If fso.FileExists(updateScript) Then
+        WriteLog "[INFO] Starte Update-Check..."
+        
+        ' Verwende venv-Python für Update-Check (hat alle Abhängigkeiten installiert)
+        Dim fullPythonPathUpdate
+        fullPythonPathUpdate = ""
+        
+        ' Prüfe zuerst, ob venv existiert und verwende es für Update-Check
+        Dim venvPythonPathUpdate
+        venvPythonPathUpdate = scriptPath & "\venv\Scripts\python.exe"
+        If fso.FileExists(venvPythonPathUpdate) Then
+            WriteLog "[DEBUG] venv-Python gefunden: " & venvPythonPathUpdate
+            If IsValidPythonMain(venvPythonPathUpdate) Then
+                fullPythonPathUpdate = venvPythonPathUpdate
+                WriteLog "[INFO] Update-Check verwendet venv-Python (hat alle Abhängigkeiten): " & fullPythonPathUpdate
+            Else
+                WriteLog "[WARNING] venv-Python gefunden, aber Validierung fehlgeschlagen"
+            End If
+        End If
+        
+        ' Fallback: Verwende das gefundene System-Python
+        If Len(fullPythonPathUpdate) = 0 Then
+            ' Konvertiere pythonw.exe zu python.exe für Update-Check (sichtbare Ausgabe)
+            Dim updatePythonPath
+            updatePythonPath = fullPythonPath
+            If InStr(LCase(updatePythonPath), "pythonw.exe") > 0 Then
+                updatePythonPath = Replace(LCase(updatePythonPath), "pythonw.exe", "python.exe")
+                If Not fso.FileExists(updatePythonPath) Then
+                    updatePythonPath = fullPythonPath
+                End If
+            End If
+            If IsValidPythonMain(updatePythonPath) Then
+                fullPythonPathUpdate = updatePythonPath
+                WriteLog "[INFO] Update-Check verwendet System-Python: " & fullPythonPathUpdate
+            End If
+        End If
+        
+        If Len(fullPythonPathUpdate) > 0 Then
+            ' Führe Update-Check aus (sichtbar, damit Benutzer den Fortschritt sieht)
+            Dim updateResult, updateDetected, updateInstalled
+            updateDetected = False
+            updateInstalled = False
+            
+            ' Erstelle temporäre Batch-Datei für sichtbare Ausgabe mit Logging
+            Dim tempBatFile, tempLogFile, tempResultFile
+            tempBatFile = scriptPath & "\update_temp.bat"
+            tempLogFile = scriptPath & "\update_output.txt"
+            tempResultFile = scriptPath & "\update_result.txt"
+            Dim tempBatStream
+            Set tempBatStream = fso.CreateTextFile(tempBatFile, True)
+            tempBatStream.WriteLine "@echo off"
+            tempBatStream.WriteLine "setlocal enabledelayedexpansion"
+            tempBatStream.WriteLine "cd /d """ & scriptPath & """"
+            tempBatStream.WriteLine "echo =========================================="
+            tempBatStream.WriteLine "echo Universal Downloader - Update-Check"
+            tempBatStream.WriteLine "echo =========================================="
+            tempBatStream.WriteLine "echo."
+            tempBatStream.WriteLine "echo [DEBUG] Python: """ & fullPythonPathUpdate & """"
+            tempBatStream.WriteLine "echo [DEBUG] Skript: """ & updateScript & """"
+            tempBatStream.WriteLine "echo."
+            tempBatStream.WriteLine "echo Fuehre Update-Check aus..."
+            tempBatStream.WriteLine "echo."
+            ' Führe Python-Skript aus - zeige direkt an UND logge in Datei
+            tempBatStream.WriteLine """" & fullPythonPathUpdate & """ """ & updateScript & """"
+            tempBatStream.WriteLine "set UPDATE_RESULT=!errorlevel!"
+            tempBatStream.WriteLine "echo !UPDATE_RESULT! > """ & tempResultFile & """"
+            ' Führe nochmal aus für Log-Datei (mit vollständiger Ausgabe)
+            tempBatStream.WriteLine """" & fullPythonPathUpdate & """ """ & updateScript & """ > """ & tempLogFile & """ 2>&1"
+            tempBatStream.WriteLine "echo."
+            tempBatStream.WriteLine "echo =========================================="
+            tempBatStream.WriteLine "findstr /i /c:""keine updates"" /c:""bereits auf dem neuesten stand"" /c:""no updates available"" /c:""already up to date"" """ & tempLogFile & """ >nul 2>&1"
+            tempBatStream.WriteLine "if !errorlevel!==0 ("
+            tempBatStream.WriteLine "    echo Update-Check abgeschlossen - Bereits auf dem neuesten Stand"
+            tempBatStream.WriteLine ") else ("
+            tempBatStream.WriteLine "    if !UPDATE_RESULT!==0 ("
+            tempBatStream.WriteLine "        echo Update-Check abgeschlossen"
+            tempBatStream.WriteLine "    ) else ("
+            tempBatStream.WriteLine "        echo Update-Check beendet mit Fehler (Code: !UPDATE_RESULT!)"
+            tempBatStream.WriteLine "    )"
+            tempBatStream.WriteLine ")"
+            tempBatStream.WriteLine "echo =========================================="
+            tempBatStream.WriteLine "pause"
+            tempBatStream.Close
+            
+            On Error Resume Next
+            ' Führe Update-Check in sichtbarem Fenster aus
+            updateResult = WshShell.Run("""" & tempBatFile & """", 1, True) ' 1 = sichtbar
+            On Error Goto 0
+            
+            ' Lese Exit-Code aus Result-Datei
+            If fso.FileExists(tempResultFile) Then
+                Dim resultStream
+                Set resultStream = fso.OpenTextFile(tempResultFile, 1, False)
+                Dim resultCode
+                resultCode = Trim(resultStream.ReadAll)
+                resultStream.Close
+                If IsNumeric(resultCode) Then
+                    updateResult = CInt(resultCode)
+                End If
+                fso.DeleteFile tempResultFile
+            End If
+            
+            ' Lese Ausgabe aus Log-Datei
+            Dim updateStdOut, updateStdErr
+            updateStdOut = ""
+            updateStdErr = ""
+            If fso.FileExists(tempLogFile) Then
+                Dim logStreamUpdate
+                Set logStreamUpdate = fso.OpenTextFile(tempLogFile, 1, False)
+                updateStdOut = logStreamUpdate.ReadAll
+                logStreamUpdate.Close
+                fso.DeleteFile tempLogFile
+            End If
+            
+            ' Lösche temporäre Batch-Datei
+            If fso.FileExists(tempBatFile) Then
+                fso.DeleteFile tempBatFile
+            End If
+            
+            ' Schreibe Ausgabe ins Log
+            If Len(updateStdOut) > 0 Then
+                WriteLog "[INFO] Update-Skript Ausgabe: " & updateStdOut
+            End If
+            If Len(updateStdErr) > 0 Then
+                WriteLog "[WARNING] Update-Skript Fehler: " & updateStdErr
+            End If
+            
+            ' Prüfe ob Update erkannt oder installiert wurde
+            Dim updateOutputLower
+            updateOutputLower = LCase(updateStdOut & " " & updateStdErr)
+            
+            ' Prüfe ob "keine Updates verfügbar" oder "bereits auf dem neuesten Stand" in der Ausgabe steht
+            Dim noUpdateAvailable
+            noUpdateAvailable = (InStr(updateOutputLower, "keine updates") > 0 Or _
+                               InStr(updateOutputLower, "bereits auf dem neuesten stand") > 0 Or _
+                               InStr(updateOutputLower, "no updates available") > 0 Or _
+                               InStr(updateOutputLower, "already up to date") > 0)
+            
+            ' Prüfe ob Update installiert wurde (Exit-Code 0 + entsprechende Meldung)
+            If updateResult = 0 Then
+                If InStr(updateOutputLower, "update erfolgreich abgeschlossen") > 0 Or _
+                   InStr(updateOutputLower, "update erfolgreich") > 0 Or _
+                   InStr(updateOutputLower, "erfolgreich aktualisiert") > 0 Or _
+                   InStr(updateOutputLower, "successfully updated") > 0 Or _
+                   InStr(updateOutputLower, "update completed") > 0 Then
+                    updateInstalled = True
+                    updateDetected = True
+                    WriteLog "[OK] Update wurde erfolgreich installiert!"
+                ElseIf InStr(updateOutputLower, "update verfügbar") > 0 Or _
+                       InStr(updateOutputLower, "update available") > 0 Or _
+                       (InStr(updateOutputLower, "version") > 0 And (InStr(updateOutputLower, "→") > 0 Or InStr(updateOutputLower, "->") > 0)) Then
+                    updateDetected = True
+                    WriteLog "[INFO] Update wurde erkannt!"
+                End If
+            End If
+            
+            ' Behandle verschiedene Exit-Codes
+            If updateResult = 0 Then
+                ' Exit-Code 0: Erfolg
+                If updateInstalled Then
+                    WriteLog "[OK] Update-Check abgeschlossen - Update wurde installiert"
+                    ' Zeige Meldung an Benutzer
+                    Dim updateMsg
+                    updateMsg = "Update wurde erkannt und erfolgreich installiert!" & vbCrLf & vbCrLf & _
+                               "Die Anwendung wird jetzt neu gestartet, um die Änderungen zu übernehmen." & vbCrLf & vbCrLf & _
+                               "Bitte warten Sie einen Moment..."
+                    MsgBox updateMsg, vbInformation, "Update installiert"
+                ElseIf updateDetected Then
+                    WriteLog "[INFO] Update wurde erkannt, aber nicht installiert"
+                    MsgBox "Ein Update wurde erkannt, konnte aber nicht automatisch installiert werden." & vbCrLf & vbCrLf & _
+                           "Bitte aktualisieren Sie manuell über Git oder laden Sie die neueste Version herunter.", vbInformation, "Update erkannt"
+                Else
+                    WriteLog "[OK] Update-Check abgeschlossen - Bereits auf dem neuesten Stand"
+                End If
+            ElseIf updateResult = 1 And noUpdateAvailable Then
+                ' Exit-Code 1 mit "keine Updates verfügbar" ist normal, kein Fehler
+                WriteLog "[OK] Update-Check abgeschlossen - Bereits auf dem neuesten Stand"
+            Else
+                ' Andere Exit-Codes sind Fehler
+                WriteLog "[WARNING] Update-Check fehlgeschlagen (Exit-Code: " & updateResult & ")"
+            End If
+        Else
+            WriteLog "[WARNING] Kein gültiges Python für Update-Check gefunden - überspringe"
+        End If
+    Else
+        WriteLog "[WARNING] update_from_github.py nicht gefunden - überspringe Update-Check"
+    End If
+    WriteLog ""
 End If
 
 ' Prüfe tkinter (GUI-Bibliothek)
