@@ -668,20 +668,109 @@ If startMenuShortcutNeedsUpdate Then
 End If
 On Error Goto 0
 
+' Prüfe und installiere venv (virtuelle Umgebung)
+Dim venvPath
+venvPath = scriptPath & "\venv"
+Dim venvNeedsCreation
+venvNeedsCreation = False
+
+If Not fso.FolderExists(venvPath) Then
+    WriteLog "[INFO] venv nicht gefunden - wird erstellt..."
+    venvNeedsCreation = True
+Else
+    ' Prüfe ob venv gültig ist (enthält Scripts/python.exe oder bin/python)
+    Dim venvPythonPath
+    venvPythonPath = venvPath & "\Scripts\python.exe"
+    If Not fso.FileExists(venvPythonPath) Then
+        venvPythonPath = venvPath & "\bin\python"
+        If Not fso.FileExists(venvPythonPath) Then
+            WriteLog "[WARNING] venv existiert, aber ist ungültig - wird neu erstellt..."
+            venvNeedsCreation = True
+        End If
+    End If
+End If
+
+If venvNeedsCreation Then
+    WriteLog "[INFO] =========================================="
+    WriteLog "[INFO] Erstelle virtuelle Umgebung (venv)..."
+    WriteLog "[INFO] =========================================="
+    On Error Resume Next
+    Dim venvCmd
+    venvCmd = fullPythonPath & " -m venv """ & venvPath & """"
+    WriteLog "[INFO] venv-Befehl: " & venvCmd
+    Dim venvResult
+    venvResult = WshShell.Run(venvCmd, 1, True) ' 1 = sichtbar
+    WriteLog "[INFO] venv Exit-Code: " & venvResult
+    If venvResult = 0 Then
+        WriteLog "[OK] venv erfolgreich erstellt"
+        ' Prüfe ob venv jetzt verfügbar ist
+        venvPythonPath = venvPath & "\Scripts\python.exe"
+        If Not fso.FileExists(venvPythonPath) Then
+            venvPythonPath = venvPath & "\bin\python"
+        End If
+        If fso.FileExists(venvPythonPath) Then
+            ' Verwende venv Python für weitere Installationen
+            fullPythonPath = venvPythonPath
+            WriteLog "[INFO] Verwende venv Python: " & fullPythonPath
+        End If
+    Else
+        WriteLog "[WARNING] venv-Erstellung fehlgeschlagen (Exit-Code: " & venvResult & ")"
+        WriteLog "[INFO] Verwende System-Python weiterhin"
+    End If
+    On Error Goto 0
+Else
+    WriteLog "[OK] venv existiert bereits"
+    ' Verwende venv Python falls verfügbar
+    venvPythonPath = venvPath & "\Scripts\python.exe"
+    If Not fso.FileExists(venvPythonPath) Then
+        venvPythonPath = venvPath & "\bin\python"
+    End If
+    If fso.FileExists(venvPythonPath) Then
+        fullPythonPath = venvPythonPath
+        WriteLog "[INFO] Verwende venv Python: " & fullPythonPath
+    End If
+End If
+
+' Prüfe ob pip verfügbar ist und installiere es falls nötig
+WriteLog "[INFO] =========================================="
+WriteLog "[INFO] Prüfe pip..."
+WriteLog "[INFO] =========================================="
+On Error Resume Next
+Dim pipCheck
+Set pipCheck = WshShell.Exec(fullPythonPath & " -m pip --version")
+Dim pipOutput
+pipOutput = pipCheck.StdOut.ReadAll
+pipCheck.WaitOnReturn = True
+WriteLog "[INFO] pip --version Ausgabe: " & pipOutput
+WriteLog "[INFO] pip --version Exit-Code: " & pipCheck.ExitCode
+If pipCheck.ExitCode <> 0 Then
+    WriteLog "[WARNING] pip nicht verfügbar - versuche Installation..."
+    Dim ensurepipCmd
+    ensurepipCmd = fullPythonPath & " -m ensurepip --upgrade"
+    WriteLog "[INFO] ensurepip-Befehl: " & ensurepipCmd
+    Dim ensurepipResult
+    ensurepipResult = WshShell.Run(ensurepipCmd, 1, True) ' 1 = sichtbar
+    WriteLog "[INFO] ensurepip Exit-Code: " & ensurepipResult
+    If ensurepipResult = 0 Then
+        WriteLog "[OK] pip erfolgreich installiert"
+    Else
+        WriteLog "[WARNING] pip-Installation fehlgeschlagen (Exit-Code: " & ensurepipResult & ")"
+    End If
+Else
+    WriteLog "[OK] pip verfügbar"
+End If
+On Error Goto 0
+
 ' Prüfe und installiere requirements.txt
 If fso.FileExists(requirementsFile) Then
     WriteLog "[INFO] =========================================="
     WriteLog "[INFO] Prüfe requirements.txt..."
     WriteLog "[INFO] =========================================="
-    ' Prüfe ob pip verfügbar ist
+    ' Prüfe ob pip jetzt verfügbar ist
     On Error Resume Next
-    Dim pipCheck
     Set pipCheck = WshShell.Exec(fullPythonPath & " -m pip --version")
-    Dim pipOutput
     pipOutput = pipCheck.StdOut.ReadAll
     pipCheck.WaitOnReturn = True
-    WriteLog "[INFO] pip --version Ausgabe: " & pipOutput
-    WriteLog "[INFO] pip --version Exit-Code: " & pipCheck.ExitCode
     If pipCheck.ExitCode = 0 Then
         WriteLog "[OK] pip verfügbar"
         ' Installiere/aktualisiere requirements.txt
@@ -706,6 +795,70 @@ If fso.FileExists(requirementsFile) Then
 Else
     WriteLog "[WARNING] requirements.txt nicht gefunden: " & requirementsFile
 End If
+
+' Prüfe tkinter (GUI-Bibliothek)
+WriteLog "[INFO] =========================================="
+WriteLog "[INFO] Prüfe tkinter..."
+WriteLog "[INFO] =========================================="
+On Error Resume Next
+Dim tkinterCheck
+Set tkinterCheck = WshShell.Exec(fullPythonPath & " -c ""import tkinter""")
+Dim tkinterOutput
+tkinterOutput = tkinterCheck.StdOut.ReadAll
+tkinterCheck.WaitOnReturn = True
+WriteLog "[INFO] tkinter-Check Exit-Code: " & tkinterCheck.ExitCode
+If tkinterCheck.ExitCode <> 0 Then
+    WriteLog "[WARNING] tkinter nicht verfügbar"
+    WriteLog "[INFO] tkinter sollte normalerweise mit Python installiert sein"
+    WriteLog "[INFO] Falls die GUI nicht startet, installieren Sie tkinter manuell"
+Else
+    WriteLog "[OK] tkinter verfügbar"
+End If
+On Error Goto 0
+
+' Prüfe ffmpeg (für Video/Audio-Verarbeitung)
+WriteLog "[INFO] =========================================="
+WriteLog "[INFO] Prüfe ffmpeg..."
+WriteLog "[INFO] =========================================="
+On Error Resume Next
+Dim ffmpegCheck
+Set ffmpegCheck = WshShell.Exec("ffmpeg -version")
+Dim ffmpegOutput
+ffmpegOutput = ffmpegCheck.StdOut.ReadAll
+ffmpegCheck.WaitOnReturn = True
+WriteLog "[INFO] ffmpeg-Check Exit-Code: " & ffmpegCheck.ExitCode
+If ffmpegCheck.ExitCode <> 0 Then
+    WriteLog "[WARNING] ffmpeg nicht im PATH gefunden"
+    WriteLog "[INFO] ffmpeg wird für Video/Audio-Verarbeitung benötigt"
+    WriteLog "[INFO] Download von: https://ffmpeg.org/download.html"
+    WriteLog "[INFO] Oder installieren Sie über: winget install ffmpeg (falls winget verfügbar)"
+    
+    ' Versuche winget Installation
+    On Error Resume Next
+    Dim wingetCheck
+    Set wingetCheck = WshShell.Exec("winget --version")
+    wingetCheck.WaitOnReturn = True
+    If wingetCheck.ExitCode = 0 Then
+        WriteLog "[INFO] winget verfügbar - versuche ffmpeg Installation..."
+        Dim wingetCmd
+        wingetCmd = "winget install -e --id Gyan.FFmpeg --silent --accept-package-agreements --accept-source-agreements"
+        WriteLog "[INFO] winget-Befehl: " & wingetCmd
+        Dim wingetResult
+        wingetResult = WshShell.Run(wingetCmd, 0, True) ' 0 = versteckt
+        WriteLog "[INFO] winget Exit-Code: " & wingetResult
+        If wingetResult = 0 Then
+            WriteLog "[OK] ffmpeg erfolgreich über winget installiert"
+        Else
+            WriteLog "[WARNING] ffmpeg-Installation über winget fehlgeschlagen"
+        End If
+    Else
+        WriteLog "[INFO] winget nicht verfügbar - überspringe automatische ffmpeg-Installation"
+    End If
+    On Error Goto 0
+Else
+    WriteLog "[OK] ffmpeg verfügbar"
+End If
+On Error Goto 0
 
 ' Starte start.py mit ShellExecute
 WshShell.CurrentDirectory = scriptPath
