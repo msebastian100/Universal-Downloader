@@ -1039,6 +1039,11 @@ WriteLog "[INFO] Start-Befehl: " & startCmd
 WriteLog "[INFO] Arbeitsverzeichnis: " & scriptPath
 WriteLog "[INFO] =========================================="
 
+' Setze Umgebungsvariable, um zu signalisieren, dass wir über den Launcher gestartet wurden
+' Dies verhindert, dass das Abhängigkeits-Popup in der GUI erscheint
+WshShell.Environment("Process")("UNIVERSAL_DOWNLOADER_STARTED_BY_LAUNCHER") = "1"
+WriteLog "[INFO] Setze Umgebungsvariable: UNIVERSAL_DOWNLOADER_STARTED_BY_LAUNCHER=1"
+
 On Error Resume Next
 objShell.ShellExecute fullPythonPath, pythonScript, scriptPath, "open", 0
 Dim startResult

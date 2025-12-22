@@ -4793,6 +4793,12 @@ Historie-Einträge: {len(self.video_download_history)}
                     self._write_to_log_file("[DEBUG] Restart-Flag gefunden - überspringe Abhängigkeits-Installation", "DEBUG")
                     return
                 
+                # Prüfe ob wir über den Launcher gestartet wurden
+                # Wenn ja, wurden Abhängigkeiten bereits installiert - überspringe Popup
+                started_by_launcher = os.environ.get('UNIVERSAL_DOWNLOADER_STARTED_BY_LAUNCHER', '0') == '1'
+                if started_by_launcher:
+                    self._write_to_log_file("[DEBUG] Gestartet über Launcher - Abhängigkeiten sollten bereits installiert sein", "DEBUG")
+                
                 from auto_install_dependencies import check_ffmpeg
                 
                 # Schnelle Prüfung ob Installation nötig ist (nur ffmpeg, yt-dlp wird automatisch installiert)
@@ -4815,9 +4821,25 @@ Historie-Einträge: {len(self.video_download_history)}
                 from auto_install_dependencies import check_requirements_txt
                 requirements_ok, missing_packages = check_requirements_txt()
                 
-                # Zeige Installations-Dialog wenn ffmpeg fehlt ODER requirements.txt nicht vollständig installiert ist
-                if not ffmpeg_ok or not requirements_ok:
+                # Zeige Installations-Dialog nur wenn:
+                # 1. NICHT über Launcher gestartet wurde UND (ffmpeg fehlt ODER requirements.txt nicht vollständig installiert ist)
+                # 2. ODER wenn über Launcher gestartet, aber trotzdem etwas fehlt (z.B. ffmpeg wenn winget nicht verfügbar war)
+                if not started_by_launcher and (not ffmpeg_ok or not requirements_ok):
+                    # Normale Installation - zeige Dialog
                     self.root.after(0, self._show_dependency_installation_dialog)
+                elif started_by_launcher and not ffmpeg_ok:
+                    # Über Launcher gestartet, aber ffmpeg fehlt (z.B. winget nicht verfügbar)
+                    # Zeige Dialog nur für ffmpeg, nicht für requirements.txt (die sollten bereits installiert sein)
+                    self._write_to_log_file("[DEBUG] Launcher-Start erkannt, aber ffmpeg fehlt - zeige Dialog nur für ffmpeg", "DEBUG")
+                    self.root.after(0, self._show_dependency_installation_dialog)
+                elif started_by_launcher and not requirements_ok:
+                    # Über Launcher gestartet, aber requirements.txt fehlt trotzdem (unwahrscheinlich, aber möglich)
+                    # Zeige Dialog nur für requirements.txt
+                    self._write_to_log_file("[WARNING] Launcher-Start erkannt, aber requirements.txt fehlt trotzdem", "WARNING")
+                    self.root.after(0, self._show_dependency_installation_dialog)
+                elif started_by_launcher:
+                    # Alles OK - keine Installation nötig
+                    self._write_to_log_file("[DEBUG] Launcher-Start erkannt - überspringe Abhängigkeits-Dialog (alles sollte bereits installiert sein)", "DEBUG")
                 
                 try:
                     # ensure_dependencies installiert requirements.txt und ffmpeg automatisch

@@ -575,6 +575,12 @@ echo [!datetime!] [INFO] Starte Anwendung... >> "%LOG_FILE%"
 echo [!datetime!] [INFO] Start-Befehl: "!FULL_PYTHON_PATH!" "start.py" >> "%LOG_FILE%"
 echo [!datetime!] [INFO] Arbeitsverzeichnis: %~dp0 >> "%LOG_FILE%"
 echo [!datetime!] [INFO] ========================================== >> "%LOG_FILE%"
+
+REM Setze Umgebungsvariable, um zu signalisieren, dass wir über den Launcher gestartet wurden
+REM Dies verhindert, dass das Abhängigkeits-Popup in der GUI erscheint
+set "UNIVERSAL_DOWNLOADER_STARTED_BY_LAUNCHER=1"
+echo [!datetime!] [INFO] Setze Umgebungsvariable: UNIVERSAL_DOWNLOADER_STARTED_BY_LAUNCHER=1 >> "%LOG_FILE%"
+
 start "" /B /MIN "!FULL_PYTHON_PATH!" "start.py"
 set START_RESULT=%errorlevel%
 echo [!datetime!] [INFO] Start-Befehl ausgefuehrt, Exit-Code: !START_RESULT! >> "%LOG_FILE%"
