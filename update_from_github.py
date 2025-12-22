@@ -350,29 +350,77 @@ def update_via_git(repo_path: Path, repo_url: str) -> Tuple[bool, str]:
                     shutil.copy2(src, dst)
         
         # Führe Hard-Reset durch (überschreibt lokale Änderungen)
-        # Ignoriere Fehler bei geöffneten Dateien (z.B. vbs.log.txt)
+        # Ignoriere Fehler bei geöffneten Dateien (z.B. vbs.log.txt, venv-Dateien)
         reset_result = subprocess.run(['git', 'reset', '--hard', 'origin/main'], 
                                       cwd=repo_path, 
                                       capture_output=True,
                                       text=True,
                                       timeout=30)
         if reset_result.returncode != 0:
-            # Wenn Reset fehlschlägt (z.B. wegen geöffneter Dateien), versuche es mit --force
-            print("[WARNING] git reset --hard fehlgeschlagen, versuche mit --force...")
-            if 'vbs.log.txt' in reset_result.stderr or 'Unlink' in reset_result.stderr:
-                print("[INFO] Log-Datei ist geöffnet - überspringe diese Datei beim Reset")
-                # Versuche Reset ohne die geöffnete Datei
-                subprocess.run(['git', 'checkout', 'origin/main', '--', '.'], 
-                              cwd=repo_path, 
-                              timeout=30)
-                # Entferne geöffnete Dateien aus dem Index
-                subprocess.run(['git', 'reset', 'HEAD', 'vbs.log.txt'], 
-                              cwd=repo_path, 
-                              timeout=5)
+            # Wenn Reset fehlschlägt (z.B. wegen geöffneter Dateien), versuche sanftere Methoden
+            print("[WARNING] git reset --hard fehlgeschlagen, versuche sanftere Methode...")
+            stderr_lower = reset_result.stderr.lower()
+            
+            # Prüfe ob es wegen geöffneter Dateien ist
+            if 'unlink' in stderr_lower or 'zugriff verweigert' in stderr_lower or 'access denied' in stderr_lower:
+                print("[INFO] Dateien sind geöffnet (z.B. vbs.log.txt oder venv) - überspringe diese beim Reset")
+                
+                # Prüfe ob lokaler HEAD existiert
+                head_check = subprocess.run(
+                    ['git', 'rev-parse', '--verify', 'HEAD'],
+                    cwd=repo_path,
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                has_local_head = (head_check.returncode == 0)
+                
+                if has_local_head:
+                    # HEAD existiert - verwende checkout für einzelne Dateien
+                    # Versuche checkout ohne die problematischen Dateien
+                    checkout_result = subprocess.run(
+                        ['git', 'checkout', 'origin/main', '--', '.'], 
+                        cwd=repo_path,
+                        capture_output=True,
+                        text=True,
+                        timeout=30
+                    )
+                    if checkout_result.returncode == 0:
+                        print("[INFO] git checkout erfolgreich (einige Dateien wurden übersprungen)")
+                    else:
+                        print(f"[WARNING] git checkout fehlgeschlagen: {checkout_result.stderr[:200]}")
+                    
+                    # Versuche geöffnete Dateien aus dem Index zu entfernen (nur wenn HEAD existiert)
+                    locked_files = ['vbs.log.txt']
+                    for locked_file in locked_files:
+                        locked_path = repo_path / locked_file
+                        if locked_path.exists():
+                            reset_head_result = subprocess.run(
+                                ['git', 'reset', 'HEAD', locked_file], 
+                                cwd=repo_path,
+                                capture_output=True,
+                                timeout=5
+                            )
+                            if reset_head_result.returncode == 0:
+                                print(f"[INFO] {locked_file} aus Index entfernt")
+                else:
+                    # Kein HEAD - verwende checkout mit -f (force)
+                    print("[INFO] Kein lokaler HEAD - verwende git checkout -f")
+                    checkout_result = subprocess.run(
+                        ['git', 'checkout', '-f', 'origin/main'], 
+                        cwd=repo_path,
+                        capture_output=True,
+                        text=True,
+                        timeout=30
+                    )
+                    if checkout_result.returncode != 0:
+                        print(f"[WARNING] git checkout -f fehlgeschlagen: {checkout_result.stderr[:200]}")
             else:
-                # Bei anderen Fehlern, versuche es nochmal mit --force
+                # Bei anderen Fehlern, versuche es nochmal
+                print(f"[WARNING] Unbekannter Fehler: {reset_result.stderr[:200]}")
                 subprocess.run(['git', 'reset', '--hard', 'origin/main'], 
-                              cwd=repo_path, 
+                              cwd=repo_path,
+                              capture_output=True,
                               timeout=30)
         
         # Stelle wichtige Dateien wieder her
