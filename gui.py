@@ -797,13 +797,25 @@ class DeezerDownloaderGUI:
         self.video_speed_limit_var = tk.BooleanVar(value=self.settings.get('speed_limit_enabled', False))
         self.video_speed_value_var = tk.StringVar(value=str(self.settings.get('speed_limit_value', '5')))
         
+        # Button-Frame für Download und Queue
+        button_frame = ttk.Frame(opt)
+        button_frame.pack(fill=tk.X, padx=5, pady=5)
+        
         # Download-Button
-        self.video_download_button = ttk.Button(opt, text="▶ Download starten", command=self.start_video_download, state=tk.NORMAL)
-        self.video_download_button.pack(fill=tk.X, padx=5, pady=5)
+        self.video_download_button = ttk.Button(button_frame, text="▶ Download starten", command=self.start_video_download, state=tk.NORMAL)
+        self.video_download_button.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
+        
+        # Zur Queue hinzufügen Button
+        self.video_add_to_queue_button = ttk.Button(button_frame, text="➕ Zur Queue", command=self.add_video_to_queue, state=tk.NORMAL)
+        self.video_add_to_queue_button.pack(side=tk.LEFT, padx=5)
         
         # Abbrechen-Button
         self.video_cancel_button = ttk.Button(opt, text="⏹ Download abbrechen", command=self.cancel_video_download, state=tk.DISABLED)
         self.video_cancel_button.pack(fill=tk.X, padx=5, pady=5)
+        
+        # Queue-Status-Label
+        self.video_queue_status_label = ttk.Label(opt, text="📋 Queue: 0 Downloads", font=("Arial", 9))
+        self.video_queue_status_label.pack(fill=tk.X, padx=5, pady=(0, 5))
         
         # Queue-Button
         ttk.Button(opt, text="📋 Download-Queue anzeigen", command=self.show_download_queue).pack(fill=tk.X, padx=5, pady=2)
