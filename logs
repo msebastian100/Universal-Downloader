@@ -1,5 +1,3 @@
-update_output.txt
-
 [DEBUG] ==========================================
 [DEBUG] Update-Skript Debug-Informationen
 [DEBUG] ==========================================
@@ -49,7 +47,3 @@ ImportError: cannot import name 'UpdateChecker' from 'updater' (D:\Users\basti\D
 [DEBUG] version.py Größe: 1482 Bytes
 [DEBUG] updater.py Pfad: D:\Users\basti\Downloads\Universal-Downloader\updater.py
 [ERROR] Import endgültig fehlgeschlagen
-
-
-update_result.txt
-1 
