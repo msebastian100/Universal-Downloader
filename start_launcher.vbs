@@ -1359,56 +1359,57 @@ If fso.FileExists(requirementsFile) Then
             WriteLog "[INFO] pip install Exit-Code: " & pipResult
             
             ' Prüfe ob Installation erfolgreich war
-        If pipResult = 0 Then
-            WriteLog "[OK] requirements.txt erfolgreich installiert/aktualisiert"
-            WriteLog "[DEBUG] ✓ pip install erfolgreich abgeschlossen"
-            
-            ' Prüfe ob wichtige Pakete jetzt verfügbar sind
-            WriteLog "[INFO] Prüfe wichtige Pakete..."
-            WriteLog "[DEBUG] =========================================="
-            WriteLog "[DEBUG] Paket-Verfügbarkeits-Prüfung:"
-            WriteLog "[DEBUG] =========================================="
-            ' testPackages, testPackage, testCmd, testResult, testOutput, testError wurden bereits oben deklariert
-            testPackages = Array("requests", "yt_dlp", "mutagen")
-            Dim allPackagesOk
-            allPackagesOk = True
-            For Each testPackage In testPackages
-                On Error Resume Next
-                testCmd = fullPythonPath & " -c ""import " & testPackage & """"
-                Set testResult = WshShell.Exec(testCmd)
-                testResult.StdOut.ReadAll
-                testResult.WaitOnReturn = True
-                If testResult.ExitCode = 0 Then
-                    WriteLog "[OK] Paket " & testPackage & " verfügbar"
-                    WriteLog "[DEBUG]   ✓ " & testPackage & " erfolgreich importiert"
-                Else
-                    WriteLog "[WARNING] Paket " & testPackage & " nicht verfügbar"
-                    WriteLog "[DEBUG]   ✗ " & testPackage & " konnte nicht importiert werden (Exit-Code: " & testResult.ExitCode & ")"
-                    testError = testResult.StdErr.ReadAll
-                    If Len(testError) > 0 Then
-                        WriteLog "[DEBUG]   Fehler-Ausgabe: " & testError
-                    End If
-                    allPackagesOk = False
-                End If
-                On Error Goto 0
-            Next
-            WriteLog "[DEBUG] =========================================="
-            
-            If Not allPackagesOk Then
-                WriteLog "[WARNING] Einige Pakete fehlen noch - versuche erneute Installation..."
-                pipResult = RunPythonCommand(pipInstallCmd, "requirements.txt Installation (Wiederholung)", 0) ' 0 = versteckt
-                WriteLog "[INFO] Zweiter Installationsversuch Exit-Code: " & pipResult
-            End If
-        Else
-            WriteLog "[WARNING] requirements.txt Installation fehlgeschlagen (Exit-Code: " & pipResult & ")"
-            WriteLog "[INFO] Versuche erneut mit --user Flag..."
-            Dim pipInstallCmdUser
-            pipInstallCmdUser = fullPythonPath & " -m pip install --user --upgrade -r """ & requirementsFile & """"
-            pipResult = RunPythonCommand(pipInstallCmdUser, "requirements.txt Installation (--user)", 0) ' 0 = versteckt
             If pipResult = 0 Then
-                WriteLog "[OK] requirements.txt erfolgreich installiert (--user)"
+                WriteLog "[OK] requirements.txt erfolgreich installiert/aktualisiert"
+                WriteLog "[DEBUG] ✓ pip install erfolgreich abgeschlossen"
+                
+                ' Prüfe ob wichtige Pakete jetzt verfügbar sind
+                WriteLog "[INFO] Prüfe wichtige Pakete..."
+                WriteLog "[DEBUG] =========================================="
+                WriteLog "[DEBUG] Paket-Verfügbarkeits-Prüfung:"
+                WriteLog "[DEBUG] =========================================="
+                ' testPackages, testPackage, testCmd, testResult, testOutput, testError wurden bereits oben deklariert
+                testPackages = Array("requests", "yt_dlp", "mutagen")
+                Dim allPackagesOk
+                allPackagesOk = True
+                For Each testPackage In testPackages
+                    On Error Resume Next
+                    testCmd = fullPythonPath & " -c ""import " & testPackage & """"
+                    Set testResult = WshShell.Exec(testCmd)
+                    testResult.StdOut.ReadAll
+                    testResult.WaitOnReturn = True
+                    If testResult.ExitCode = 0 Then
+                        WriteLog "[OK] Paket " & testPackage & " verfügbar"
+                        WriteLog "[DEBUG]   ✓ " & testPackage & " erfolgreich importiert"
+                    Else
+                        WriteLog "[WARNING] Paket " & testPackage & " nicht verfügbar"
+                        WriteLog "[DEBUG]   ✗ " & testPackage & " konnte nicht importiert werden (Exit-Code: " & testResult.ExitCode & ")"
+                        testError = testResult.StdErr.ReadAll
+                        If Len(testError) > 0 Then
+                            WriteLog "[DEBUG]   Fehler-Ausgabe: " & testError
+                        End If
+                        allPackagesOk = False
+                    End If
+                    On Error Goto 0
+                Next
+                WriteLog "[DEBUG] =========================================="
+                
+                If Not allPackagesOk Then
+                    WriteLog "[WARNING] Einige Pakete fehlen noch - versuche erneute Installation..."
+                    pipResult = RunPythonCommand(pipInstallCmd, "requirements.txt Installation (Wiederholung)", 0) ' 0 = versteckt
+                    WriteLog "[INFO] Zweiter Installationsversuch Exit-Code: " & pipResult
+                End If
             Else
-                WriteLog "[ERROR] requirements.txt Installation fehlgeschlagen auch mit --user Flag"
+                WriteLog "[WARNING] requirements.txt Installation fehlgeschlagen (Exit-Code: " & pipResult & ")"
+                WriteLog "[INFO] Versuche erneut mit --user Flag..."
+                Dim pipInstallCmdUser
+                pipInstallCmdUser = fullPythonPath & " -m pip install --user --upgrade -r """ & requirementsFile & """"
+                pipResult = RunPythonCommand(pipInstallCmdUser, "requirements.txt Installation (--user)", 0) ' 0 = versteckt
+                If pipResult = 0 Then
+                    WriteLog "[OK] requirements.txt erfolgreich installiert (--user)"
+                Else
+                    WriteLog "[ERROR] requirements.txt Installation fehlgeschlagen auch mit --user Flag"
+                End If
             End If
         Else
             WriteLog "[OK] Alle Pakete bereits installiert - überspringe Installation"
