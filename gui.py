@@ -4154,13 +4154,6 @@ class DeezerDownloaderGUI:
         if messagebox.askyesno("Queue starten", f"{len(self.video_download_queue)} Downloads in der Queue.\n\nDownloads nacheinander starten?"):
             self.video_download_queue_processing = True
             self._process_download_queue()
-    
-    def _process_download_queue(self):
-        """Startet automatisch den nächsten Download aus der Queue"""
-        # Prüfe ob bereits ein Download läuft
-        if (self.video_download_process is not None or 
-            (hasattr(self, 'video_download_episodes_total') and self.video_download_episodes_total > 0)):
-            return  # Download läuft noch
         
         # Prüfe ob Queue-Einträge vorhanden sind
         if not self.video_download_queue:
