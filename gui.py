@@ -2841,6 +2841,9 @@ class DeezerDownloaderGUI:
                 self.video_progress_var.set(100)
                 if self.video_status_var.get().startswith("Download läuft"):
                     self.video_status_var.set("Bereit")
+            
+            # Prüfe ob Queue-Downloads vorhanden sind und starte automatisch
+            self._process_download_queue()
     
     def cancel_video_download(self):
         """Bricht den laufenden Download ab"""
@@ -3793,6 +3796,9 @@ class DeezerDownloaderGUI:
                 self.video_progress_var.set(100)
                 if self.video_status_var.get().startswith("Download läuft"):
                     self.video_status_var.set("Bereit")
+            
+            # Prüfe ob Queue-Downloads vorhanden sind und starte automatisch
+            self._process_download_queue()
             
             # Reset Variablen erst NACH dem UI-Update, wenn Download wirklich beendet ist
             self.video_download_episodes_total = 0
