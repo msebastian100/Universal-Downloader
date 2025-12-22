@@ -4011,6 +4011,25 @@ class DeezerDownloaderGUI:
                           f"Downloads in Queue: {len(self.video_download_queue)}")
         self._update_queue_status()
     
+    def add_video_to_queue(self):
+        """Fügt aktuelles Video zur Queue hinzu"""
+        url = self.video_url_var.get().strip()
+        
+        if not url:
+            messagebox.showwarning("Warnung", "Bitte geben Sie eine Video-URL ein.")
+            return
+        
+        self._add_to_download_queue(url)
+    
+    def _update_queue_status(self):
+        """Aktualisiert die Queue-Status-Anzeige"""
+        if hasattr(self, 'video_queue_status_label'):
+            queue_count = len(self.video_download_queue)
+            if queue_count > 0:
+                self.video_queue_status_label.config(text=f"📋 Queue: {queue_count} Download{'s' if queue_count != 1 else ''} wartend")
+            else:
+                self.video_queue_status_label.config(text="📋 Queue: 0 Downloads")
+    
     def _process_download_queue(self):
         """Startet automatisch den nächsten Download aus der Queue"""
         # Prüfe ob bereits ein Download läuft
