@@ -16,41 +16,39 @@ Fuehre Update-Check aus...
 [DEBUG] Python-Pfad (erste 5): ['D:\\Users\\basti\\Downloads\\Universal-Downloader', 'C:\\Users\\basti\\AppData\\Local\\Programs\\Python\\Python310\\python310.zip', 'C:\\Users\\basti\\AppData\\Local\\Programs\\Python\\Python310\\DLLs', 'C:\\Users\\basti\\AppData\\Local\\Programs\\Python\\Python310\\lib', 'C:\\Users\\basti\\AppData\\Local\\Programs\\Python\\Python310']
 [DEBUG] version.py existiert: True
 [DEBUG] version.py Pfad: D:\Users\basti\Downloads\Universal-Downloader\version.py
-[DEBUG] version.py Größe: 1482 Bytes
+[DEBUG] version.py Größe: 1535 Bytes
 [DEBUG] updater.py existiert: True
 [DEBUG] updater.py Pfad: D:\Users\basti\Downloads\Universal-Downloader\updater.py
-[DEBUG] updater.py Größe: 8481 Bytes
+[DEBUG] updater.py Größe: 8694 Bytes
 [DEBUG] ==========================================
 [DEBUG] Versuche Import von version und updater...
 [DEBUG] Lade version.py direkt über importlib...
 [DEBUG] ✓ version.py direkt geladen
 [DEBUG] Lade updater.py direkt über importlib...
+D:\Users\basti\Downloads\Universal-Downloader\venv\lib\site-packages\requests\__init__.py:86: RequestsDependencyWarning: Unable to find acceptable character detection dependency (chardet or charset_normalizer).
+  warnings.warn(
 [DEBUG] ✓ updater.py direkt geladen
 [INFO] Prüfe auf Updates...
 [INFO] Repository-Pfad: D:\Users\basti\Downloads\Universal-Downloader
 [INFO] Repository-URL: https://github.com/msebastian100/Universal-Downloader
 [INFO] Prüfe auf Git-Commits...
-[INFO] Initialisiere Git-Repository...
-Initialized empty Git repository in D:/Users/basti/Downloads/Universal-Downloader/.git/
-[DEBUG] is_new_repo gesetzt auf: True
+[DEBUG] Git-Verzeichnis existiert: True, has_valid_repo: True
 [INFO] Hole neueste Änderungen von GitHub...
-[DEBUG] is_new_repo: True, has_local_head: False
-[INFO] Repository wurde neu initialisiert - Update erforderlich
+[DEBUG] is_new_repo: False, has_local_head: True
+[DEBUG] Commits hinter origin/main: 1
+[INFO] 1 neue Commit(s) verfügbar
 [DEBUG] update_needed nach Git-Prüfung: True
 [INFO] Verwende Git für Update...
 From https://github.com/msebastian100/Universal-Downloader
  * branch            main       -> FETCH_HEAD
-[INFO] Lokales Repository hat noch keinen Commit - Update erforderlich
-[WARNING] git reset --hard fehlgeschlagen, versuche mit --force...
-[INFO] Log-Datei ist geöffnet - überspringe diese Datei beim Reset
-Unlink of file 'vbs.log.txt' failed. Should I try again? (y/n) n
-error: unable to unlink old 'vbs.log.txt': Invalid argument
-fatal: ambiguous argument 'HEAD': unknown revision or path not in the working tree.
-Use '--' to separate paths from revisions, like this:
-'git <command> [<revision>...] -- [<file>...]'
-[ERROR] Fehler: [WinError 5] Zugriff verweigert: 'D:\\Users\\basti\\Downloads\\Universal-Downloader\\venv\\Lib\\site-packages\\charset_normalizer\\md.cp310-win_amd64.pyd'
+[WARNING] git reset --hard fehlgeschlagen, versuche sanftere Methode...
+[INFO] Dateien sind geöffnet (z.B. vbs.log.txt oder venv) - überspringe diese beim Reset
+[WARNING] git checkout fehlgeschlagen: error: unable to unlink old 'vbs.log.txt': Invalid argument
 
-[INFO] Fehler: [WinError 5] Zugriff verweigert: 'D:\\Users\\basti\\Downloads\\Universal-Downloader\\venv\\Lib\\site-packages\\charset_normalizer\\md.cp310-win_amd64.pyd'
+[INFO] vbs.log.txt aus Index entfernt
+[ERROR] Fehler: [WinError 5] Zugriff verweigert: 'D:\\Users\\basti\\Downloads\\Universal-Downloader\\venv\\Scripts\\python.exe'
+
+[INFO] Fehler: [WinError 5] Zugriff verweigert: 'D:\\Users\\basti\\Downloads\\Universal-Downloader\\venv\\Scripts\\python.exe'
 
 ==========================================
 Update-Check beendet mit Fehler (Code: 1
