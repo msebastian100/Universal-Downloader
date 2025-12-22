@@ -1607,6 +1607,39 @@ class VideoDownloader:
             from yt_dlp_helper import run_ytdlp
             yt_args = []
             
+            # Prüfe ffmpeg-Pfad und füge --ffmpeg-location hinzu falls nötig
+            try:
+                import subprocess as sp
+                import platform as plat
+                # Prüfe ob ffmpeg im PATH ist
+                ffmpeg_in_path = False
+                try:
+                    result = sp.run(['ffmpeg', '-version'], capture_output=True, timeout=2, check=True)
+                    ffmpeg_in_path = True
+                except (sp.TimeoutExpired, sp.CalledProcessError, FileNotFoundError):
+                    pass
+                
+                # Wenn ffmpeg nicht im PATH ist, prüfe lokale Installation
+                if not ffmpeg_in_path:
+                    try:
+                        from auto_install_dependencies import get_app_dir
+                        app_dir = get_app_dir()
+                        if plat.system() == 'Windows':
+                            ffmpeg_exe = app_dir / "ffmpeg" / "bin" / "ffmpeg.exe"
+                            ffmpeg_bin = app_dir / "ffmpeg" / "bin"
+                        else:
+                            ffmpeg_exe = app_dir / "ffmpeg" / "bin" / "ffmpeg"
+                            ffmpeg_bin = app_dir / "ffmpeg" / "bin"
+                        
+                        if ffmpeg_exe.exists() or ffmpeg_bin.exists():
+                            # Verwende das bin-Verzeichnis als ffmpeg-location
+                            yt_args.extend(['--ffmpeg-location', str(ffmpeg_bin)])
+                            self.log(f"Verwende lokales ffmpeg: {ffmpeg_bin}")
+                    except Exception as e:
+                        self.log(f"Konnte ffmpeg-Pfad nicht ermitteln: {e}", "WARNING")
+            except Exception as e:
+                self.log(f"Fehler beim Prüfen von ffmpeg: {e}", "WARNING")
+            
             # Füge Cookies hinzu falls vorhanden
             if cookies_file:
                 yt_args.extend(['--cookies', cookies_file])
@@ -1614,11 +1647,11 @@ class VideoDownloader:
             # Spezielle Optionen für ARD Plus
             if service == 'ARD Plus':
                 # User-Agent für ARD Plus
-                cmd.extend(['--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'])
+                yt_args.extend(['--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'])
                 # Referer setzen
-                cmd.extend(['--add-header', 'Referer:https://www.ardplus.de/'])
+                yt_args.extend(['--add-header', 'Referer:https://www.ardplus.de/'])
                 # Versuche generic extractor zu erzwingen
-                cmd.extend(['--extractor-args', 'generic:no_check_certificate'])
+                yt_args.extend(['--extractor-args', 'generic:no_check_certificate'])
                 self.log("ARD Plus spezielle Optionen hinzugefügt")
             
             # Output-Template basierend auf Format - WICHTIG: verwende actual_output_dir!

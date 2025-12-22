@@ -46,10 +46,129 @@ Sub WriteLog(message)
     On Error Goto 0
 End Sub
 
+' Hilfsfunktion: Führt Python-Befehl aus und loggt die komplette Ausgabe
+Function RunPythonCommand(cmd, description, showWindow)
+    ' showWindow: 0 = versteckt, 1 = sichtbar
+    Dim tempOutputFile, tempErrorFile, resultFile
+    tempOutputFile = scriptPath & "\temp_python_output_" & Timer & ".txt"
+    tempErrorFile = scriptPath & "\temp_python_error_" & Timer & ".txt"
+    resultFile = scriptPath & "\temp_python_result_" & Timer & ".txt"
+    
+    WriteLog "[DEBUG] =========================================="
+    WriteLog "[DEBUG] Python-Befehl: " & description
+    WriteLog "[DEBUG] =========================================="
+    WriteLog "[DEBUG] Befehl: " & cmd
+    
+    ' Erstelle Batch-Datei für Ausführung mit Ausgabe-Umleitung
+    Dim batFile
+    batFile = scriptPath & "\temp_python_cmd_" & Timer & ".bat"
+    Dim batStream
+    Set batStream = fso.CreateTextFile(batFile, True)
+    batStream.WriteLine "@echo off"
+    batStream.WriteLine "cd /d """ & scriptPath & """"
+    batStream.WriteLine cmd & " > """ & tempOutputFile & """ 2> """ & tempErrorFile & """"
+    batStream.WriteLine "echo %errorlevel% > """ & resultFile & """"
+    batStream.Close
+    
+    ' Führe Batch-Datei aus
+    Dim runResult
+    runResult = WshShell.Run("""" & batFile & """", showWindow, True)
+    
+    ' Lese Ausgabe
+    Dim output, errorOutput, exitCode
+    output = ""
+    errorOutput = ""
+    exitCode = -1
+    
+    If fso.FileExists(tempOutputFile) Then
+        On Error Resume Next
+        Dim outputStream
+        Set outputStream = fso.OpenTextFile(tempOutputFile, 1, False)
+        output = outputStream.ReadAll
+        outputStream.Close
+        On Error Goto 0
+    End If
+    
+    If fso.FileExists(tempErrorFile) Then
+        On Error Resume Next
+        Dim errorStream
+        Set errorStream = fso.OpenTextFile(tempErrorFile, 1, False)
+        errorOutput = errorStream.ReadAll
+        errorStream.Close
+        On Error Goto 0
+    End If
+    
+    If fso.FileExists(resultFile) Then
+        On Error Resume Next
+        Dim resultStream
+        Set resultStream = fso.OpenTextFile(resultFile, 1, False)
+        Dim resultCode
+        resultCode = Trim(resultStream.ReadAll)
+        resultStream.Close
+        If IsNumeric(resultCode) Then
+            exitCode = CInt(resultCode)
+        End If
+        On Error Goto 0
+    End If
+    
+    ' Logge Ausgabe
+    WriteLog "[DEBUG] Exit-Code: " & exitCode
+    If Len(output) > 0 Then
+        WriteLog "[DEBUG] StdOut:"
+        Dim outputLines
+        outputLines = Split(output, vbCrLf)
+        Dim line
+        For Each line In outputLines
+            If Len(Trim(line)) > 0 Then
+                WriteLog "[DEBUG]   " & line
+            End If
+        Next
+    End If
+    If Len(errorOutput) > 0 Then
+        WriteLog "[DEBUG] StdErr:"
+        Dim errorLines
+        errorLines = Split(errorOutput, vbCrLf)
+        For Each line In errorLines
+            If Len(Trim(line)) > 0 Then
+                WriteLog "[DEBUG]   [ERROR] " & line
+            End If
+        Next
+    End If
+    WriteLog "[DEBUG] =========================================="
+    
+    ' Aufräumen
+    On Error Resume Next
+    If fso.FileExists(tempOutputFile) Then fso.DeleteFile tempOutputFile
+    If fso.FileExists(tempErrorFile) Then fso.DeleteFile tempErrorFile
+    If fso.FileExists(resultFile) Then fso.DeleteFile resultFile
+    If fso.FileExists(batFile) Then fso.DeleteFile batFile
+    On Error Goto 0
+    
+    ' Setze Rückgabewert
+    RunPythonCommand = exitCode
+End Function
+
 WriteLog "=========================================="
 WriteLog "Launcher gestartet: " & WScript.ScriptFullName
 WriteLog "Verzeichnis: " & scriptPath
 WriteLog "Log-Datei: " & logFile
+WriteLog "[DEBUG] =========================================="
+WriteLog "[DEBUG] System-Informationen:"
+WriteLog "[DEBUG] =========================================="
+On Error Resume Next
+Dim osVersion, osArch, userName, computerName
+osVersion = WshShell.RegRead("HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProductName")
+osArch = WshShell.ExpandEnvironmentStrings("%PROCESSOR_ARCHITECTURE%")
+userName = WshShell.ExpandEnvironmentStrings("%USERNAME%")
+computerName = WshShell.ExpandEnvironmentStrings("%COMPUTERNAME%")
+WriteLog "[DEBUG] Betriebssystem: " & osVersion
+WriteLog "[DEBUG] Architektur: " & osArch
+WriteLog "[DEBUG] Benutzer: " & userName
+WriteLog "[DEBUG] Computer: " & computerName
+WriteLog "[DEBUG] Windows-Version: " & WshShell.RegRead("HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\CurrentVersion")
+WriteLog "[DEBUG] PATH: " & WshShell.ExpandEnvironmentStrings("%PATH%")
+WriteLog "[DEBUG] =========================================="
+On Error Goto 0
 If iconPath <> "" Then
     WriteLog "[INFO] Icon gefunden: " & iconPath
 Else
@@ -99,6 +218,43 @@ If checkUpdates Then
         pythonExeUpdate = "python.exe"
         fullPythonPathUpdate = ""
         
+        ' Hilfsfunktion: Prüft ob ein Python-Pfad wirklich funktioniert (nicht nur Stub)
+        Function IsValidPython(pythonPath)
+            IsValidPython = False
+            On Error Resume Next
+            ' Prüfe ob Pfad WindowsApps enthält (Stub)
+            If InStr(LCase(pythonPath), "windowsapps") > 0 Then
+                Exit Function
+            End If
+            ' Prüfe ob Datei existiert
+            If Not fso.FileExists(pythonPath) Then
+                Exit Function
+            End If
+        ' Prüfe ob Python wirklich funktioniert (--version sollte Ausgabe geben)
+        Dim testResult
+        Set testResult = WshShell.Exec("""" & pythonPath & """ --version")
+        Dim testOutput
+        testOutput = testResult.StdOut.ReadAll
+        Dim testError
+        testError = testResult.StdErr.ReadAll
+        testResult.WaitOnReturn = True
+        ' Prüfe Exit-Code UND ob Ausgabe vorhanden ist
+        If testResult.ExitCode = 0 And Len(Trim(testOutput)) > 0 Then
+            ' Prüfe ob Ausgabe wie eine Version aussieht (enthält "Python" oder Zahlen)
+            If InStr(testOutput, "Python") > 0 Or InStr(testOutput, ".") > 0 Then
+                IsValidPython = True
+            End If
+        End If
+        ' Debug-Logging für Python-Validierung
+        If Not IsValidPython Then
+            WriteLog "[DEBUG] Python-Validierung fehlgeschlagen für: " & pythonPath
+            WriteLog "[DEBUG]   Exit-Code: " & testResult.ExitCode
+            WriteLog "[DEBUG]   StdOut: " & testOutput
+            WriteLog "[DEBUG]   StdErr: " & testError
+        End If
+            On Error Goto 0
+        End Function
+        
         ' Methode 1: Prüfe python.exe im PATH
         On Error Resume Next
         Dim whereResultUpdate
@@ -110,9 +266,18 @@ If checkUpdates Then
         If whereResultUpdate.ExitCode = 0 And Len(Trim(whereOutputUpdate)) > 0 Then
             Dim whereLinesUpdate
             whereLinesUpdate = Split(whereOutputUpdate, vbCrLf)
-            If UBound(whereLinesUpdate) >= 0 And Len(Trim(whereLinesUpdate(0))) > 0 Then
-                fullPythonPathUpdate = Trim(whereLinesUpdate(0))
-            End If
+            Dim lineUpdate
+            For Each lineUpdate In whereLinesUpdate
+                Dim candidatePath
+                candidatePath = Trim(lineUpdate)
+                If Len(candidatePath) > 0 Then
+                    ' Prüfe ob es wirklich funktioniert (nicht WindowsApps-Stub)
+                    If IsValidPython(candidatePath) Then
+                        fullPythonPathUpdate = candidatePath
+                        Exit For
+                    End If
+                End If
+            Next
         End If
         On Error Goto 0
         
@@ -124,9 +289,17 @@ If checkUpdates Then
             whereResultUpdate.WaitOnReturn = True
             If whereResultUpdate.ExitCode = 0 And Len(Trim(whereOutputUpdate)) > 0 Then
                 whereLinesUpdate = Split(whereOutputUpdate, vbCrLf)
-                If UBound(whereLinesUpdate) >= 0 And Len(Trim(whereLinesUpdate(0))) > 0 Then
-                    fullPythonPathUpdate = Trim(whereLinesUpdate(0))
-                End If
+                Dim lineUpdate2
+                For Each lineUpdate2 In whereLinesUpdate
+                    candidatePath = Trim(lineUpdate2)
+                    If Len(candidatePath) > 0 Then
+                        ' Prüfe ob es wirklich funktioniert (nicht WindowsApps-Stub)
+                        If IsValidPython(candidatePath) Then
+                            fullPythonPathUpdate = candidatePath
+                            Exit For
+                        End If
+                    End If
+                Next
             End If
             On Error Goto 0
         End If
@@ -146,10 +319,14 @@ If checkUpdates Then
                 If fso.FolderExists(pathUpdate) Then
                     Set folderUpdateUpdate = fso.GetFolder(pathUpdate)
                     For Each subfolderUpdate In folderUpdateUpdate.SubFolders
-                        If fso.FileExists(subfolderUpdate.Path & "\python.exe") Then
-                            fullPythonPathUpdate = subfolderUpdate.Path & "\python.exe"
-                            foundUpdate = True
-                            Exit For
+                        Dim testPythonPathUpdate
+                        testPythonPathUpdate = subfolderUpdate.Path & "\python.exe"
+                        If fso.FileExists(testPythonPathUpdate) Then
+                            If IsValidPython(testPythonPathUpdate) Then
+                                fullPythonPathUpdate = testPythonPathUpdate
+                                foundUpdate = True
+                                Exit For
+                            End If
                         End If
                     Next
                     If foundUpdate Then Exit For
@@ -157,12 +334,45 @@ If checkUpdates Then
             Next
         End If
         
-        ' Methode 4: Fallback zu python.exe
+        ' Methode 4: Verwende das gleiche Python wie für die Hauptanwendung (falls bereits gefunden)
+        ' HINWEIS: pythonExe wird später gesetzt, daher prüfen wir hier nur, ob wir es später verwenden können
+        ' Für jetzt: Wenn kein Python gefunden wurde, verwende python.exe als letzten Fallback
+        ' (wird später durch die Haupt-Python-Suche überschrieben, wenn ein gültiges Python gefunden wird)
         If Len(fullPythonPathUpdate) = 0 Then
-            fullPythonPathUpdate = pythonExeUpdate
+            ' Versuche python.exe, aber nur wenn es nicht WindowsApps ist
+            On Error Resume Next
+            Dim testPythonExe
+            Set whereResultUpdate = WshShell.Exec("where python.exe")
+            whereOutputUpdate = whereResultUpdate.StdOut.ReadAll
+            whereResultUpdate.WaitOnReturn = True
+            If whereResultUpdate.ExitCode = 0 And Len(Trim(whereOutputUpdate)) > 0 Then
+                whereLinesUpdate = Split(whereOutputUpdate, vbCrLf)
+                For Each lineUpdate In whereLinesUpdate
+                    candidatePath = Trim(lineUpdate)
+                    If Len(candidatePath) > 0 And IsValidPython(candidatePath) Then
+                        fullPythonPathUpdate = candidatePath
+                        Exit For
+                    End If
+                Next
+            End If
+            On Error Goto 0
+            ' Letzter Fallback: python.exe (wird später durch Haupt-Python-Suche überschrieben)
+            If Len(fullPythonPathUpdate) = 0 Then
+                fullPythonPathUpdate = pythonExeUpdate
+            End If
         End If
         
         WriteLog "[INFO] Python für Update-Check: " & fullPythonPathUpdate
+        WriteLog "[DEBUG] Update-Check Python-Validierung:"
+        If Len(fullPythonPathUpdate) > 0 Then
+            If IsValidPython(fullPythonPathUpdate) Then
+                WriteLog "[DEBUG]   ✓ Python ist gültig und funktioniert"
+            Else
+                WriteLog "[DEBUG]   ✗ Python ist ungültig oder funktioniert nicht"
+            End If
+        Else
+            WriteLog "[DEBUG]   ✗ Kein Python-Pfad gefunden"
+        End If
         
         ' Führe Update-Check aus (sichtbar, damit Benutzer den Fortschritt sieht)
         Dim updateResult, updateOutput, updateDetected, updateInstalled
@@ -183,10 +393,29 @@ If checkUpdates Then
         tempBatStream.WriteLine "echo Universal Downloader - Update-Check"
         tempBatStream.WriteLine "echo =========================================="
         tempBatStream.WriteLine "echo."
-        tempBatStream.WriteLine """" & fullPythonPathUpdate & """ """ & updateScript & """ > """ & tempLogFile & """ 2>&1"
+        tempBatStream.WriteLine "echo [DEBUG] Arbeitsverzeichnis: %CD%"
+        tempBatStream.WriteLine "echo [DEBUG] Python: """ & fullPythonPathUpdate & """"
+        tempBatStream.WriteLine "echo [DEBUG] Skript: """ & updateScript & """"
+        tempBatStream.WriteLine "echo [DEBUG] =========================================="
+        tempBatStream.WriteLine "cd /d """ & scriptPath & """"
+        tempBatStream.WriteLine "echo [DEBUG] Nach cd: %CD%"
+        tempBatStream.WriteLine "if exist version.py (echo [DEBUG] ✓ version.py gefunden) else (echo [DEBUG] ✗ version.py nicht gefunden)"
+        tempBatStream.WriteLine "if exist updater.py (echo [DEBUG] ✓ updater.py gefunden) else (echo [DEBUG] ✗ updater.py nicht gefunden)"
+        tempBatStream.WriteLine "echo [DEBUG] Python: """ & fullPythonPathUpdate & """"
+        tempBatStream.WriteLine "echo [DEBUG] Skript: """ & updateScript & """"
+        tempBatStream.WriteLine "echo [DEBUG] =========================================="
+        tempBatStream.WriteLine "echo."
+        tempBatStream.WriteLine "echo Fuehre Update-Check aus..."
+        tempBatStream.WriteLine "echo."
+        ' Führe Python-Skript aus - zeige direkt an UND logge in Datei
+        ' Methode: Führe aus, zeige an, dann logge auch
+        tempBatStream.WriteLine """" & fullPythonPathUpdate & """ """ & updateScript & """"
         tempBatStream.WriteLine "set UPDATE_RESULT=!errorlevel!"
         tempBatStream.WriteLine "echo !UPDATE_RESULT! > """ & tempResultFile & """"
-        tempBatStream.WriteLine "type """ & tempLogFile & """"
+        ' Führe nochmal aus für Log-Datei (mit vollständiger Ausgabe)
+        tempBatStream.WriteLine """" & fullPythonPathUpdate & """ """ & updateScript & """ > """ & tempLogFile & """ 2>&1"
+        tempBatStream.WriteLine "echo."
+        tempBatStream.WriteLine "echo =========================================="
         tempBatStream.WriteLine "echo."
         tempBatStream.WriteLine "echo =========================================="
         tempBatStream.WriteLine "findstr /i /c:""keine updates"" /c:""bereits auf dem neuesten stand"" /c:""no updates available"" /c:""already up to date"" """ & tempLogFile & """ >nul 2>&1"
@@ -313,66 +542,137 @@ WriteLog "[INFO] Starte Python-Suche auf allen Laufwerken..."
 WriteLog "[INFO] =========================================="
 On Error Resume Next
 
+' Hilfsfunktion: Prüft ob ein Python-Pfad wirklich funktioniert (nicht nur Stub)
+Function IsValidPythonMain(pythonPath)
+    IsValidPythonMain = False
+    On Error Resume Next
+    ' Prüfe ob Pfad WindowsApps enthält (Stub)
+    If InStr(LCase(pythonPath), "windowsapps") > 0 Then
+        Exit Function
+    End If
+    ' Prüfe ob Datei existiert
+    If Not fso.FileExists(pythonPath) Then
+        Exit Function
+    End If
+    ' Prüfe ob Python wirklich funktioniert (--version sollte Ausgabe geben)
+    Dim testResult
+    Set testResult = WshShell.Exec("""" & pythonPath & """ --version")
+    Dim testOutput
+    testOutput = testResult.StdOut.ReadAll
+    testResult.WaitOnReturn = True
+    ' Prüfe Exit-Code UND ob Ausgabe vorhanden ist
+    If testResult.ExitCode = 0 And Len(Trim(testOutput)) > 0 Then
+        ' Prüfe ob Ausgabe wie eine Version aussieht (enthält "Python" oder Zahlen)
+        If InStr(testOutput, "Python") > 0 Or InStr(testOutput, ".") > 0 Then
+            IsValidPythonMain = True
+        End If
+    End If
+    On Error Goto 0
+End Function
+
 ' Methode 1: PATH
 WriteLog "[INFO] Methode 1: Prüfe pythonw.exe im PATH..."
-Set pythonCheck = WshShell.Exec("pythonw.exe --version")
-Dim pythonOutput
-pythonOutput = pythonCheck.StdOut.ReadAll
-pythonCheck.WaitOnReturn = True
-WriteLog "[INFO] pythonw.exe --version Ausgabe: " & pythonOutput
-WriteLog "[INFO] pythonw.exe --version Exit-Code: " & pythonCheck.ExitCode
-If pythonCheck.ExitCode = 0 Then
-    pythonExe = "pythonw.exe"
-    WriteLog "[OK] Python gefunden (Methode 1): pythonw.exe im PATH"
-Else
-    WriteLog "[INFO] pythonw.exe nicht im PATH gefunden"
+On Error Resume Next
+Dim whereResult
+Set whereResult = WshShell.Exec("where pythonw.exe")
+Dim whereOutput
+whereOutput = whereResult.StdOut.ReadAll
+whereResult.WaitOnReturn = True
+On Error Goto 0
+
+Dim pythonFound
+pythonFound = False
+If whereResult.ExitCode = 0 And Len(Trim(whereOutput)) > 0 Then
+    Dim whereLines
+    whereLines = Split(whereOutput, vbCrLf)
+    Dim line
+    For Each line In whereLines
+        Dim candidatePath
+        candidatePath = Trim(line)
+        If Len(candidatePath) > 0 Then
+            ' Prüfe ob es wirklich funktioniert (nicht WindowsApps-Stub)
+            If IsValidPythonMain(candidatePath) Then
+                pythonExe = candidatePath
+                pythonFound = True
+                WriteLog "[OK] Python gefunden (Methode 1): " & pythonExe
+                Exit For
+            End If
+        End If
+    Next
+End If
+
+If Not pythonFound Then
+    WriteLog "[INFO] pythonw.exe nicht im PATH gefunden oder ungültig"
     ' Methode 2: python.exe im PATH
     Err.Clear
     WriteLog "[INFO] Methode 2: Prüfe python.exe im PATH..."
-    Set pythonCheck2 = WshShell.Exec("python.exe --version")
-    Dim pythonOutput2
-    pythonOutput2 = pythonCheck2.StdOut.ReadAll
-    pythonCheck2.WaitOnReturn = True
-    WriteLog "[INFO] python.exe --version Ausgabe: " & pythonOutput2
-    WriteLog "[INFO] python.exe --version Exit-Code: " & pythonCheck2.ExitCode
-    If pythonCheck2.ExitCode = 0 Then
-        pythonExe = "python.exe"
-        WriteLog "[OK] Python gefunden (Methode 2): python.exe im PATH"
-    Else
-        WriteLog "[INFO] python.exe nicht im PATH gefunden"
+    On Error Resume Next
+    Set whereResult = WshShell.Exec("where python.exe")
+    whereOutput = whereResult.StdOut.ReadAll
+    whereResult.WaitOnReturn = True
+    On Error Goto 0
+    
+    If whereResult.ExitCode = 0 And Len(Trim(whereOutput)) > 0 Then
+        whereLines = Split(whereOutput, vbCrLf)
+        For Each line In whereLines
+            candidatePath = Trim(line)
+            If Len(candidatePath) > 0 Then
+                ' Prüfe ob es wirklich funktioniert (nicht WindowsApps-Stub)
+                If IsValidPythonMain(candidatePath) Then
+                    pythonExe = candidatePath
+                    pythonFound = True
+                    WriteLog "[OK] Python gefunden (Methode 2): " & pythonExe
+                    Exit For
+                End If
+            End If
+        Next
+    End If
+    
+    If Not pythonFound Then
+        WriteLog "[INFO] python.exe nicht im PATH gefunden oder ungültig"
         ' Methode 3: Typische Installationspfade
         Err.Clear
         WriteLog "[INFO] Methode 3: Suche in typischen Installationspfaden..."
         Dim searchPaths, searchPath, folder, subfolder
         searchPaths = Array( _
             WshShell.ExpandEnvironmentStrings("%LOCALAPPDATA%\Programs\Python"), _
-            WshShell.ExpandEnvironmentStrings("%LOCALAPPDATA%\Microsoft\WindowsApps"), _
             WshShell.ExpandEnvironmentStrings("%PROGRAMFILES%\Python"), _
             WshShell.ExpandEnvironmentStrings("%PROGRAMFILES(X86)%\Python") _
         )
+        ' HINWEIS: WindowsApps wird ausgeschlossen, da es nur Stubs enthält
         
         For Each searchPath In searchPaths
             WriteLog "[INFO] Prüfe Pfad: " & searchPath
             If fso.FolderExists(searchPath) Then
                 Set folder = fso.GetFolder(searchPath)
-                If fso.FileExists(searchPath & "\pythonw.exe") Then
-                    pythonExe = searchPath & "\pythonw.exe"
-                    WriteLog "[OK] Python gefunden (Methode 3): " & pythonExe
-                    Exit For
-                End If
-                For Each subfolder In folder.SubFolders
-                    If fso.FileExists(subfolder.Path & "\pythonw.exe") Then
-                        pythonExe = subfolder.Path & "\pythonw.exe"
+                Dim testPythonPath
+                testPythonPath = searchPath & "\pythonw.exe"
+                If fso.FileExists(testPythonPath) Then
+                    If IsValidPythonMain(testPythonPath) Then
+                        pythonExe = testPythonPath
                         WriteLog "[OK] Python gefunden (Methode 3): " & pythonExe
+                        pythonFound = True
                         Exit For
                     End If
+                End If
+                For Each subfolder In folder.SubFolders
+                    testPythonPath = subfolder.Path & "\pythonw.exe"
+                    If fso.FileExists(testPythonPath) Then
+                        If IsValidPythonMain(testPythonPath) Then
+                            pythonExe = testPythonPath
+                            WriteLog "[OK] Python gefunden (Methode 3): " & pythonExe
+                            pythonFound = True
+                            Exit For
+                        End If
+                    End If
                 Next
+                If pythonFound Then Exit For
                 If pythonExe <> "" Then Exit For
             End If
         Next
         
         ' Methode 4: Registry
-        If pythonExe = "" Then
+        If Not pythonFound Then
             Err.Clear
             WriteLog "[INFO] Methode 4: Prüfe Registry..."
             Dim reg, execPath
@@ -387,14 +687,21 @@ Else
                 If Err.Number = 0 And reg <> "" Then
                     WriteLog "[INFO] Registry-Eintrag gefunden (Python " & version & "): " & reg
                     execPath = fso.GetParentFolderName(reg)
-                    If fso.FileExists(execPath & "\pythonw.exe") Then
-                        pythonExe = execPath & "\pythonw.exe"
-                        WriteLog "[OK] Python gefunden (Methode 4): " & pythonExe
-                        Exit For
+                    testPythonPath = execPath & "\pythonw.exe"
+                    If fso.FileExists(testPythonPath) Then
+                        If IsValidPythonMain(testPythonPath) Then
+                            pythonExe = testPythonPath
+                            WriteLog "[OK] Python gefunden (Methode 4): " & pythonExe
+                            pythonFound = True
+                            Exit For
+                        End If
                     ElseIf fso.FileExists(reg) Then
-                        pythonExe = reg
-                        WriteLog "[OK] Python gefunden (Methode 4): " & pythonExe
-                        Exit For
+                        If IsValidPythonMain(reg) Then
+                            pythonExe = reg
+                            WriteLog "[OK] Python gefunden (Methode 4): " & pythonExe
+                            pythonFound = True
+                            Exit For
+                        End If
                     End If
                 End If
             Next
@@ -423,25 +730,33 @@ Else
                     For Each altPath In altPaths
                         If fso.FolderExists(altPath) Then
                             WriteLog "[INFO] Prüfe Pfad: " & altPath
-                            If fso.FileExists(altPath & "\pythonw.exe") Then
-                                pythonExe = altPath & "\pythonw.exe"
-                                WriteLog "[OK] Python gefunden (Methode 5): " & pythonExe
-                                Exit For
+                            testPythonPath = altPath & "\pythonw.exe"
+                            If fso.FileExists(testPythonPath) Then
+                                If IsValidPythonMain(testPythonPath) Then
+                                    pythonExe = testPythonPath
+                                    WriteLog "[OK] Python gefunden (Methode 5): " & pythonExe
+                                    pythonFound = True
+                                    Exit For
+                                End If
                             End If
                             ' Suche in Unterordnern (Python3.11, Python3.12, etc.)
                             Dim folder5, subfolder5
                             Set folder5 = fso.GetFolder(altPath)
                             For Each subfolder5 In folder5.SubFolders
-                                If fso.FileExists(subfolder5.Path & "\pythonw.exe") Then
-                                    pythonExe = subfolder5.Path & "\pythonw.exe"
-                                    WriteLog "[OK] Python gefunden (Methode 5): " & pythonExe
-                                    Exit For
+                                testPythonPath = subfolder5.Path & "\pythonw.exe"
+                                If fso.FileExists(testPythonPath) Then
+                                    If IsValidPythonMain(testPythonPath) Then
+                                        pythonExe = testPythonPath
+                                        WriteLog "[OK] Python gefunden (Methode 5): " & pythonExe
+                                        pythonFound = True
+                                        Exit For
+                                    End If
                                 End If
                             Next
-                            If pythonExe <> "" Then Exit For
+                            If pythonFound Then Exit For
                         End If
                     Next
-                    If pythonExe <> "" Then Exit For
+                    If pythonFound Then Exit For
                 End If
             Next
             On Error Resume Next
@@ -621,6 +936,48 @@ Else
     On Error Goto 0
 End If
 
+' WICHTIG: Aktualisiere Update-Check Python-Pfad mit dem gefundenen Python (falls gültig)
+' Dies stellt sicher, dass der Update-Check das gleiche Python verwendet wie die Hauptanwendung
+WriteLog "[DEBUG] =========================================="
+WriteLog "[DEBUG] Aktualisiere Update-Check Python-Pfad..."
+WriteLog "[DEBUG] =========================================="
+WriteLog "[DEBUG] Gefundener Python-Pfad: " & fullPythonPath
+If Len(fullPythonPath) > 0 And InStr(LCase(fullPythonPath), "windowsapps") = 0 Then
+    ' Konvertiere pythonw.exe zu python.exe für Update-Check (sichtbare Ausgabe)
+    Dim updatePythonPath
+    updatePythonPath = fullPythonPath
+    WriteLog "[DEBUG] Original-Pfad: " & updatePythonPath
+    If InStr(LCase(updatePythonPath), "pythonw.exe") > 0 Then
+        updatePythonPath = Replace(LCase(updatePythonPath), "pythonw.exe", "python.exe")
+        WriteLog "[DEBUG] Konvertiert zu: " & updatePythonPath
+        ' Prüfe ob python.exe existiert
+        If Not fso.FileExists(updatePythonPath) Then
+            WriteLog "[DEBUG] python.exe nicht gefunden, verwende pythonw.exe"
+            ' Fallback: Verwende pythonw.exe
+            updatePythonPath = fullPythonPath
+        Else
+            WriteLog "[DEBUG] python.exe gefunden"
+        End If
+    End If
+    ' Prüfe ob das Python wirklich funktioniert
+    WriteLog "[DEBUG] Validiere Python-Pfad: " & updatePythonPath
+    If IsValidPython(updatePythonPath) Then
+        fullPythonPathUpdate = updatePythonPath
+        WriteLog "[INFO] Update-Check Python-Pfad aktualisiert: " & fullPythonPathUpdate
+        WriteLog "[DEBUG] ✓ Python-Validierung erfolgreich"
+    Else
+        WriteLog "[WARNING] Update-Check Python-Pfad konnte nicht validiert werden"
+        WriteLog "[DEBUG] ✗ Python-Validierung fehlgeschlagen"
+    End If
+Else
+    If InStr(LCase(fullPythonPath), "windowsapps") > 0 Then
+        WriteLog "[DEBUG] ✗ Python-Pfad enthält WindowsApps (Stub) - überspringe"
+    Else
+        WriteLog "[DEBUG] ✗ Kein Python-Pfad gefunden"
+    End If
+End If
+WriteLog "[DEBUG] =========================================="
+
 If fullPythonPath = "" Then
     fullPythonPath = pythonExe
 End If
@@ -629,6 +986,35 @@ WriteLog "[INFO] =========================================="
 WriteLog "[INFO] Python gefunden: " & fullPythonPath
 WriteLog "[INFO] Arbeitsverzeichnis: " & scriptPath
 WriteLog "[INFO] =========================================="
+WriteLog "[DEBUG] =========================================="
+WriteLog "[DEBUG] Python-Details:"
+WriteLog "[DEBUG] =========================================="
+WriteLog "[DEBUG] Python-Executable: " & pythonExe
+WriteLog "[DEBUG] Vollständiger Pfad: " & fullPythonPath
+If fso.FileExists(fullPythonPath) Then
+    WriteLog "[DEBUG] ✓ Python-Datei existiert"
+    Dim fileInfo
+    Set fileInfo = fso.GetFile(fullPythonPath)
+    WriteLog "[DEBUG] Dateigröße: " & fileInfo.Size & " Bytes"
+    WriteLog "[DEBUG] Erstellt: " & fileInfo.DateCreated
+    WriteLog "[DEBUG] Geändert: " & fileInfo.DateLastModified
+Else
+    WriteLog "[DEBUG] ✗ Python-Datei existiert nicht!"
+End If
+' Prüfe Python-Version
+On Error Resume Next
+Dim versionCheck
+Set versionCheck = WshShell.Exec("""" & fullPythonPath & """ --version")
+Dim versionOutput
+versionOutput = versionCheck.StdOut.ReadAll
+versionCheck.WaitOnReturn = True
+If versionCheck.ExitCode = 0 Then
+    WriteLog "[DEBUG] Python-Version: " & Trim(versionOutput)
+Else
+    WriteLog "[DEBUG] ✗ Konnte Python-Version nicht ermitteln (Exit-Code: " & versionCheck.ExitCode & ")"
+End If
+On Error Goto 0
+WriteLog "[DEBUG] =========================================="
 
 ' Erstelle/aktualisiere Shortcut (.lnk) mit Icon für Taskleiste (lokal)
 ' WICHTIG: Shortcut zeigt auf die VBS-Datei, nicht direkt auf pythonw.exe
@@ -758,37 +1144,66 @@ If venvNeedsCreation Then
     venvCheckCmd = fullPythonPath & " -m venv --help"
     Dim venvCheckResult
     Set venvCheckResult = WshShell.Exec(venvCheckCmd)
-    venvCheckResult.StdOut.ReadAll
+    Dim venvCheckOutput
+    venvCheckOutput = venvCheckResult.StdOut.ReadAll
+    Dim venvCheckError
+    venvCheckError = venvCheckResult.StdErr.ReadAll
     venvCheckResult.WaitOnReturn = True
+    If Len(venvCheckError) > 0 Then
+        WriteLog "[DEBUG] venv --help StdErr: " & venvCheckError
+    End If
     
     If venvCheckResult.ExitCode = 0 Then
         Dim venvCmd
         venvCmd = fullPythonPath & " -m venv """ & venvPath & """"
         WriteLog "[INFO] venv-Befehl: " & venvCmd
         Dim venvResult
-        venvResult = WshShell.Run(venvCmd, 1, True) ' 1 = sichtbar
+        venvResult = RunPythonCommand(venvCmd, "venv-Erstellung", 0) ' 0 = versteckt
         WriteLog "[INFO] venv Exit-Code: " & venvResult
         
         If venvResult = 0 Then
             ' Warte kurz, damit venv vollständig erstellt wird
             WScript.Sleep 2000
+            WriteLog "[DEBUG] =========================================="
+            WriteLog "[DEBUG] venv-Erstellung Details:"
+            WriteLog "[DEBUG] =========================================="
+            WriteLog "[DEBUG] venv-Pfad: " & venvPath
+            WriteLog "[DEBUG] Exit-Code: " & venvResult
+            WriteLog "[DEBUG] Prüfe venv-Verzeichnis..."
             
             ' Prüfe ob venv jetzt verfügbar ist
             venvPythonPath = venvPath & "\Scripts\python.exe"
+            WriteLog "[DEBUG] Prüfe Windows-Pfad: " & venvPythonPath
             If Not fso.FileExists(venvPythonPath) Then
                 venvPythonPath = venvPath & "\bin\python"
+                WriteLog "[DEBUG] Prüfe Linux-Pfad: " & venvPythonPath
             End If
             If fso.FileExists(venvPythonPath) Then
                 ' Verwende venv Python für weitere Installationen
                 fullPythonPath = venvPythonPath
                 WriteLog "[OK] venv erfolgreich erstellt"
                 WriteLog "[INFO] Verwende venv Python: " & fullPythonPath
+                WriteLog "[DEBUG] ✓ venv Python gefunden und wird verwendet"
             Else
                 WriteLog "[WARNING] venv erstellt, aber Python nicht gefunden - verwende System-Python"
+                WriteLog "[DEBUG] ✗ venv Python nicht gefunden in beiden Pfaden"
+                If fso.FolderExists(venvPath) Then
+                    WriteLog "[DEBUG] venv-Verzeichnis existiert, aber Python fehlt"
+                Else
+                    WriteLog "[DEBUG] venv-Verzeichnis existiert nicht"
+                End If
             End If
+            WriteLog "[DEBUG] =========================================="
         Else
             WriteLog "[WARNING] venv-Erstellung fehlgeschlagen (Exit-Code: " & venvResult & ")"
             WriteLog "[INFO] Verwende System-Python weiterhin (venv ist optional)"
+            WriteLog "[DEBUG] =========================================="
+            WriteLog "[DEBUG] venv-Erstellung Fehler-Details:"
+            WriteLog "[DEBUG] =========================================="
+            WriteLog "[DEBUG] venv-Befehl: " & venvCmd
+            WriteLog "[DEBUG] Exit-Code: " & venvResult
+            WriteLog "[DEBUG] venv-Pfad: " & venvPath
+            WriteLog "[DEBUG] =========================================="
         End If
     Else
         WriteLog "[WARNING] venv-Modul nicht verfügbar - überspringe venv-Erstellung"
@@ -818,15 +1233,20 @@ Set pipCheck = WshShell.Exec(fullPythonPath & " -m pip --version")
 Dim pipOutput
 pipOutput = pipCheck.StdOut.ReadAll
 pipCheck.WaitOnReturn = True
-WriteLog "[INFO] pip --version Ausgabe: " & pipOutput
-WriteLog "[INFO] pip --version Exit-Code: " & pipCheck.ExitCode
-If pipCheck.ExitCode <> 0 Then
+        WriteLog "[INFO] pip --version Ausgabe: " & pipOutput
+        WriteLog "[INFO] pip --version Exit-Code: " & pipCheck.ExitCode
+        Dim pipError
+        pipError = pipCheck.StdErr.ReadAll
+        If Len(pipError) > 0 Then
+            WriteLog "[DEBUG] pip --version StdErr: " & pipError
+        End If
+        If pipCheck.ExitCode <> 0 Then
     WriteLog "[WARNING] pip nicht verfügbar - versuche Installation..."
     Dim ensurepipCmd
     ensurepipCmd = fullPythonPath & " -m ensurepip --upgrade --default-pip"
     WriteLog "[INFO] ensurepip-Befehl: " & ensurepipCmd
     Dim ensurepipResult
-    ensurepipResult = WshShell.Run(ensurepipCmd, 1, True) ' 1 = sichtbar
+    ensurepipResult = RunPythonCommand(ensurepipCmd, "ensurepip-Installation", 0) ' 0 = versteckt
     WriteLog "[INFO] ensurepip Exit-Code: " & ensurepipResult
     
     If ensurepipResult = 0 Then
@@ -852,7 +1272,7 @@ If pipCheck.ExitCode <> 0 Then
                 Dim installPipCmd
                 installPipCmd = fullPythonPath & " """ & getPipPath & """"
                 Dim installPipResult
-                installPipResult = WshShell.Run(installPipCmd, 1, True)
+                installPipResult = RunPythonCommand(installPipCmd, "get-pip.py Installation", 0) ' 0 = versteckt
                 If installPipResult = 0 Then
                     WriteLog "[OK] pip über get-pip.py erfolgreich installiert"
                 Else
@@ -876,7 +1296,7 @@ If pipCheck.ExitCode <> 0 Then
             Dim installPipCmd2
             installPipCmd2 = fullPythonPath & " """ & getPipPath2 & """"
             Dim installPipResult2
-            installPipResult2 = WshShell.Run(installPipCmd2, 1, True)
+            installPipResult2 = RunPythonCommand(installPipCmd2, "get-pip.py Installation (Fallback)", 0) ' 0 = versteckt
             If installPipResult2 = 0 Then
                 WriteLog "[OK] pip über get-pip.py erfolgreich installiert"
             Else
@@ -890,7 +1310,7 @@ Else
 End If
 On Error Goto 0
 
-' Prüfe und installiere requirements.txt
+' Prüfe und installiere requirements.txt (nur wenn nötig)
 If fso.FileExists(requirementsFile) Then
     WriteLog "[INFO] =========================================="
     WriteLog "[INFO] Prüfe requirements.txt..."
@@ -902,23 +1322,55 @@ If fso.FileExists(requirementsFile) Then
     pipCheck.WaitOnReturn = True
     If pipCheck.ExitCode = 0 Then
         WriteLog "[OK] pip verfügbar"
-        ' Installiere/aktualisiere requirements.txt
-        Dim pipInstallCmd
-        pipInstallCmd = fullPythonPath & " -m pip install --upgrade -r """ & requirementsFile & """"
-        WriteLog "[INFO] =========================================="
-        WriteLog "[INFO] Starte requirements.txt Installation..."
-        WriteLog "[INFO] Befehl: " & pipInstallCmd
-        WriteLog "[INFO] =========================================="
-        Dim pipResult
-        pipResult = WshShell.Run(pipInstallCmd, 1, True) ' 1 = sichtbar, damit Ausgabe gesehen wird
-        WriteLog "[INFO] pip install Exit-Code: " & pipResult
         
-        ' Prüfe ob Installation erfolgreich war
+        ' Prüfe ob wichtige Pakete bereits installiert sind
+        Dim packagesInstalled
+        packagesInstalled = True
+        Dim testPackages
+        testPackages = Array("requests", "yt_dlp", "mutagen")
+        WriteLog "[INFO] Prüfe ob Pakete bereits installiert sind..."
+        For Each testPackage In testPackages
+            Dim testCmd
+            testCmd = fullPythonPath & " -c ""import " & testPackage & """"
+            Dim testResult
+            Set testResult = WshShell.Exec(testCmd)
+            Dim testOutput
+            testOutput = testResult.StdOut.ReadAll
+            Dim testError
+            testError = testResult.StdErr.ReadAll
+            testResult.WaitOnReturn = True
+            If testResult.ExitCode <> 0 Then
+                packagesInstalled = False
+                WriteLog "[INFO] Paket " & testPackage & " fehlt - Installation erforderlich"
+                If Len(testError) > 0 Then
+                    WriteLog "[DEBUG] Import-Fehler: " & testError
+                End If
+                Exit For
+            End If
+        Next
+        
+        ' Installiere/aktualisiere requirements.txt nur wenn Pakete fehlen
+        If Not packagesInstalled Then
+            Dim pipInstallCmd
+            pipInstallCmd = fullPythonPath & " -m pip install --upgrade -r """ & requirementsFile & """"
+            WriteLog "[INFO] =========================================="
+            WriteLog "[INFO] Starte requirements.txt Installation..."
+            WriteLog "[INFO] Befehl: " & pipInstallCmd
+            WriteLog "[INFO] =========================================="
+            Dim pipResult
+            pipResult = RunPythonCommand(pipInstallCmd, "requirements.txt Installation", 0) ' 0 = versteckt
+            WriteLog "[INFO] pip install Exit-Code: " & pipResult
+            
+            ' Prüfe ob Installation erfolgreich war
         If pipResult = 0 Then
             WriteLog "[OK] requirements.txt erfolgreich installiert/aktualisiert"
+            WriteLog "[DEBUG] ✓ pip install erfolgreich abgeschlossen"
             
             ' Prüfe ob wichtige Pakete jetzt verfügbar sind
             WriteLog "[INFO] Prüfe wichtige Pakete..."
+            WriteLog "[DEBUG] =========================================="
+            WriteLog "[DEBUG] Paket-Verfügbarkeits-Prüfung:"
+            WriteLog "[DEBUG] =========================================="
             Dim testPackages
             testPackages = Array("requests", "yt_dlp", "mutagen")
             Dim allPackagesOk
@@ -933,16 +1385,24 @@ If fso.FileExists(requirementsFile) Then
                 testResult.WaitOnReturn = True
                 If testResult.ExitCode = 0 Then
                     WriteLog "[OK] Paket " & testPackage & " verfügbar"
+                    WriteLog "[DEBUG]   ✓ " & testPackage & " erfolgreich importiert"
                 Else
                     WriteLog "[WARNING] Paket " & testPackage & " nicht verfügbar"
+                    WriteLog "[DEBUG]   ✗ " & testPackage & " konnte nicht importiert werden (Exit-Code: " & testResult.ExitCode & ")"
+                    Dim testError
+                    testError = testResult.StdErr.ReadAll
+                    If Len(testError) > 0 Then
+                        WriteLog "[DEBUG]   Fehler-Ausgabe: " & testError
+                    End If
                     allPackagesOk = False
                 End If
                 On Error Goto 0
             Next
+            WriteLog "[DEBUG] =========================================="
             
             If Not allPackagesOk Then
                 WriteLog "[WARNING] Einige Pakete fehlen noch - versuche erneute Installation..."
-                pipResult = WshShell.Run(pipInstallCmd, 1, True)
+                pipResult = RunPythonCommand(pipInstallCmd, "requirements.txt Installation (Wiederholung)", 0) ' 0 = versteckt
                 WriteLog "[INFO] Zweiter Installationsversuch Exit-Code: " & pipResult
             End If
         Else
@@ -950,12 +1410,14 @@ If fso.FileExists(requirementsFile) Then
             WriteLog "[INFO] Versuche erneut mit --user Flag..."
             Dim pipInstallCmdUser
             pipInstallCmdUser = fullPythonPath & " -m pip install --user --upgrade -r """ & requirementsFile & """"
-            pipResult = WshShell.Run(pipInstallCmdUser, 1, True)
+            pipResult = RunPythonCommand(pipInstallCmdUser, "requirements.txt Installation (--user)", 0) ' 0 = versteckt
             If pipResult = 0 Then
                 WriteLog "[OK] requirements.txt erfolgreich installiert (--user)"
             Else
                 WriteLog "[ERROR] requirements.txt Installation fehlgeschlagen auch mit --user Flag"
             End If
+        Else
+            WriteLog "[OK] Alle Pakete bereits installiert - überspringe Installation"
         End If
     Else
         WriteLog "[WARNING] pip nicht verfügbar - überspringe requirements.txt Installation"
@@ -1002,28 +1464,50 @@ If ffmpegCheck.ExitCode <> 0 Then
     WriteLog "[INFO] Download von: https://ffmpeg.org/download.html"
     WriteLog "[INFO] Oder installieren Sie über: winget install ffmpeg (falls winget verfügbar)"
     
-    ' Versuche winget Installation
-    On Error Resume Next
-    Dim wingetCheck
-    Set wingetCheck = WshShell.Exec("winget --version")
-    wingetCheck.WaitOnReturn = True
-    If wingetCheck.ExitCode = 0 Then
-        WriteLog "[INFO] winget verfügbar - versuche ffmpeg Installation..."
-        Dim wingetCmd
-        wingetCmd = "winget install -e --id Gyan.FFmpeg --silent --accept-package-agreements --accept-source-agreements"
-        WriteLog "[INFO] winget-Befehl: " & wingetCmd
-        Dim wingetResult
-        wingetResult = WshShell.Run(wingetCmd, 0, True) ' 0 = versteckt
-        WriteLog "[INFO] winget Exit-Code: " & wingetResult
-        If wingetResult = 0 Then
-            WriteLog "[OK] ffmpeg erfolgreich über winget installiert"
-        Else
-            WriteLog "[WARNING] ffmpeg-Installation über winget fehlgeschlagen"
-        End If
+    ' Prüfe ob ffmpeg bereits lokal installiert ist (in app_dir/ffmpeg/bin)
+    Dim appDir, localFfmpeg
+    appDir = scriptPath
+    localFfmpeg = appDir & "\ffmpeg\bin\ffmpeg.exe"
+    If fso.FileExists(localFfmpeg) Then
+        WriteLog "[OK] ffmpeg lokal gefunden: " & localFfmpeg
     Else
-        WriteLog "[INFO] winget nicht verfügbar - überspringe automatische ffmpeg-Installation"
+        ' Versuche winget Installation (nur einmal, nicht bei jedem Start)
+        On Error Resume Next
+        Dim wingetCheck
+        Set wingetCheck = WshShell.Exec("winget --version")
+        wingetCheck.WaitOnReturn = True
+        If wingetCheck.ExitCode = 0 Then
+            ' Prüfe ob bereits versucht wurde (Flag-Datei)
+            Dim ffmpegInstallFlag
+            ffmpegInstallFlag = scriptPath & "\.ffmpeg_install_attempted"
+            If Not fso.FileExists(ffmpegInstallFlag) Then
+                WriteLog "[INFO] winget verfügbar - versuche ffmpeg Installation..."
+                Dim wingetCmd
+                wingetCmd = "winget install -e --id Gyan.FFmpeg --silent --accept-package-agreements --accept-source-agreements"
+                WriteLog "[INFO] winget-Befehl: " & wingetCmd
+                Dim wingetResult
+                wingetResult = WshShell.Run(wingetCmd, 0, True) ' 0 = versteckt
+                WriteLog "[INFO] winget Exit-Code: " & wingetResult
+                If wingetResult = 0 Then
+                    WriteLog "[OK] ffmpeg erfolgreich über winget installiert"
+                Else
+                    WriteLog "[WARNING] ffmpeg-Installation über winget fehlgeschlagen"
+                End If
+                ' Erstelle Flag-Datei, damit nicht bei jedem Start versucht wird
+                On Error Resume Next
+                Dim flagStream
+                Set flagStream = fso.CreateTextFile(ffmpegInstallFlag, True)
+                flagStream.WriteLine Now()
+                flagStream.Close
+                On Error Goto 0
+            Else
+                WriteLog "[INFO] ffmpeg-Installation wurde bereits versucht - überspringe"
+            End If
+        Else
+            WriteLog "[INFO] winget nicht verfügbar - überspringe automatische ffmpeg-Installation"
+        End If
+        On Error Goto 0
     End If
-    On Error Goto 0
 Else
     WriteLog "[OK] ffmpeg verfügbar"
 End If
@@ -1044,19 +1528,32 @@ WriteLog "[INFO] =========================================="
 WshShell.Environment("Process")("UNIVERSAL_DOWNLOADER_STARTED_BY_LAUNCHER") = "1"
 WriteLog "[INFO] Setze Umgebungsvariable: UNIVERSAL_DOWNLOADER_STARTED_BY_LAUNCHER=1"
 
+WriteLog "[DEBUG] =========================================="
+WriteLog "[DEBUG] Starte Anwendung..."
+WriteLog "[DEBUG] =========================================="
+WriteLog "[DEBUG] Python-Pfad: " & fullPythonPath
+WriteLog "[DEBUG] Script-Pfad: " & pythonScript
+WriteLog "[DEBUG] Arbeitsverzeichnis: " & scriptPath
+WriteLog "[DEBUG] Start-Befehl: " & startCmd
+WriteLog "[DEBUG] Umgebungsvariable: UNIVERSAL_DOWNLOADER_STARTED_BY_LAUNCHER=1"
 On Error Resume Next
 objShell.ShellExecute fullPythonPath, pythonScript, scriptPath, "open", 0
 Dim startResult
 If Err.Number = 0 Then
     startResult = 0
     WriteLog "[INFO] Start-Befehl ausgeführt (ShellExecute), Exit-Code: " & startResult
+    WriteLog "[DEBUG] ✓ ShellExecute erfolgreich"
 Else
     WriteLog "[WARNING] ShellExecute fehlgeschlagen, verwende WshShell.Run: " & Err.Description
+    WriteLog "[DEBUG] Fehler-Nummer: " & Err.Number
+    WriteLog "[DEBUG] Fehler-Quelle: " & Err.Source
     WshShell.CurrentDirectory = scriptPath
     startResult = WshShell.Run(startCmd, 0, False)
     WriteLog "[INFO] Start-Befehl ausgeführt (WshShell.Run), Exit-Code: " & startResult
+    WriteLog "[DEBUG] ✓ WshShell.Run erfolgreich"
 End If
 On Error Goto 0
+WriteLog "[DEBUG] =========================================="
 
 ' Prüfe ob Prozess gestartet wurde
 WScript.Sleep 2000

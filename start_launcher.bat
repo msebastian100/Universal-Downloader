@@ -14,6 +14,16 @@ if "!datetime!"=="" (
 echo [!datetime!] ========================================== >> "%LOG_FILE%"
 echo [!datetime!] Launcher gestartet: %~f0 >> "%LOG_FILE%"
 echo [!datetime!] Verzeichnis: %~dp0 >> "%LOG_FILE%"
+echo [!datetime!] [DEBUG] ========================================== >> "%LOG_FILE%"
+echo [!datetime!] [DEBUG] System-Informationen: >> "%LOG_FILE%"
+echo [!datetime!] [DEBUG] ========================================== >> "%LOG_FILE%"
+echo [!datetime!] [DEBUG] Betriebssystem: %OS% >> "%LOG_FILE%"
+echo [!datetime!] [DEBUG] Architektur: %PROCESSOR_ARCHITECTURE% >> "%LOG_FILE%"
+echo [!datetime!] [DEBUG] Benutzer: %USERNAME% >> "%LOG_FILE%"
+echo [!datetime!] [DEBUG] Computer: %COMPUTERNAME% >> "%LOG_FILE%"
+ver >> "%LOG_FILE%" 2>&1
+echo [!datetime!] [DEBUG] PATH: %PATH% >> "%LOG_FILE%"
+echo [!datetime!] [DEBUG] ========================================== >> "%LOG_FILE%"
 
 if not exist "%LOG_FILE%" (
     set "LOG_FILE=%TEMP%\bat.log.txt"
@@ -347,6 +357,26 @@ echo [!datetime!] [INFO] ========================================== >> "%LOG_FIL
 echo [!datetime!] [INFO] Python gefunden: !FULL_PYTHON_PATH! >> "%LOG_FILE%"
 echo [!datetime!] [INFO] Arbeitsverzeichnis: %~dp0 >> "%LOG_FILE%"
 echo [!datetime!] [INFO] ========================================== >> "%LOG_FILE%"
+echo [!datetime!] [DEBUG] ========================================== >> "%LOG_FILE%"
+echo [!datetime!] [DEBUG] Python-Details: >> "%LOG_FILE%"
+echo [!datetime!] [DEBUG] ========================================== >> "%LOG_FILE%"
+echo [!datetime!] [DEBUG] Python-Executable: %PYTHON_EXE% >> "%LOG_FILE%"
+echo [!datetime!] [DEBUG] Vollständiger Pfad: !FULL_PYTHON_PATH! >> "%LOG_FILE%"
+if exist "!FULL_PYTHON_PATH!" (
+    echo [!datetime!] [DEBUG] ✓ Python-Datei existiert >> "%LOG_FILE%"
+    for %%F in ("!FULL_PYTHON_PATH!") do (
+        echo [!datetime!] [DEBUG] Dateigröße: %%~zF Bytes >> "%LOG_FILE%"
+    )
+) else (
+    echo [!datetime!] [DEBUG] ✗ Python-Datei existiert nicht! >> "%LOG_FILE%"
+)
+!FULL_PYTHON_PATH! --version >> "%LOG_FILE%" 2>&1
+if %errorlevel% == 0 (
+    echo [!datetime!] [DEBUG] ✓ Python-Version erfolgreich ermittelt >> "%LOG_FILE%"
+) else (
+    echo [!datetime!] [DEBUG] ✗ Konnte Python-Version nicht ermitteln (Exit-Code: %errorlevel%) >> "%LOG_FILE%"
+)
+echo [!datetime!] [DEBUG] ========================================== >> "%LOG_FILE%"
 
 REM Pruefe und erstelle venv (virtuelle Umgebung)
 echo [!datetime!] [INFO] ========================================== >> "%LOG_FILE%"
@@ -476,34 +506,45 @@ if exist "requirements.txt" (
         
         if !PIP_RESULT! == 0 (
             echo [!datetime!] [OK] requirements.txt erfolgreich installiert/aktualisiert >> "%LOG_FILE%"
+            echo [!datetime!] [DEBUG] ✓ pip install erfolgreich abgeschlossen >> "%LOG_FILE%"
             
             REM Pruefe ob wichtige Pakete jetzt verfuegbar sind
             echo [!datetime!] [INFO] Pruefe wichtige Pakete... >> "%LOG_FILE%"
+            echo [!datetime!] [DEBUG] ========================================== >> "%LOG_FILE%"
+            echo [!datetime!] [DEBUG] Paket-Verfuegbarkeits-Pruefung: >> "%LOG_FILE%"
+            echo [!datetime!] [DEBUG] ========================================== >> "%LOG_FILE%"
             set ALL_PACKAGES_OK=1
             
             !FULL_PYTHON_PATH! -c "import requests" >> "%LOG_FILE%" 2>&1
             if %errorlevel% == 0 (
                 echo [!datetime!] [OK] Paket requests verfuegbar >> "%LOG_FILE%"
+                echo [!datetime!] [DEBUG]   ✓ requests erfolgreich importiert >> "%LOG_FILE%"
             ) else (
                 echo [!datetime!] [WARNING] Paket requests nicht verfuegbar >> "%LOG_FILE%"
+                echo [!datetime!] [DEBUG]   ✗ requests konnte nicht importiert werden (Exit-Code: %errorlevel%) >> "%LOG_FILE%"
                 set ALL_PACKAGES_OK=0
             )
             
             !FULL_PYTHON_PATH! -c "import yt_dlp" >> "%LOG_FILE%" 2>&1
             if %errorlevel% == 0 (
                 echo [!datetime!] [OK] Paket yt_dlp verfuegbar >> "%LOG_FILE%"
+                echo [!datetime!] [DEBUG]   ✓ yt_dlp erfolgreich importiert >> "%LOG_FILE%"
             ) else (
                 echo [!datetime!] [WARNING] Paket yt_dlp nicht verfuegbar >> "%LOG_FILE%"
+                echo [!datetime!] [DEBUG]   ✗ yt_dlp konnte nicht importiert werden (Exit-Code: %errorlevel%) >> "%LOG_FILE%"
                 set ALL_PACKAGES_OK=0
             )
             
             !FULL_PYTHON_PATH! -c "import mutagen" >> "%LOG_FILE%" 2>&1
             if %errorlevel% == 0 (
                 echo [!datetime!] [OK] Paket mutagen verfuegbar >> "%LOG_FILE%"
+                echo [!datetime!] [DEBUG]   ✓ mutagen erfolgreich importiert >> "%LOG_FILE%"
             ) else (
                 echo [!datetime!] [WARNING] Paket mutagen nicht verfuegbar >> "%LOG_FILE%"
+                echo [!datetime!] [DEBUG]   ✗ mutagen konnte nicht importiert werden (Exit-Code: %errorlevel%) >> "%LOG_FILE%"
                 set ALL_PACKAGES_OK=0
             )
+            echo [!datetime!] [DEBUG] ========================================== >> "%LOG_FILE%"
             
             if !ALL_PACKAGES_OK! == 0 (
                 echo [!datetime!] [WARNING] Einige Pakete fehlen noch - versuche erneute Installation... >> "%LOG_FILE%"
@@ -575,6 +616,14 @@ echo [!datetime!] [INFO] Starte Anwendung... >> "%LOG_FILE%"
 echo [!datetime!] [INFO] Start-Befehl: "!FULL_PYTHON_PATH!" "start.py" >> "%LOG_FILE%"
 echo [!datetime!] [INFO] Arbeitsverzeichnis: %~dp0 >> "%LOG_FILE%"
 echo [!datetime!] [INFO] ========================================== >> "%LOG_FILE%"
+echo [!datetime!] [DEBUG] ========================================== >> "%LOG_FILE%"
+echo [!datetime!] [DEBUG] Starte Anwendung... >> "%LOG_FILE%"
+echo [!datetime!] [DEBUG] ========================================== >> "%LOG_FILE%"
+echo [!datetime!] [DEBUG] Python-Pfad: !FULL_PYTHON_PATH! >> "%LOG_FILE%"
+echo [!datetime!] [DEBUG] Script-Pfad: start.py >> "%LOG_FILE%"
+echo [!datetime!] [DEBUG] Arbeitsverzeichnis: %~dp0 >> "%LOG_FILE%"
+echo [!datetime!] [DEBUG] Umgebungsvariable: UNIVERSAL_DOWNLOADER_STARTED_BY_LAUNCHER=1 >> "%LOG_FILE%"
+echo [!datetime!] [DEBUG] ========================================== >> "%LOG_FILE%"
 
 REM Setze Umgebungsvariable, um zu signalisieren, dass wir über den Launcher gestartet wurden
 REM Dies verhindert, dass das Abhängigkeits-Popup in der GUI erscheint

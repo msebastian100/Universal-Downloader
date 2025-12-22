@@ -17,13 +17,184 @@ from typing import Optional, Tuple
 import json
 import time
 
-# Import Version-Checker
+# Füge das Skript-Verzeichnis zum Python-Pfad hinzu (für Imports)
+# Mehrere Methoden, um das Skript-Verzeichnis zu finden
+script_dir = None
+
+# Methode 1: __file__ (funktioniert normalerweise)
 try:
-    from version import get_version, compare_versions, GITHUB_REPO_URL
-    from updater import UpdateChecker
-except ImportError:
-    print("[ERROR] Konnte Version-Module nicht importieren")
-    sys.exit(1)
+    if __file__:
+        script_dir = Path(__file__).parent.absolute()
+except (NameError, AttributeError):
+    pass
+
+# Methode 2: sys.argv[0] (Fallback)
+if script_dir is None or not script_dir.exists():
+    try:
+        script_dir = Path(sys.argv[0]).parent.absolute()
+    except (IndexError, AttributeError):
+        pass
+
+# Methode 3: Aktuelles Arbeitsverzeichnis (letzter Fallback)
+if script_dir is None or not script_dir.exists():
+    script_dir = Path.cwd()
+
+# Stelle sicher, dass das Arbeitsverzeichnis das Skript-Verzeichnis ist
+try:
+    os.chdir(str(script_dir))
+except (OSError, PermissionError):
+    pass
+
+# Füge zum Python-Pfad hinzu
+if script_dir and str(script_dir) not in sys.path:
+    sys.path.insert(0, str(script_dir))
+
+# Prüfe ob die benötigten Dateien existieren
+version_file = script_dir / "version.py"
+updater_file = script_dir / "updater.py"
+
+# Debug-Ausgabe (sofort, damit sie sichtbar ist)
+import sys as sys_module
+sys_module.stdout.flush()
+sys_module.stderr.flush()
+
+print(f"[DEBUG] ==========================================", flush=True)
+print(f"[DEBUG] Update-Skript Debug-Informationen", flush=True)
+print(f"[DEBUG] ==========================================", flush=True)
+print(f"[DEBUG] Skript-Verzeichnis: {script_dir}", flush=True)
+print(f"[DEBUG] Skript-Verzeichnis existiert: {script_dir.exists() if script_dir else False}", flush=True)
+print(f"[DEBUG] Aktuelles Arbeitsverzeichnis: {os.getcwd()}", flush=True)
+print(f"[DEBUG] Python-Pfad (erste 5): {sys.path[:5]}", flush=True)
+print(f"[DEBUG] version.py existiert: {version_file.exists()}", flush=True)
+if version_file.exists():
+    print(f"[DEBUG] version.py Pfad: {version_file}", flush=True)
+    print(f"[DEBUG] version.py Größe: {version_file.stat().st_size} Bytes", flush=True)
+print(f"[DEBUG] updater.py existiert: {updater_file.exists()}", flush=True)
+if updater_file.exists():
+    print(f"[DEBUG] updater.py Pfad: {updater_file}", flush=True)
+    print(f"[DEBUG] updater.py Größe: {updater_file.stat().st_size} Bytes", flush=True)
+print(f"[DEBUG] ==========================================", flush=True)
+
+# Import Version-Checker
+print(f"[DEBUG] Versuche Import von version und updater...", flush=True)
+
+# Versuche zuerst direkten Import über importlib (robuster)
+import importlib.util
+
+# Importiere version.py
+version_imported = False
+if version_file.exists():
+    try:
+        print(f"[DEBUG] Lade version.py direkt über importlib...", flush=True)
+        spec = importlib.util.spec_from_file_location("version", str(version_file))
+        if spec and spec.loader:
+            version_module = importlib.util.module_from_spec(spec)
+            sys.modules['version'] = version_module
+            spec.loader.exec_module(version_module)
+            # Importiere aus dem Modul
+            get_version = version_module.get_version
+            compare_versions = version_module.compare_versions
+            GITHUB_REPO_URL = version_module.GITHUB_REPO_URL
+            version_imported = True
+            print(f"[DEBUG] ✓ version.py direkt geladen", flush=True)
+    except Exception as e:
+        print(f"[DEBUG] Direkter Import fehlgeschlagen: {e}", flush=True)
+        import traceback
+        print(f"[DEBUG] Traceback: {traceback.format_exc()}", flush=True)
+
+# Fallback: Normaler Import
+if not version_imported:
+    try:
+        from version import get_version, compare_versions, GITHUB_REPO_URL
+        version_imported = True
+        print(f"[DEBUG] ✓ version.py über normalen Import geladen", flush=True)
+    except ImportError as e:
+        print(f"[DEBUG] ✗ version.py Import fehlgeschlagen: {e}", flush=True)
+        import traceback
+        print(f"[DEBUG] Traceback: {traceback.format_exc()}", flush=True)
+
+# Importiere updater.py
+updater_imported = False
+if updater_file.exists():
+    try:
+        print(f"[DEBUG] Lade updater.py direkt über importlib...", flush=True)
+        spec = importlib.util.spec_from_file_location("updater", str(updater_file))
+        if spec and spec.loader:
+            updater_module = importlib.util.module_from_spec(spec)
+            sys.modules['updater'] = updater_module
+            spec.loader.exec_module(updater_module)
+            # Importiere aus dem Modul
+            UpdateChecker = updater_module.UpdateChecker
+            updater_imported = True
+            print(f"[DEBUG] ✓ updater.py direkt geladen", flush=True)
+    except Exception as e:
+        print(f"[DEBUG] Direkter Import fehlgeschlagen: {e}", flush=True)
+        import traceback
+        print(f"[DEBUG] Traceback: {traceback.format_exc()}", flush=True)
+
+# Fallback: Normaler Import
+if not updater_imported:
+    try:
+        from updater import UpdateChecker
+        updater_imported = True
+        print(f"[DEBUG] ✓ updater.py über normalen Import geladen", flush=True)
+    except ImportError as e:
+        print(f"[DEBUG] ✗ updater.py Import fehlgeschlagen: {e}", flush=True)
+        import traceback
+        print(f"[DEBUG] Traceback: {traceback.format_exc()}", flush=True)
+
+# Prüfe ob beide Module importiert wurden
+if not version_imported or not updater_imported:
+    e_msg = "Version-Module nicht importiert: "
+    if not version_imported:
+        e_msg += "version.py fehlt; "
+    if not updater_imported:
+        e_msg += "updater.py fehlt; "
+    print(f"[ERROR] {e_msg}", flush=True)
+    print(f"[DEBUG] Finale Prüfung:", flush=True)
+    print(f"[DEBUG]   version_imported: {version_imported}", flush=True)
+    print(f"[DEBUG]   updater_imported: {updater_imported}", flush=True)
+    print(f"[DEBUG]   version_file.exists(): {version_file.exists()}", flush=True)
+    print(f"[DEBUG]   updater_file.exists(): {updater_file.exists()}", flush=True)
+    print(f"[DEBUG] Python-Pfad: {sys.path}", flush=True)
+    print(f"[DEBUG] Skript-Verzeichnis: {script_dir}", flush=True)
+    print(f"[DEBUG] Aktuelles Arbeitsverzeichnis: {os.getcwd()}", flush=True)
+    print(f"[DEBUG] __file__: {__file__ if '__file__' in globals() else 'N/A'}", flush=True)
+    print(f"[DEBUG] sys.argv[0]: {sys.argv[0] if len(sys.argv) > 0 else 'N/A'}", flush=True)
+    
+    # Versuche version.py direkt zu finden
+    if version_file.exists():
+        print(f"[DEBUG] version.py Pfad: {version_file}", flush=True)
+        print(f"[DEBUG] version.py Größe: {version_file.stat().st_size} Bytes", flush=True)
+    else:
+        print(f"[DEBUG] ✗ version.py nicht gefunden in: {script_dir}", flush=True)
+        # Suche in anderen Verzeichnissen
+        for search_dir in [Path.cwd(), Path.home(), Path(__file__).parent if '__file__' in globals() else None]:
+            if search_dir and search_dir.exists():
+                test_version = search_dir / "version.py"
+                if test_version.exists():
+                    print(f"[DEBUG] version.py gefunden in: {test_version}", flush=True)
+                    if str(search_dir) not in sys.path:
+                        sys.path.insert(0, str(search_dir))
+                    try:
+                        from version import get_version, compare_versions, GITHUB_REPO_URL
+                        from updater import UpdateChecker
+                        print(f"[DEBUG] ✓ Module erfolgreich importiert nach Pfad-Erweiterung", flush=True)
+                        version_imported = True
+                        updater_imported = True
+                        break
+                    except ImportError as e:
+                        print(f"[DEBUG] Import nach Pfad-Erweiterung fehlgeschlagen: {e}", flush=True)
+    
+    if updater_file.exists():
+        print(f"[DEBUG] updater.py Pfad: {updater_file}", flush=True)
+    else:
+        print(f"[DEBUG] ✗ updater.py nicht gefunden in: {script_dir}", flush=True)
+    
+    # Wenn immer noch nicht importiert, beende mit Fehler
+    if not version_imported or not updater_imported:
+        print(f"[ERROR] Import endgültig fehlgeschlagen", flush=True)
+        sys.exit(1)
 
 
 def check_git_available() -> bool:
