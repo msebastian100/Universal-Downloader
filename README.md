@@ -61,24 +61,31 @@ Dieser Downloader ist **nur für privaten Gebrauch** bestimmt. Bitte beachten Si
 
 ### Automatische Installation (empfohlen)
 
+**Windows (einfachste Methode):**
+1. Doppelklick auf `start_launcher.vbs` oder `start_launcher.bat`
+2. Die Launcher installieren automatisch:
+   - Python (falls nicht vorhanden, über Microsoft Store oder winget)
+   - Virtuelle Umgebung (`venv`)
+   - Alle Python-Abhängigkeiten (`requirements.txt`)
+   - ffmpeg (über winget, falls möglich)
+   - tkinter (normalerweise mit Python installiert)
+   - Erstellen Desktop- und Startmenü-Verknüpfungen
+3. Die Anwendung startet automatisch nach der Installation
+
 **Linux/macOS:**
 ```bash
 chmod +x install.sh
 ./install.sh
 ```
 
-**Windows:**
-```bash
-# Führen Sie install.sh in Git Bash oder WSL aus
-# Oder installieren Sie manuell (siehe unten)
-```
-
-Das Installationsskript:
+Das Installationsskript (`install.sh`):
 - Erstellt eine virtuelle Umgebung (`venv`)
 - Installiert alle Python-Abhängigkeiten
 - Installiert ffmpeg (falls möglich)
 - Installiert fehlende System-Pakete (z.B. `python3-tk` auf Linux)
 - Erstellt Desktop-Verknüpfungen
+
+**Hinweis für Windows:** Die Launcher (`start_launcher.vbs` und `start_launcher.bat`) führen automatisch alle Installationsschritte durch, auch auf einem "cleanen PC" ohne vorinstalliertes Python. Einfach die Datei doppelklicken!
 
 ### Manuelle Installation
 
@@ -124,12 +131,35 @@ chmod +x start_launcher.sh
 cscript start_launcher.vbs
 ```
 
+**Windows (mit BAT-Launcher):**
+```bash
+# Doppelklick auf start_launcher.bat
+# Oder in der Kommandozeile:
+start_launcher.bat
+```
+
+**Hinweis:** Beide Windows-Launcher (`start_launcher.vbs` und `start_launcher.bat`) führen die gleichen Funktionen aus. Die VBS-Datei ist für Doppelklick optimiert (kein Konsolen-Fenster), die BAT-Datei zeigt die Ausgabe in einem Konsolen-Fenster.
+
 **Was machen die Launcher?**
-- Beide Launcher (`start_launcher.sh` und `start_launcher.vbs`) führen automatisch `start.py` aus
-- `start.py` prüft alle Abhängigkeiten
-- Installiert fehlende Pakete bei Bedarf
-- Startet die GUI mit korrekter Konfiguration
-- Führt Update-Checks durch (Windows)
+- **Windows (`start_launcher.vbs` / `start_launcher.bat`):**
+  - Installiert Python automatisch (falls nicht vorhanden, über Microsoft Store oder winget)
+  - Erstellt virtuelle Umgebung (`venv`)
+  - Installiert alle Python-Abhängigkeiten (`requirements.txt`)
+  - Installiert ffmpeg (über winget, falls möglich)
+  - Prüft tkinter (normalerweise mit Python installiert)
+  - Erstellt Desktop- und Startmenü-Verknüpfungen
+  - Führt Update-Checks durch
+  - Startet die GUI mit korrekter Konfiguration
+  
+- **Linux/macOS (`start_launcher.sh`):**
+  - Prüft alle Abhängigkeiten
+  - Installiert fehlende Pakete bei Bedarf (z.B. `python3-tk`, `python3-venv`)
+  - Erstellt virtuelle Umgebung (`venv`)
+  - Installiert alle Python-Abhängigkeiten
+  - Erstellt Desktop-Verknüpfungen (`.desktop` Datei)
+  - Startet die GUI mit korrekter Konfiguration
+
+- **Alle Launcher führen automatisch `start.py` aus**, das die GUI startet
 
 **Alternative Methoden:**
 
