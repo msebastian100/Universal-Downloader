@@ -4245,3 +4245,2260 @@ class DeezerDownloaderGUI:
                             url_display = episode_title[:60] + "..." if episode_title and len(episode_title) > 60 else (episode_title or url[:60] + "..." if len(url) > 60 else url)
                     else:
                         url_display = url[:60] + "..." if len(url) > 60 else url
+                else:
+                    url = item
+                    status = 'Wartend'
+                    quality = self.video_quality_var.get()
+                    format_val = self.video_format_var.get()
+                    added_str = "Jetzt"
+                    url_display = url[:60] + "..." if len(url) > 60 else url
+                
+                queue_tree.insert("", tk.END, values=(
+                    status,
+                    url_display,
+                    quality,
+                    format_val,
+                    added_str
+                ), tags=(url,))
+        
+        refresh_queue()
+        
+        def remove_selected():
+            selection = queue_tree.selection()
+            if selection:
+                item_id = selection[0]
+                item_values = queue_tree.item(item_id, 'values')
+                url = item_values[1] if len(item_values) > 1 else None
+                
+                # Finde und entferne aus Queue
+                for i, queue_item in enumerate(self.video_download_queue):
+                    item_url = queue_item.get('url', queue_item) if isinstance(queue_item, dict) else queue_item
+                    if item_url == url or (isinstance(url, str) and url in str(item_url)):
+                        self.video_download_queue.pop(i)
+                        break
+                refresh_queue()
+                self._update_queue_status()
+        
+        def clear_queue():
+            if messagebox.askyesno("Bestätigen", "Queue wirklich löschen?"):
+                self.video_download_queue.clear()
+                refresh_queue()
+                self._update_queue_status()
+        
+        def move_up():
+            selection = queue_tree.selection()
+            if selection:
+                item_id = selection[0]
+                index = queue_tree.index(item_id)
+                if index > 0:
+                    # Tausche Positionen
+                    self.video_download_queue[index], self.video_download_queue[index-1] = \
+                        self.video_download_queue[index-1], self.video_download_queue[index]
+                    refresh_queue()
+                    queue_tree.selection_set(queue_tree.get_children()[index-1])
+                    self._update_queue_status()
+        
+        def move_down():
+            selection = queue_tree.selection()
+            if selection:
+                item_id = selection[0]
+                index = queue_tree.index(item_id)
+                if index < len(self.video_download_queue) - 1:
+                    # Tausche Positionen
+                    self.video_download_queue[index], self.video_download_queue[index+1] = \
+                        self.video_download_queue[index+1], self.video_download_queue[index]
+                    refresh_queue()
+                    queue_tree.selection_set(queue_tree.get_children()[index+1])
+                    self._update_queue_status()
+        
+        def start_queue():
+            """Startet die Queue manuell"""
+            if not self.video_download_queue:
+                messagebox.showwarning("Warnung", "Queue ist leer!")
+                return
+            
+            # Prüfe ob bereits ein Download läuft
+            is_download_running = (
+                self.video_download_process is not None or 
+                (hasattr(self, 'video_download_episodes_total') and self.video_download_episodes_total > 0)
+            )
+            
+            if is_download_running:
+                messagebox.showwarning("Warnung", "Ein Download läuft bereits. Die Queue wird automatisch fortgesetzt, sobald der aktuelle Download fertig ist.")
+                return
+            
+            if messagebox.askyesno("Queue starten", f"{len(self.video_download_queue)} Downloads in der Queue.\n\nDownloads nacheinander starten?"):
+                queue_window.destroy()
+                self.start_queue_download()
+        
+        # Buttons in Header-Frame einfügen (button_frame wurde bereits oben erstellt)
+        ttk.Button(button_frame, text="▶ Starten", command=start_queue).pack(side=tk.LEFT, padx=2)
+        ttk.Button(button_frame, text="↑", command=move_up, width=3).pack(side=tk.LEFT, padx=2)
+        ttk.Button(button_frame, text="↓", command=move_down, width=3).pack(side=tk.LEFT, padx=2)
+        ttk.Button(button_frame, text="Entfernen", command=remove_selected).pack(side=tk.LEFT, padx=2)
+        ttk.Button(button_frame, text="Löschen", command=clear_queue).pack(side=tk.LEFT, padx=2)
+        ttk.Button(button_frame, text="🔄", command=refresh_queue, width=3).pack(side=tk.LEFT, padx=2)
+    
+    def start_queue_download(self):
+        """Startet Downloads aus der Queue (manuell)"""
+        if not self.video_download_queue:
+            messagebox.showwarning("Warnung", "Queue ist leer!")
+            return
+        
+        # Prüfe ob bereits ein Download läuft
+        is_download_running = (
+            self.video_download_process is not None or 
+            (hasattr(self, 'video_download_episodes_total') and self.video_download_episodes_total > 0)
+        )
+        
+        if is_download_running:
+            messagebox.showwarning("Warnung", "Ein Download läuft bereits. Die Queue wird automatisch fortgesetzt, sobald der aktuelle Download fertig ist.")
+            return
+        
+        # Starte Queue-Verarbeitung
+        self.video_download_queue_processing = True
+        self.video_log(f"\n{'='*60}")
+        self.video_log(f"📋 Starte Queue-Download: {len(self.video_download_queue)} Downloads")
+        self.video_log(f"{'='*60}\n")
+        self._process_download_queue()
+    
+    def show_scheduled_downloads(self):
+        """Zeigt Dialog für geplante Downloads"""
+        schedule_window = tk.Toplevel(self.root)
+        schedule_window.title("Geplante Downloads")
+        schedule_window.geometry("700x500")
+        schedule_window.transient(self.root)
+        
+        frame = ttk.Frame(schedule_window, padding="10")
+        frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Überschrift
+        ttk.Label(frame, text="Geplante Downloads", font=("Arial", 12, "bold")).pack(anchor=tk.W, pady=(0, 10))
+        
+        # Liste der geplanten Downloads
+        list_frame = ttk.Frame(frame)
+        list_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        
+        # Treeview für geplante Downloads
+        columns = ("URL", "Zeitpunkt", "Status")
+        tree = ttk.Treeview(list_frame, columns=columns, show="headings", height=12)
+        tree.heading("URL", text="URL")
+        tree.heading("Zeitpunkt", text="Geplant für")
+        tree.heading("Status", text="Status")
+        tree.column("URL", width=400)
+        tree.column("Zeitpunkt", width=150)
+        tree.column("Status", width=100)
+        
+        scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=tree.yview)
+        tree.configure(yscrollcommand=scrollbar.set)
+        
+        tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Aktualisiere Liste
+        def refresh_list():
+            tree.delete(*tree.get_children())
+            for item in self.video_scheduled_downloads:
+                status = "Wartend" if item['scheduled_time'] > datetime.now() else "Bereit"
+                tree.insert("", tk.END, values=(
+                    item['url'][:60] + "..." if len(item['url']) > 60 else item['url'],
+                    item['scheduled_time'].strftime("%Y-%m-%d %H:%M"),
+                    status
+                ), tags=(item['url'],))
+        
+        refresh_list()
+        
+        # Buttons
+        button_frame = ttk.Frame(frame)
+        button_frame.pack(fill=tk.X)
+        
+        def add_scheduled():
+            add_window = tk.Toplevel(schedule_window)
+            add_window.title("Download vormerken")
+            add_window.geometry("500x300")
+            add_window.transient(schedule_window)
+            
+            add_frame = ttk.Frame(add_window, padding="20")
+            add_frame.pack(fill=tk.BOTH, expand=True)
+            
+            ttk.Label(add_frame, text="URL:").pack(anchor=tk.W, pady=(0, 5))
+            url_entry = ttk.Entry(add_frame, width=60)
+            url_entry.pack(fill=tk.X, pady=(0, 15))
+            
+            ttk.Label(add_frame, text="Geplant für (YYYY-MM-DD HH:MM):").pack(anchor=tk.W, pady=(0, 5))
+            time_entry = ttk.Entry(add_frame, width=20)
+            time_entry.pack(anchor=tk.W, pady=(0, 15))
+            # Vorschlag: Heute 20:15
+            default_time = datetime.now().replace(hour=20, minute=15, second=0, microsecond=0)
+            if default_time < datetime.now():
+                default_time = default_time.replace(day=default_time.day + 1)
+            time_entry.insert(0, default_time.strftime("%Y-%m-%d %H:%M"))
+            
+            def save_scheduled():
+                url = url_entry.get().strip()
+                time_str = time_entry.get().strip()
+                
+                if not url:
+                    messagebox.showerror("Fehler", "Bitte URL eingeben!")
+                    return
+                
+                try:
+                    scheduled_time = datetime.strptime(time_str, "%Y-%m-%d %H:%M")
+                    if scheduled_time < datetime.now():
+                        messagebox.showerror("Fehler", "Zeitpunkt muss in der Zukunft liegen!")
+                        return
+                    
+                    self.video_scheduled_downloads.append({
+                        'url': url,
+                        'scheduled_time': scheduled_time,
+                        'settings': {
+                            'quality': self.video_quality_var.get(),
+                            'format': self.video_format_var.get(),
+                            'subtitle': self.video_subtitle_var.get(),
+                            'subtitle_lang': self.video_subtitle_lang_var.get(),
+                            'description': self.video_description_var.get(),
+                            'thumbnail': self.video_thumbnail_var.get(),
+                            'resume': self.video_resume_var.get(),
+                            'metadata': True,  # Immer aktiviert
+                            'speed_limit': self.settings.get('speed_limit_value', '5') if self.settings.get('speed_limit_enabled', False) else None
+                        }
+                    })
+                    
+                    self._save_video_data()
+                    refresh_list()
+                    add_window.destroy()
+                    messagebox.showinfo("Erfolg", f"Download für {scheduled_time.strftime('%Y-%m-%d %H:%M')} vorgemerkt!")
+                except ValueError:
+                    messagebox.showerror("Fehler", "Ungültiges Datum/Zeit-Format! Verwenden Sie: YYYY-MM-DD HH:MM")
+            
+            ttk.Button(add_frame, text="Vormerken", command=save_scheduled).pack(pady=10)
+            ttk.Button(add_frame, text="Abbrechen", command=add_window.destroy).pack()
+        
+        def remove_selected():
+            selection = tree.selection()
+            if selection:
+                item = tree.item(selection[0])
+                url = item['tags'][0] if item['tags'] else None
+                if url:
+                    self.video_scheduled_downloads = [s for s in self.video_scheduled_downloads if s['url'] != url]
+                    self._save_video_data()
+                    refresh_list()
+        
+        def clear_all():
+            if messagebox.askyesno("Bestätigen", "Alle geplanten Downloads löschen?"):
+                self.video_scheduled_downloads.clear()
+                self._save_video_data()
+                refresh_list()
+        
+        ttk.Button(button_frame, text="➕ Download vormerken", command=add_scheduled).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="🗑️ Ausgewähltes entfernen", command=remove_selected).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="🗑️ Alle löschen", command=clear_all).pack(side=tk.LEFT, padx=5)
+    
+    def _scheduler_loop(self):
+        """Prüft regelmäßig auf geplante Downloads"""
+        while self.scheduler_running:
+            try:
+                now = datetime.now()
+                ready_downloads = []
+                
+                for scheduled in self.video_scheduled_downloads[:]:
+                    if scheduled['scheduled_time'] <= now:
+                        ready_downloads.append(scheduled)
+                        self.video_scheduled_downloads.remove(scheduled)
+                
+                if ready_downloads:
+                    self._save_video_data()
+                    for scheduled in ready_downloads:
+                        # Starte Download im Hintergrund
+                        self.root.after(0, lambda s=scheduled: self._start_scheduled_download(s))
+                
+                time.sleep(30)  # Prüfe alle 30 Sekunden
+            except Exception as e:
+                self.video_log(f"⚠ Fehler im Scheduler: {e}")
+                time.sleep(60)
+    
+    def _start_scheduled_download(self, scheduled):
+        """Startet einen geplanten Download"""
+        try:
+            self.video_log(f"\n{'='*60}")
+            self.video_log(f"⏰ Starte geplanten Download: {scheduled['url']}")
+            self.video_log(f"{'='*60}")
+            
+            # Setze Einstellungen temporär
+            old_quality = self.video_quality_var.get()
+            old_format = self.video_format_var.get()
+            old_subtitle = self.video_subtitle_var.get()
+            old_subtitle_lang = self.video_subtitle_lang_var.get()
+            old_description = self.video_description_var.get()
+            old_thumbnail = self.video_thumbnail_var.get()
+            old_resume = self.video_resume_var.get()
+            settings = scheduled['settings']
+            # Unterstütze sowohl 'quality' (Legacy) als auch 'default_video_quality'
+            quality = settings.get('quality') or settings.get('default_video_quality', 'best')
+            # Konvertiere 'worst' zu 'niedrigste' für Kompatibilität
+            if quality == 'worst':
+                quality = 'niedrigste'
+            self.video_quality_var.set(quality)
+            self.video_format_var.set(settings.get('format', 'mp4'))
+            self.video_subtitle_var.set(settings.get('subtitle', False))
+            self.video_subtitle_lang_var.set(settings.get('subtitle_lang', 'de'))
+            self.video_description_var.set(settings.get('description', False))
+            self.video_thumbnail_var.set(settings.get('thumbnail', False))
+            self.video_resume_var.set(settings.get('resume', True))
+            
+            # Starte Download
+            self.video_url_var.set(scheduled['url'])
+            self.start_video_download()
+            
+            # Stelle alte Einstellungen wieder her (nach kurzer Verzögerung)
+            self.root.after(5000, lambda: self._restore_settings(
+                old_quality, old_format, old_subtitle, old_subtitle_lang,
+                old_description, old_thumbnail, old_resume
+            ))
+            
+        except Exception as e:
+            self.video_log(f"✗ Fehler beim Starten des geplanten Downloads: {e}")
+    
+    def _restore_settings(self, quality, format_val, subtitle, subtitle_lang, description, thumbnail, resume):
+        """Stellt die ursprünglichen Einstellungen wieder her"""
+        self.video_quality_var.set(quality)
+        self.video_format_var.set(format_val)
+        self.video_subtitle_var.set(subtitle)
+        self.video_subtitle_lang_var.set(subtitle_lang)
+        self.video_description_var.set(description)
+        self.video_thumbnail_var.set(thumbnail)
+        self.video_resume_var.set(resume)
+    
+    def show_download_history(self):
+        """Zeigt Download-Historie"""
+        history_window = tk.Toplevel(self.root)
+        history_window.title("Download-Historie")
+        history_window.geometry("800x500")
+        history_window.transient(self.root)
+        
+        frame = ttk.Frame(history_window, padding="10")
+        frame.pack(fill=tk.BOTH, expand=True)
+        
+        ttk.Label(frame, text="Download-Historie", font=("Arial", 12, "bold")).pack(anchor=tk.W, pady=(0, 10))
+        
+        # Treeview
+        columns = ("Zeitpunkt", "URL", "Status", "Datei")
+        tree = ttk.Treeview(frame, columns=columns, show="headings", height=20)
+        tree.heading("Zeitpunkt", text="Zeitpunkt")
+        tree.heading("URL", text="URL")
+        tree.heading("Status", text="Status")
+        tree.heading("Datei", text="Datei")
+        tree.column("Zeitpunkt", width=150)
+        tree.column("URL", width=300)
+        tree.column("Status", width=100)
+        tree.column("Datei", width=200)
+        
+        scrollbar = ttk.Scrollbar(frame, orient=tk.VERTICAL, command=tree.yview)
+        tree.configure(yscrollcommand=scrollbar.set)
+        
+        tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Lade Historie
+        for entry in sorted(self.video_download_history, key=lambda x: x.get('timestamp', ''), reverse=True):
+            tree.insert("", tk.END, values=(
+                entry.get('timestamp', 'Unbekannt'),
+                entry.get('url', '')[:50] + "..." if len(entry.get('url', '')) > 50 else entry.get('url', ''),
+                entry.get('status', 'Unbekannt'),
+                entry.get('filename', 'N/A')
+            ))
+        
+        button_frame = ttk.Frame(frame)
+        button_frame.pack(fill=tk.X, pady=(10, 0))
+        
+        def clear_history():
+            if messagebox.askyesno("Bestätigen", "Historie wirklich löschen?"):
+                self.video_download_history.clear()
+                self._save_video_data()
+                tree.delete(*tree.get_children())
+        
+        ttk.Button(button_frame, text="Historie löschen", command=clear_history).pack(side=tk.LEFT, padx=5)
+    
+    def show_favorites(self):
+        """Zeigt Favoriten-Verwaltung"""
+        fav_window = tk.Toplevel(self.root)
+        fav_window.title("Favoriten")
+        fav_window.geometry("600x400")
+        fav_window.transient(self.root)
+        
+        frame = ttk.Frame(fav_window, padding="10")
+        frame.pack(fill=tk.BOTH, expand=True)
+        
+        ttk.Label(frame, text="Favoriten", font=("Arial", 12, "bold")).pack(anchor=tk.W, pady=(0, 10))
+        
+        listbox = tk.Listbox(frame, height=15)
+        listbox.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        
+        for fav in self.video_favorites:
+            listbox.insert(tk.END, fav.get('name', fav.get('url', 'Unbekannt')))
+        
+        button_frame = ttk.Frame(frame)
+        button_frame.pack(fill=tk.X)
+        
+        def add_favorite():
+            add_window = tk.Toplevel(fav_window)
+            add_window.title("Favorit hinzufügen")
+            add_window.geometry("400x200")
+            add_window.transient(fav_window)
+            
+            add_frame = ttk.Frame(add_window, padding="20")
+            add_frame.pack(fill=tk.BOTH, expand=True)
+            
+            ttk.Label(add_frame, text="Name:").pack(anchor=tk.W, pady=(0, 5))
+            name_entry = ttk.Entry(add_frame, width=40)
+            name_entry.pack(fill=tk.X, pady=(0, 15))
+            
+            ttk.Label(add_frame, text="URL:").pack(anchor=tk.W, pady=(0, 5))
+            url_entry = ttk.Entry(add_frame, width=40)
+            url_entry.pack(fill=tk.X, pady=(0, 15))
+            
+            def save_favorite():
+                name = name_entry.get().strip()
+                url = url_entry.get().strip()
+                if name and url:
+                    self.video_favorites.append({'name': name, 'url': url})
+                    self._save_video_data()
+                    listbox.insert(tk.END, name)
+                    add_window.destroy()
+                else:
+                    messagebox.showerror("Fehler", "Bitte Name und URL eingeben!")
+            
+            ttk.Button(add_frame, text="Hinzufügen", command=save_favorite).pack(pady=10)
+        
+        def remove_favorite():
+            selection = listbox.curselection()
+            if selection:
+                index = selection[0]
+                self.video_favorites.pop(index)
+                self._save_video_data()
+                listbox.delete(index)
+        
+        def load_favorite():
+            selection = listbox.curselection()
+            if selection:
+                fav = self.video_favorites[selection[0]]
+                self.video_url_var.set(fav['url'])
+                fav_window.destroy()
+                self.notebook.select(self.notebook.index(self.video_frame))
+        
+        ttk.Button(button_frame, text="➕ Hinzufügen", command=add_favorite).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="🗑️ Entfernen", command=remove_favorite).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="📥 Laden", command=load_favorite).pack(side=tk.RIGHT, padx=5)
+    
+    def show_search_dialog(self):
+        """Zeigt Such-Dialog für Filme und Serien"""
+        search_window = tk.Toplevel(self.root)
+        search_window.title("🔍 Suche nach Filmen und Serien")
+        search_window.geometry("900x700")
+        search_window.transient(self.root)
+        
+        main_frame = ttk.Frame(search_window, padding="15")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Suchfeld
+        search_frame = ttk.Frame(main_frame)
+        search_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        ttk.Label(search_frame, text="Suche:", font=("Arial", 10, "bold")).pack(side=tk.LEFT, padx=(0, 5))
+        search_var = tk.StringVar()
+        search_entry = ttk.Entry(search_frame, textvariable=search_var, width=50, font=("Arial", 10))
+        search_entry.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
+        
+        search_button = ttk.Button(search_frame, text="🔍 Suchen", command=lambda: self._perform_search(search_var.get(), results_frame, status_label))
+        search_button.pack(side=tk.LEFT, padx=5)
+        
+        # Enter-Taste für Suche
+        search_entry.bind('<Return>', lambda e: self._perform_search(search_var.get(), results_frame, status_label))
+        
+        # Status-Label
+        status_label = ttk.Label(main_frame, text="Geben Sie einen Suchbegriff ein und klicken Sie auf 'Suchen'", foreground='gray')
+        status_label.pack(pady=5)
+        
+        # Ergebnisse-Frame mit Scrollbar
+        results_container = ttk.Frame(main_frame)
+        results_container.pack(fill=tk.BOTH, expand=True)
+        
+        canvas = tk.Canvas(results_container)
+        scrollbar = ttk.Scrollbar(results_container, orient="vertical", command=canvas.yview)
+        results_frame = ttk.Frame(canvas)
+        
+        results_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=results_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Fokus auf Suchfeld
+        search_entry.focus()
+    
+    def _get_sender_logo(self, sender: str) -> str:
+        """Gibt das Senderlogo/Emoji für einen Sender zurück"""
+        sender_logos = {
+            'youtube': '📺',
+            'ard': '🔴',
+            'zdf': '🔵',
+            'orf': '🟠',
+            'swr': '🟡',
+            'br': '🟢',
+            'wdr': '🟣',
+            'mdr': '🔵',
+            'ndr': '🟢',
+            'hr': '🟠',
+            'rbb': '🔴',
+            'sr': '🟡',
+            'arte': '🎨',
+            'phoenix': '📡',
+            'tagesschau': '📰',
+            'rbtv': '🚀'
+        }
+        return sender_logos.get(sender.lower(), '📺')
+    
+    def _detect_sender_from_url(self, url: str) -> str:
+        """Erkennt den Sender aus der URL"""
+        if not SUPPORTED_SENDERS:
+            return 'unknown'
+        url_lower = url.lower()
+        for sender, domains in SUPPORTED_SENDERS.items():
+            for domain in domains:
+                if domain in url_lower:
+                    return sender
+        return 'unknown'
+    
+    def _perform_search(self, query: str, results_frame: ttk.Frame, status_label: ttk.Label):
+        """Führt die Suche aus - durchsucht alle Standard-Mediatheken"""
+        if not query.strip():
+            messagebox.showwarning("Warnung", "Bitte geben Sie einen Suchbegriff ein.")
+            return
+        
+        # Lösche alte Ergebnisse
+        for widget in results_frame.winfo_children():
+            widget.destroy()
+        
+        status_label.config(text=f"Suche nach: {query}... (durchsuche alle Mediatheken)", foreground='blue')
+        results_frame.update()
+        
+        # Suche in separatem Thread
+        def search_thread():
+            try:
+                import subprocess
+                all_results = []
+                
+                # 1. YouTube-Suche
+                status_label.config(text=f"Suche auf YouTube...", foreground='blue')
+                self.root.update()
+                
+                search_url = f"ytsearch20:{query}"  # Erste 20 Ergebnisse
+                from yt_dlp_helper import get_ytdlp_command
+                cmd = get_ytdlp_command() + [
+                    '--dump-json',
+                    '--flat-playlist',
+                    '--no-warnings',
+                    search_url
+                ]
+                
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+                if result.returncode == 0:
+                    lines = result.stdout.strip().split('\n')
+                    for line in lines:
+                        if line.strip():
+                            try:
+                                info = json.loads(line)
+                                url = info.get('url', info.get('webpage_url', ''))
+                                if not url:
+                                    continue
+                                
+                                sender = self._detect_sender_from_url(url)
+                                uploader = info.get('uploader', info.get('channel', 'Unbekannt'))
+                                
+                                # Für YouTube: Verwende Uploader als Sender-Name
+                                if sender == 'youtube':
+                                    sender_name = f"YouTube ({uploader})"
+                                else:
+                                    sender_name = sender.upper()
+                                
+                                all_results.append({
+                                    'title': info.get('title', info.get('id', 'Unbekannt')),
+                                    'url': url,
+                                    'duration': info.get('duration', 0),
+                                    'uploader': uploader,
+                                    'view_count': info.get('view_count', 0),
+                                    'is_playlist': info.get('_type') == 'playlist' or 'playlist' in str(info.get('_type', '')),
+                                    'sender': sender,
+                                    'sender_name': sender_name
+                                })
+                            except json.JSONDecodeError as e:
+                                continue
+                                # Debug: Zeige Fehler bei JSON-Parsing
+                                # print(f"JSON-Fehler: {e}, Zeile: {line[:100]}")
+                
+                # 2. Suche auf ARD Mediathek (falls möglich)
+                # ARD Mediathek hat eine Such-API, aber yt-dlp unterstützt das nicht direkt
+                # Wir könnten versuchen, direkt URLs zu konstruieren, aber das ist komplex
+                # Für jetzt fokussieren wir uns auf YouTube, da dort die meisten Inhalte verfügbar sind
+                
+                # KEINE Gruppierung - zeige jedes Ergebnis einzeln als Liste
+                # Debug: Zeige Anzahl der Ergebnisse
+                print(f"[DEBUG] {len(all_results)} Ergebnisse gefunden - zeige alle einzeln")
+                
+                # Zeige Ergebnisse im UI-Thread
+                self.root.after(0, lambda results=all_results, rf=results_frame, sl=status_label, q=query: self._display_search_results_list(results, rf, sl, q))
+                
+            except Exception as e:
+                import traceback
+                error_msg = f"Fehler: {str(e)}\n{traceback.format_exc()}"
+                self.root.after(0, lambda: status_label.config(text=error_msg[:200], foreground='red'))
+        
+        thread = threading.Thread(target=search_thread, daemon=True)
+        thread.start()
+    
+    def _display_search_results_list(self, results: List[Dict], results_frame: ttk.Frame, status_label: ttk.Label, query: str):
+        """Zeigt Suchergebnisse als einfache Liste an - jedes Ergebnis einzeln"""
+        # Lösche alte Ergebnisse
+        for widget in results_frame.winfo_children():
+            widget.destroy()
+        
+        if not results:
+            status_label.config(text=f"Keine Ergebnisse für '{query}' gefunden", foreground='orange')
+            return
+        
+        status_label.config(text=f"{len(results)} Ergebnis(se) gefunden für '{query}'", foreground='green')
+        
+        # Debug: Zeige Anzahl der Ergebnisse
+        print(f"[DEBUG] Zeige {len(results)} Ergebnisse als Liste")
+        
+        # Zeige jedes Ergebnis einzeln
+        for idx, result in enumerate(results):
+            # Ergebnis-Frame (ein Frame pro Ergebnis)
+            result_frame = ttk.LabelFrame(results_frame, padding="10")
+            result_frame.pack(fill=tk.X, pady=5, padx=5)
+            
+            # Titel
+            title = result.get('title', 'Unbekannter Titel')
+            title_label = ttk.Label(
+                result_frame,
+                text=title,
+                font=("Arial", 11, "bold"),
+                wraplength=800
+            )
+            title_label.pack(anchor=tk.W, pady=(0, 5))
+            
+            # Info-Zeile
+            info_parts = []
+            if result.get('uploader'):
+                info_parts.append(f"Kanal: {result['uploader']}")
+            if result.get('duration'):
+                minutes = result['duration'] // 60
+                seconds = result['duration'] % 60
+                info_parts.append(f"Dauer: {minutes}:{seconds:02d}")
+            if result.get('view_count'):
+                views = result['view_count']
+                if views > 1000000:
+                    info_parts.append(f"Aufrufe: {views/1000000:.1f}M")
+                elif views > 1000:
+                    info_parts.append(f"Aufrufe: {views/1000:.1f}K")
+                else:
+                    info_parts.append(f"Aufrufe: {views}")
+            
+            if info_parts:
+                info_label = ttk.Label(result_frame, text=" | ".join(info_parts), foreground='gray')
+                info_label.pack(anchor=tk.W, pady=(0, 5))
+            
+            # Sender-Info
+            sender = result.get('sender', 'unknown')
+            sender_logo = self._get_sender_logo(sender)
+            sender_name = result.get('sender_name', sender.upper())
+            
+            sender_label = ttk.Label(
+                result_frame,
+                text=f"{sender_logo} {sender_name}",
+                font=("Arial", 9),
+                foreground='blue'
+            )
+            sender_label.pack(anchor=tk.W, pady=(0, 10))
+            
+            # Button-Frame
+            button_frame = ttk.Frame(result_frame)
+            button_frame.pack(fill=tk.X, pady=(0, 5))
+            
+            # WICHTIG: Closure-Variablen korrekt binden
+            result_url = result['url']
+            result_title = title
+            
+            # Download-Button
+            download_btn = ttk.Button(
+                button_frame,
+                text="⬇️ Sofort herunterladen",
+                command=lambda u=result_url, t=result_title: self._download_from_search(u, t, direct=True)
+            )
+            download_btn.pack(side=tk.LEFT, padx=5, pady=2)
+            
+            # Queue-Button
+            queue_btn = ttk.Button(
+                button_frame,
+                text="➕ Zur Warteschlange",
+                command=lambda u=result_url, t=result_title: self._download_from_search(u, t, direct=False)
+            )
+            queue_btn.pack(side=tk.LEFT, padx=5, pady=2)
+            
+            # Staffelauswahl-Button (wenn Playlist)
+            if result.get('is_playlist'):
+                season_btn = ttk.Button(
+                    button_frame,
+                    text="📺 Staffeln auswählen",
+                    command=lambda u=result_url, t=result_title: self._select_seasons_from_search(u, t)
+                )
+                season_btn.pack(side=tk.LEFT, padx=5, pady=2)
+            
+            # Separator (außer beim letzten Element)
+            if idx < len(results) - 1:
+                separator = ttk.Separator(result_frame, orient='horizontal')
+                separator.pack(fill=tk.X, pady=5)
+        
+        # Aktualisiere Scroll-Region nach dem Hinzufügen aller Ergebnisse
+        results_frame.update_idletasks()
+        # Finde das Canvas-Element (parent von results_frame)
+        canvas = results_frame.master
+        if isinstance(canvas, tk.Canvas):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+    
+    def _download_from_search(self, url: str, title: str, direct: bool = True):
+        """Startet Download von Suchergebnis"""
+        if direct:
+            # Setze URL und starte Download
+            self.video_url_var.set(url)
+            self.start_video_download()
+            messagebox.showinfo("Download gestartet", f"Download von '{title}' wurde gestartet.")
+        else:
+            # Zur Queue hinzufügen
+            self.video_download_queue.append(url)
+            messagebox.showinfo("Zur Queue hinzugefügt", f"'{title}' wurde zur Download-Queue hinzugefügt.")
+    
+    def _select_seasons_from_search(self, url: str, title: str):
+        """Zeigt Staffelauswahl für Serie aus Suchergebnissen"""
+        # Initialisiere Downloader falls noch nicht geschehen
+        if not hasattr(self, 'video_downloader') or self.video_downloader is None:
+            self.video_download_path = Path(self.video_path_var.get())
+            quality = self.video_quality_var.get()
+            output_format = self.video_format_var.get()
+            self.video_downloader = VideoDownloader(
+                download_path=str(self.video_download_path),
+                quality=quality,
+                output_format=output_format,
+                gui_instance=self
+            )
+        
+        # Verwende die vorhandene Staffelauswahl-Funktion
+        self.video_url_var.set(url)
+        # Prüfe ob es eine Serie ist und zeige Auswahl
+        if self.video_downloader.is_series_or_season(url):
+            self.start_video_download()  # Dies wird automatisch die Staffelauswahl zeigen
+        else:
+            messagebox.showinfo("Info", "Diese URL scheint keine Serie zu sein. Verwenden Sie 'Sofort herunterladen' oder 'Zur Warteschlange'.")
+    
+    def show_statistics(self):
+        """Zeigt Download-Statistiken"""
+        stats_window = tk.Toplevel(self.root)
+        stats_window.title("Download-Statistiken")
+        stats_window.geometry("500x400")
+        stats_window.transient(self.root)
+        
+        frame = ttk.Frame(stats_window, padding="20")
+        frame.pack(fill=tk.BOTH, expand=True)
+        
+        ttk.Label(frame, text="Download-Statistiken", font=("Arial", 14, "bold")).pack(pady=(0, 20))
+        
+        stats_text = f"""
+Gesamt-Downloads: {self.video_statistics.get('total_downloads', 0)}
+Erfolgreich: {self.video_statistics.get('successful_downloads', 0)}
+Fehlgeschlagen: {self.video_statistics.get('failed_downloads', 0)}
+
+Gesamt-Größe: {self._format_size(self.video_statistics.get('total_size', 0))}
+
+Letzter Download: {self.video_statistics.get('last_download', 'Nie')}
+
+Geplante Downloads: {len(self.video_scheduled_downloads)}
+Favoriten: {len(self.video_favorites)}
+Historie-Einträge: {len(self.video_download_history)}
+        """
+        
+        ttk.Label(frame, text=stats_text.strip(), font=("Arial", 10), justify=tk.LEFT).pack(anchor=tk.W)
+        
+        button_frame = ttk.Frame(frame)
+        button_frame.pack(fill=tk.X, pady=(20, 0))
+        
+        def reset_stats():
+            if messagebox.askyesno("Bestätigen", "Statistiken wirklich zurücksetzen?"):
+                self.video_statistics = {
+                    'total_downloads': 0,
+                    'total_size': 0,
+                    'successful_downloads': 0,
+                    'failed_downloads': 0,
+                    'last_download': None
+                }
+                self._save_video_data()
+                stats_window.destroy()
+                self.show_statistics()
+        
+        ttk.Button(button_frame, text="Statistiken zurücksetzen", command=reset_stats).pack()
+    
+    def _ensure_dependencies_background(self):
+        """Prüft und installiert Abhängigkeiten im Hintergrund"""
+        def check_thread():
+            try:
+                # Prüfe ob wir gerade nach einem Neustart sind (verhindere Endlosschleife)
+                restart_flag_file = Path(tempfile.gettempdir()) / "universal_downloader_restarting.flag"
+                if restart_flag_file.exists():
+                    # Wir wurden gerade neu gestartet - überspringe Abhängigkeits-Installation
+                    self._write_to_log_file("[DEBUG] Restart-Flag gefunden - überspringe Abhängigkeits-Installation", "DEBUG")
+                    return
+                
+                # Prüfe ob wir über den Launcher gestartet wurden
+                # Wenn ja, wurden Abhängigkeiten bereits installiert - überspringe Popup
+                started_by_launcher = os.environ.get('UNIVERSAL_DOWNLOADER_STARTED_BY_LAUNCHER', '0') == '1'
+                if started_by_launcher:
+                    self._write_to_log_file("[DEBUG] Gestartet über Launcher - Abhängigkeiten sollten bereits installiert sein", "DEBUG")
+                
+                from auto_install_dependencies import check_ffmpeg
+                
+                # Schnelle Prüfung ob Installation nötig ist (nur ffmpeg, yt-dlp wird automatisch installiert)
+                ffmpeg_ok, _ = check_ffmpeg()
+                
+                self._write_to_log_file(f"[DEBUG] Abhängigkeits-Prüfung: ffmpeg={ffmpeg_ok}", "DEBUG")
+                
+                # Installiere nur ffmpeg (yt-dlp wird automatisch über requirements.txt installiert)
+                from auto_install_dependencies import ensure_dependencies
+                
+                # Setze Progress-Callback für Abhängigkeits-Installation
+                def update_progress(message):
+                    if hasattr(self, '_dep_status_text') and self._dep_status_text.winfo_exists():
+                        self.root.after(0, lambda: self._add_status_message(message))
+                
+                # Setze Callback für ensure_dependencies
+                ensure_dependencies._progress_callback = update_progress
+                
+                # Prüfe ob requirements.txt installiert werden muss
+                from auto_install_dependencies import check_requirements_txt
+                requirements_ok, missing_packages = check_requirements_txt()
+                
+                # Zeige Installations-Dialog nur wenn:
+                # 1. NICHT über Launcher gestartet wurde UND (ffmpeg fehlt ODER requirements.txt nicht vollständig installiert ist)
+                # 2. ODER wenn über Launcher gestartet, aber trotzdem etwas fehlt (z.B. ffmpeg wenn winget nicht verfügbar war)
+                if not started_by_launcher and (not ffmpeg_ok or not requirements_ok):
+                    # Normale Installation - zeige Dialog
+                    self.root.after(0, self._show_dependency_installation_dialog)
+                elif started_by_launcher and not ffmpeg_ok:
+                    # Über Launcher gestartet, aber ffmpeg fehlt (z.B. winget nicht verfügbar)
+                    # Zeige Dialog nur für ffmpeg, nicht für requirements.txt (die sollten bereits installiert sein)
+                    self._write_to_log_file("[DEBUG] Launcher-Start erkannt, aber ffmpeg fehlt - zeige Dialog nur für ffmpeg", "DEBUG")
+                    self.root.after(0, self._show_dependency_installation_dialog)
+                elif started_by_launcher and not requirements_ok:
+                    # Über Launcher gestartet, aber requirements.txt fehlt trotzdem (unwahrscheinlich, aber möglich)
+                    # Zeige Dialog nur für requirements.txt
+                    self._write_to_log_file("[WARNING] Launcher-Start erkannt, aber requirements.txt fehlt trotzdem", "WARNING")
+                    self.root.after(0, self._show_dependency_installation_dialog)
+                elif started_by_launcher:
+                    # Alles OK - keine Installation nötig
+                    self._write_to_log_file("[DEBUG] Launcher-Start erkannt - überspringe Abhängigkeits-Dialog (alles sollte bereits installiert sein)", "DEBUG")
+                
+                try:
+                    # ensure_dependencies installiert requirements.txt und ffmpeg automatisch
+                    ytdlp_ok, ffmpeg_ok, messages, has_updates = ensure_dependencies()
+                    
+                    # Zeige alle Meldungen (inkl. requirements.txt)
+                    filtered_messages = messages
+                finally:
+                    # Entferne Callback
+                    if hasattr(ensure_dependencies, '_progress_callback'):
+                        delattr(ensure_dependencies, '_progress_callback')
+                
+                self._write_to_log_file(f"[DEBUG] Abhängigkeits-Installation abgeschlossen: ffmpeg={ffmpeg_ok}, updates={has_updates}", "DEBUG")
+                
+                # Aktualisiere Dialog mit Ergebnissen (nur ffmpeg)
+                # Zeige Dialog immer, wenn der Dialog geöffnet wurde (d.h. wenn ffmpeg fehlte oder installiert wurde)
+                # Der Dialog wird automatisch aktualisiert, wenn er geöffnet ist
+                if not ffmpeg_ok or has_updates:
+                    self.root.after(0, lambda: self._update_dependency_dialog(True, ffmpeg_ok, filtered_messages, has_updates))
+                elif ffmpeg_ok:
+                    # Auch wenn ffmpeg jetzt OK ist, aber der Dialog geöffnet wurde, aktualisiere ihn
+                    # (z.B. wenn es bereits vorhanden war)
+                    self.root.after(0, lambda: self._update_dependency_dialog(True, ffmpeg_ok, filtered_messages, False))
+                
+            except Exception as e:
+                # Zeige Fehler im Dialog
+                self._write_to_log_file(f"[ERROR] Fehler bei Abhängigkeits-Installation: {e}", "ERROR")
+                import traceback
+                self._write_to_log_file(f"[ERROR] Traceback: {traceback.format_exc()}", "ERROR")
+                self.root.after(0, lambda: self._update_dependency_dialog(False, False, [f"[ERROR] Fehler: {e}"]))
+        
+        threading.Thread(target=check_thread, daemon=True).start()
+    
+    def _show_dependency_installation_dialog(self):
+        """Zeigt Dialog während der Abhängigkeits-Installation"""
+        if hasattr(self, '_dep_dialog') and self._dep_dialog.winfo_exists():
+            return  # Dialog bereits vorhanden
+        
+        self._dep_dialog = tk.Toplevel(self.root)
+        self._dep_dialog.title("Abhängigkeiten installieren")
+        self._dep_dialog.geometry("500x300")
+        self._dep_dialog.transient(self.root)
+        # NICHT grab_set() verwenden, damit die Hauptanwendung weiterhin schließbar ist
+        # self._dep_dialog.grab_set()
+        
+        # Erlaube Schließen des Dialogs (aber warne wenn Installation läuft)
+        self._dep_installation_running = True
+        def on_dialog_close():
+            if self._dep_installation_running:
+                if messagebox.askyesno(
+                    "Installation läuft",
+                    "Die Installation läuft noch. Möchten Sie den Dialog wirklich schließen?\n\n"
+                    "Die Installation wird im Hintergrund fortgesetzt."
+                ):
+                    self._dep_dialog.destroy()
+            else:
+                self._dep_dialog.destroy()
+        self._dep_dialog.protocol("WM_DELETE_WINDOW", on_dialog_close)
+        
+        frame = ttk.Frame(self._dep_dialog, padding="20")
+        frame.pack(fill=tk.BOTH, expand=True)
+        
+        ttk.Label(
+            frame,
+            text="Installiere fehlende Abhängigkeiten...",
+            font=("Arial", 12, "bold")
+        ).pack(pady=10)
+        
+        ttk.Label(
+            frame,
+            text="Bitte warten Sie, während die benötigten Komponenten installiert werden.",
+            wraplength=450
+        ).pack(pady=5)
+        
+        # Status-Text
+        self._dep_status_text = scrolledtext.ScrolledText(
+            frame,
+            height=10,
+            width=60,
+            wrap=tk.WORD,
+            state=tk.DISABLED
+        )
+        self._dep_status_text.pack(pady=10, fill=tk.BOTH, expand=True)
+        
+        # Progress Bar
+        self._dep_progress = ttk.Progressbar(
+            frame,
+            mode='indeterminate'
+        )
+        self._dep_progress.pack(fill=tk.X, pady=5)
+        self._dep_progress.start()
+        
+        # Schließen-Button (zunächst deaktiviert)
+        button_frame = ttk.Frame(frame)
+        button_frame.pack(pady=10)
+        
+        self._dep_close_button = ttk.Button(
+            button_frame,
+            text="Schließen",
+            command=self._dep_dialog.destroy,
+            state=tk.DISABLED
+        )
+        self._dep_close_button.pack()
+        
+        # Starte Status-Updates
+        self._dep_status_text.config(state=tk.NORMAL)
+        self._dep_status_text.insert(tk.END, "[INFO] Prüfe Abhängigkeiten...\n")
+        self._dep_status_text.config(state=tk.DISABLED)
+        self._dep_status_text.see(tk.END)
+    
+    def _add_status_message(self, message):
+        """Fügt eine Status-Nachricht zum Installations-Dialog hinzu"""
+        if hasattr(self, '_dep_status_text') and self._dep_status_text.winfo_exists():
+            self._dep_status_text.config(state=tk.NORMAL)
+            self._dep_status_text.insert(tk.END, message + "\n")
+            self._dep_status_text.config(state=tk.DISABLED)
+            self._dep_status_text.see(tk.END)
+    
+    def _update_dependency_dialog(self, ytdlp_ok, ffmpeg_ok, messages, has_updates=False):
+        """Aktualisiert den Installations-Dialog mit Ergebnissen
+        Zeigt Installation von requirements.txt und ffmpeg
+        """
+        if not hasattr(self, '_dep_dialog') or not self._dep_dialog.winfo_exists():
+            return
+        
+        # Markiere Installation als beendet
+        self._dep_installation_running = False
+        
+        # Stoppe Progress Bar
+        self._dep_progress.stop()
+        
+        # Zeige alle Meldungen (requirements.txt und ffmpeg)
+        self._dep_status_text.config(state=tk.NORMAL)
+        for msg in messages:
+            self._dep_status_text.insert(tk.END, msg + "\n")
+        self._dep_status_text.config(state=tk.DISABLED)
+        self._dep_status_text.see(tk.END)
+        
+        # Aktiviere Schließen-Button
+        self._dep_close_button.config(state=tk.NORMAL)
+        
+        # Erlaube Schließen ohne Warnung
+        self._dep_dialog.protocol("WM_DELETE_WINDOW", self._dep_dialog.destroy)
+        
+        # Zeige Erfolgsmeldung und frage nach Neustart
+        # Frage nach Neustart wenn Updates durchgeführt wurden oder Installation nötig war
+        if has_updates or not ffmpeg_ok:
+            self._dep_status_text.config(state=tk.NORMAL)
+            if ffmpeg_ok:
+                self._dep_status_text.insert(tk.END, "\n[OK] Alle Abhängigkeiten wurden erfolgreich installiert!\n")
+                self._dep_status_text.insert(tk.END, "\nDie Anwendung wird automatisch neu gestartet...\n")
+            else:
+                self._dep_status_text.insert(tk.END, "\n[WARNING] ffmpeg konnte nicht installiert werden.\n")
+                self._dep_status_text.insert(tk.END, "Die Anwendung kann möglicherweise nicht vollständig funktionieren.\n")
+            self._dep_status_text.config(state=tk.DISABLED)
+            self._dep_status_text.see(tk.END)
+            
+            # Frage nach Neustart nur wenn ffmpeg installiert wurde
+            if ffmpeg_ok:
+                # Warte 2 Sekunden, dann automatisch Neustart fragen
+                self.root.after(2000, lambda: self._ask_restart_after_dependency_install())
+        else:
+            self._dep_status_text.config(state=tk.NORMAL)
+            self._dep_status_text.insert(tk.END, "\n[OK] Alle Abhängigkeiten sind vorhanden.\n")
+            self._dep_status_text.config(state=tk.DISABLED)
+            self._dep_status_text.see(tk.END)
+            # Schließe Dialog automatisch nach 2 Sekunden wenn alles OK ist
+            self.root.after(2000, self._dep_dialog.destroy)
+    
+    def _ask_restart_after_dependency_install(self):
+        """Fragt ob die Anwendung nach Abhängigkeits-Installation neu gestartet werden soll"""
+        if not hasattr(self, '_dep_dialog') or not self._dep_dialog.winfo_exists():
+            return
+        
+        # Prüfe ob wir gerade nach einem Neustart sind (verhindere Endlosschleife)
+        restart_flag_file = Path(tempfile.gettempdir()) / "universal_downloader_restarting.flag"
+        if restart_flag_file.exists():
+            # Wir wurden gerade neu gestartet - frage nicht nach Neustart
+            self._dep_dialog.destroy()
+            return
+        
+        result = messagebox.askyesno(
+            "Abhängigkeiten installiert",
+            "Die Abhängigkeiten wurden erfolgreich installiert.\n\n"
+            "Möchten Sie die Anwendung jetzt neu starten, um sicherzustellen, "
+            "dass alle Komponenten korrekt geladen werden?",
+            parent=self._dep_dialog
+        )
+        
+        if result:
+            self._dep_dialog.destroy()
+            # Warte kurz, damit der Dialog geschlossen wird
+            self.root.after(100, lambda: self._restart_application(Path()))
+    
+    def _check_updates_on_start(self):
+        """Prüft im Hintergrund auf Updates beim Start"""
+        if not UpdateChecker:
+            return
+        
+        # Prüfe ob wir gerade nach einem Update neu gestartet wurden
+        # Verhindere Endlosschleife: Prüfe nicht sofort nach Neustart
+        import time
+        restart_flag_file = Path(tempfile.gettempdir()) / "universal_downloader_restarting.flag"
+        if restart_flag_file.exists():
+            # Wir wurden gerade neu gestartet - lösche Flag und überspringe Update-Check
+            restart_flag_file.unlink(missing_ok=True)
+            return
+        
+        def check_thread():
+            try:
+                checker = UpdateChecker()
+                available, info = checker.check_for_updates()
+                if available and info:
+                    # Zeige Benachrichtigung im Hauptthread
+                    self.root.after(0, lambda: self._show_update_notification(info))
+            except Exception:
+                pass  # Stille Fehlerbehandlung beim Start
+        
+        threading.Thread(target=check_thread, daemon=True).start()
+    
+    def check_for_updates_dialog(self):
+        """Zeigt Dialog zum manuellen Prüfen auf Updates"""
+        if not UpdateChecker:
+            messagebox.showinfo("Info", "Update-Funktion nicht verfügbar.")
+            return
+        
+        # Erstelle Dialog
+        update_window = tk.Toplevel(self.root)
+        update_window.title("🔄 Updates prüfen")
+        update_window.geometry("500x300")
+        update_window.transient(self.root)
+        update_window.grab_set()
+        
+        frame = ttk.Frame(update_window, padding="20")
+        frame.pack(fill=tk.BOTH, expand=True)
+        
+        status_label = ttk.Label(frame, text="Prüfe auf Updates...", font=("Arial", 10))
+        status_label.pack(pady=20)
+        
+        progress = ttk.Progressbar(frame, mode='indeterminate')
+        progress.pack(fill=tk.X, pady=10)
+        progress.start()
+        
+        result_text = tk.Text(frame, height=10, wrap=tk.WORD, state=tk.DISABLED)
+        result_text.pack(fill=tk.BOTH, expand=True, pady=10)
+        
+        button_frame = ttk.Frame(frame)
+        button_frame.pack(fill=tk.X, pady=10)
+        
+        close_button = ttk.Button(button_frame, text="Schließen", command=update_window.destroy)
+        close_button.pack(side=tk.RIGHT)
+        
+        def check_thread():
+            try:
+                checker = UpdateChecker()
+                available, info = checker.check_for_updates()
+                
+                def update_ui():
+                    progress.stop()
+                    if available and info:
+                        status_label.config(text=f"✓ Update verfügbar: Version {info['version']}")
+                        result_text.config(state=tk.NORMAL)
+                        result_text.delete(1.0, tk.END)
+                        result_text.insert(tk.END, f"Neue Version verfügbar: {info['version']}\n\n")
+                        if info.get('changelog'):
+                            result_text.insert(tk.END, f"Änderungen:\n{info['changelog']}\n\n")
+                        if info.get('release_date'):
+                            result_text.insert(tk.END, f"Veröffentlicht: {info['release_date']}\n")
+                        
+                        # Zeige Download-URL Status
+                        if info.get('download_url'):
+                            result_text.insert(tk.END, f"\n✓ Download-URL verfügbar\n")
+                        else:
+                            result_text.insert(tk.END, f"\n⚠ Download-URL nicht verfügbar\n")
+                            if 'assets' in info and info['assets']:
+                                result_text.insert(tk.END, f"\nVerfügbare Assets:\n")
+                                for asset in info['assets']:
+                                    result_text.insert(tk.END, f"  - {asset['name']}\n")
+                            result_text.insert(tk.END, f"\nBitte laden Sie das Update manuell von der Release-Seite herunter:\n")
+                            result_text.insert(tk.END, f"{info.get('release_url', 'GitHub Releases')}\n")
+                        
+                        result_text.config(state=tk.DISABLED)
+                        
+                        # Download-Button hinzufügen (nur wenn URL verfügbar)
+                        if info.get('download_url'):
+                            download_btn = ttk.Button(
+                                button_frame,
+                                text="📥 Update herunterladen",
+                                command=lambda: self._download_update(info, update_window)
+                            )
+                            download_btn.pack(side=tk.LEFT, padx=5)
+                        else:
+                            # Link zu Release-Seite
+                            release_btn = ttk.Button(
+                                button_frame,
+                                text="🔗 Zur Release-Seite",
+                                command=lambda: webbrowser.open(info.get('release_url', ''))
+                            )
+                            release_btn.pack(side=tk.LEFT, padx=5)
+                    else:
+                        status_label.config(text="✓ Sie verwenden die neueste Version")
+                        result_text.config(state=tk.NORMAL)
+                        result_text.delete(1.0, tk.END)
+                        result_text.insert(tk.END, f"Aktuelle Version: {get_version()}\n\nKeine Updates verfügbar.")
+                        result_text.config(state=tk.DISABLED)
+                
+                self.root.after(0, update_ui)
+            except Exception as e:
+                def show_error():
+                    progress.stop()
+                    status_label.config(text="✗ Fehler beim Prüfen")
+                    result_text.config(state=tk.NORMAL)
+                    result_text.delete(1.0, tk.END)
+                    result_text.insert(tk.END, f"Fehler beim Prüfen auf Updates:\n{str(e)}")
+                    result_text.config(state=tk.DISABLED)
+                self.root.after(0, show_error)
+        
+        threading.Thread(target=check_thread, daemon=True).start()
+    
+    def _show_update_notification(self, update_info):
+        """Zeigt Benachrichtigung über verfügbares Update"""
+        response = messagebox.askyesno(
+            "Update verfügbar",
+            f"Eine neue Version ({update_info['version']}) ist verfügbar!\n\n"
+            f"Möchten Sie das Update jetzt herunterladen?",
+            icon='question'
+        )
+        if response:
+            self._download_update(update_info)
+    
+    def _download_update(self, update_info, parent_window=None):
+        """Lädt ein Update herunter und installiert es automatisch"""
+        if not update_info.get('download_url'):
+            # Zeige detaillierte Fehlermeldung
+            assets_info = ""
+            if 'assets' in update_info and update_info['assets']:
+                available_assets = [a['name'] for a in update_info['assets']]
+                assets_info = f"\n\nVerfügbare Assets im Release:\n" + "\n".join(f"  - {name}" for name in available_assets)
+            
+            messagebox.showwarning(
+                "Warnung", 
+                f"Download-URL nicht verfügbar für Ihr Betriebssystem ({platform.system()}).\n"
+                f"Bitte laden Sie das Update manuell von der Release-Seite herunter:\n"
+                f"{update_info.get('release_url', 'GitHub Releases')}"
+                + assets_info
+            )
+            return
+        
+        # Automatischer Speicherort (Temp-Ordner)
+        temp_dir = Path(tempfile.gettempdir())
+        extension = ".exe" if sys.platform == "win32" else ".deb"
+        save_path = temp_dir / f"UniversalDownloader_Update_{update_info['version']}{extension}"
+        
+        # Download-Dialog
+        download_window = tk.Toplevel(parent_window or self.root)
+        download_window.title("Update herunterladen")
+        download_window.geometry("400x150")
+        download_window.transient(parent_window or self.root)
+        
+        frame = ttk.Frame(download_window, padding="20")
+        frame.pack(fill=tk.BOTH, expand=True)
+        
+        ttk.Label(frame, text="Lade Update herunter...").pack(pady=10)
+        
+        progress = ttk.Progressbar(frame, mode='indeterminate')
+        progress.pack(fill=tk.X, pady=10)
+        progress.start()
+        
+        status_label = ttk.Label(frame, text="")
+        status_label.pack()
+        
+        def download_thread():
+            try:
+                checker = UpdateChecker()
+                success = checker.download_update(update_info['download_url'], Path(save_path))
+                
+                def update_ui():
+                    progress.stop()
+                    if success:
+                        status_label.config(text="✓ Download erfolgreich! Installiere Update...")
+                        self.root.update()
+                        
+                        # Installiere Update (ersetze alte .exe)
+                        install_success = self._install_update(Path(save_path), update_info['version'])
+                        
+                        if install_success:
+                            status_label.config(text="✓ Update installiert! Starte Programm neu...")
+                            self.root.update()
+                            
+                            # Starte Programm neu
+                            self._restart_application(Path(save_path))
+                        else:
+                            status_label.config(text="⚠ Installation fehlgeschlagen")
+                            messagebox.showwarning(
+                                "Warnung",
+                                f"Update wurde heruntergeladen, aber die Installation ist fehlgeschlagen.\n\n"
+                                f"Bitte installieren Sie das Update manuell:\n{save_path}"
+                            )
+                            download_window.destroy()
+                            if parent_window:
+                                parent_window.destroy()
+                    else:
+                        status_label.config(text="✗ Download fehlgeschlagen")
+                        messagebox.showerror("Fehler", "Download fehlgeschlagen. Bitte versuchen Sie es erneut.")
+                
+                self.root.after(0, update_ui)
+            except Exception as e:
+                def show_error():
+                    progress.stop()
+                    status_label.config(text="✗ Fehler")
+                    messagebox.showerror("Fehler", f"Fehler beim Download: {str(e)}")
+                self.root.after(0, show_error)
+        
+        threading.Thread(target=download_thread, daemon=True).start()
+    
+    def _install_update(self, update_file: Path, new_version: str) -> bool:
+        """
+        Installiert das Update, indem die alte .exe ersetzt wird
+        
+        Args:
+            update_file: Pfad zur neuen .exe/.deb Datei
+            new_version: Neue Versionsnummer
+            
+        Returns:
+            True bei Erfolg, False sonst
+        """
+        try:
+            if sys.platform == "win32":
+                # Windows: Ersetze die aktuelle .exe
+                current_exe = Path(sys.executable)
+                
+                # Prüfe ob wir in einer .exe sind
+                if not getattr(sys, 'frozen', False):
+                    # Normale Python-Umgebung - kann nicht automatisch installieren
+                    return False
+                
+                # Erstelle Backup der alten .exe
+                backup_path = current_exe.parent / f"{current_exe.stem}_backup_{get_version()}.exe"
+                if current_exe.exists():
+                    shutil.copy2(current_exe, backup_path)
+                
+                # Ersetze die .exe
+                shutil.copy2(update_file, current_exe)
+                
+                # Lösche Update-Datei aus Temp
+                update_file.unlink(missing_ok=True)
+                
+                return True
+            elif sys.platform == "linux":
+                # Linux: Installiere .deb Paket
+                result = subprocess.run(
+                    ['sudo', 'dpkg', '-i', str(update_file)],
+                    capture_output=True,
+                    text=True
+                )
+                return result.returncode == 0
+            else:
+                # macOS: Kann nicht automatisch installieren
+                return False
+                
+        except Exception as e:
+            print(f"[ERROR] Fehler bei Update-Installation: {e}")
+            return False
+    
+    def _restart_application(self, update_file: Path = None):
+        """
+        Startet die Anwendung neu nach einem Update oder nach Abhängigkeits-Installation
+        
+        Args:
+            update_file: Pfad zur neuen .exe (optional, wird nicht mehr benötigt, da bereits installiert)
+        """
+        try:
+            self._write_to_log_file("[DEBUG] Neustart wird vorbereitet...", "DEBUG")
+            
+            # Setze Flag, um zu verhindern, dass nach Neustart sofort wieder geprüft wird
+            restart_flag_file = Path(tempfile.gettempdir()) / "universal_downloader_restarting.flag"
+            restart_flag_file.touch()
+            self._write_to_log_file(f"[DEBUG] Restart-Flag gesetzt: {restart_flag_file}", "DEBUG")
+            
+            # Prüfe ob wir als .exe (frozen) oder als Python-Skript laufen
+            is_frozen = getattr(sys, 'frozen', False) or hasattr(sys, '_MEIPASS')
+            
+            if sys.platform == "win32":
+                # Windows: Starte die neue Instanz
+                import time
+                time.sleep(2)  # Warte kurz, damit die Installation abgeschlossen ist
+                
+                if is_frozen:
+                    # Als .exe: Starte die .exe direkt
+                    current_exe = Path(sys.executable)
+                    self._write_to_log_file(f"[DEBUG] Starte neue Instanz (.exe): {current_exe}", "DEBUG")
+                    try:
+                        # Verwende CREATE_NEW_CONSOLE um sicherzustellen, dass es ein separater Prozess ist
+                        subprocess.Popen(
+                            [str(current_exe)],
+                            creationflags=subprocess.CREATE_NEW_CONSOLE,
+                            close_fds=True
+                        )
+                        self._write_to_log_file("[DEBUG] Neue Instanz gestartet", "DEBUG")
+                    except Exception as e:
+                        self._write_to_log_file(f"[ERROR] Fehler beim Starten der neuen Instanz: {e}", "ERROR")
+                        # Fallback: Versuche mit shell=True
+                        subprocess.Popen([str(current_exe)], shell=True)
+                else:
+                    # Als Python-Skript: Starte start.py mit Python
+                    script_dir = Path(__file__).parent.absolute()
+                    start_script = script_dir / "start.py"
+                    python_exe = sys.executable
+                    self._write_to_log_file(f"[DEBUG] Starte neue Instanz (Python-Skript): {python_exe} {start_script}", "DEBUG")
+                    try:
+                        # Verwende CREATE_NEW_CONSOLE für Windows
+                        subprocess.Popen(
+                            [str(python_exe), str(start_script)],
+                            creationflags=subprocess.CREATE_NEW_CONSOLE,
+                            close_fds=True,
+                            cwd=str(script_dir)
+                        )
+                        self._write_to_log_file("[DEBUG] Neue Instanz gestartet", "DEBUG")
+                    except Exception as e:
+                        self._write_to_log_file(f"[ERROR] Fehler beim Starten der neuen Instanz: {e}", "ERROR")
+                        # Fallback: Versuche mit shell=True
+                        subprocess.Popen([str(python_exe), str(start_script)], shell=True, cwd=str(script_dir))
+                
+                # Warte länger, damit die neue Instanz sicher starten kann
+                time.sleep(3)
+                
+                self._write_to_log_file("[DEBUG] Schließe aktuelle Instanz...", "DEBUG")
+                # Schließe aktuelle Instanz
+                self.root.quit()
+                self.root.destroy()
+                sys.exit(0)
+            elif sys.platform == "linux":
+                # Linux: Starte die Anwendung neu
+                if is_frozen:
+                    # Als .deb installiert: Verwende den System-Befehl
+                    subprocess.Popen(['universal-downloader'], shell=True)
+                else:
+                    # Als Python-Skript: Starte start.py
+                    script_dir = Path(__file__).parent.absolute()
+                    start_script = script_dir / "start.py"
+                    python_exe = sys.executable
+                    subprocess.Popen([str(python_exe), str(start_script)], cwd=str(script_dir))
+                self.root.quit()
+                self.root.destroy()
+                sys.exit(0)
+            else:
+                # macOS: Zeige Hinweis
+                messagebox.showinfo(
+                    "Update installiert",
+                    "Das Update wurde installiert. Bitte starten Sie die Anwendung manuell neu."
+                )
+                self.root.quit()
+                self.root.destroy()
+                sys.exit(0)
+        except Exception as e:
+            print(f"[ERROR] Fehler beim Neustart: {e}")
+            import traceback
+            self._write_to_log_file(f"[ERROR] Traceback: {traceback.format_exc()}", "ERROR")
+            messagebox.showinfo(
+                "Update installiert",
+                "Das Update wurde installiert. Bitte starten Sie die Anwendung manuell neu."
+            )
+            self.root.quit()
+            self.root.destroy()
+            sys.exit(0)
+    
+    def show_about_dialog(self):
+        """Zeigt Info-Dialog über die Anwendung"""
+        about_window = tk.Toplevel(self.root)
+        about_window.title("ℹ️ Über Universal Downloader")
+        about_window.geometry("500x400")
+        about_window.transient(self.root)
+        
+        frame = ttk.Frame(about_window, padding="20")
+        frame.pack(fill=tk.BOTH, expand=True)
+        
+        ttk.Label(
+            frame,
+            text="Universal Downloader",
+            font=("Arial", 16, "bold")
+        ).pack(pady=(0, 10))
+        
+        version_text = get_version_string() if get_version_string else f"Version {get_version()}"
+        ttk.Label(frame, text=version_text, font=("Arial", 10)).pack(pady=5)
+        
+        info_text = """
+Ein Universal-Downloader für Musik, Hörbücher und Videos.
+
+Unterstützte Plattformen:
+• Deezer (mit API und YouTube-Fallback)
+• Spotify (mit YouTube-Fallback)
+• Audible
+• Öffentlich-rechtliche Sender (ARD, ZDF, etc.)
+• YouTube
+
+Features:
+• Automatische Metadaten-Tagging
+• DRM-Umgehung mit Fallback
+• Serien-Download mit Auswahl
+• Download-Warteschlange
+• Statistiken und Historie
+
+Lizenz: MIT License
+Copyright (c) 2025 Universal Downloader Contributors
+        """
+        
+        text_widget = tk.Text(frame, height=15, wrap=tk.WORD, state=tk.DISABLED, padx=10, pady=10)
+        text_widget.pack(fill=tk.BOTH, expand=True, pady=10)
+        text_widget.config(state=tk.NORMAL)
+        text_widget.insert(tk.END, info_text.strip())
+        text_widget.config(state=tk.DISABLED)
+        
+        button_frame = ttk.Frame(frame)
+        button_frame.pack(fill=tk.X, pady=10)
+        
+        # GitHub-Link Button (falls Repository vorhanden)
+        try:
+            from version import GITHUB_REPO_URL
+            if GITHUB_REPO_URL:
+                def open_github():
+                    import webbrowser
+                    webbrowser.open(GITHUB_REPO_URL)
+                ttk.Button(button_frame, text="🔗 GitHub", command=open_github).pack(side=tk.LEFT, padx=5)
+        except:
+            pass
+        
+        ttk.Button(button_frame, text="Schließen", command=about_window.destroy).pack(side=tk.RIGHT)
+    
+    def _format_size(self, size_bytes):
+        """Formatiert Bytes in lesbare Größe"""
+        for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+            if size_bytes < 1024.0:
+                return f"{size_bytes:.2f} {unit}"
+            size_bytes /= 1024.0
+        return f"{size_bytes:.2f} PB"
+    
+    def _update_statistics(self, success, file_path, url):
+        """Aktualisiert Download-Statistiken"""
+        self.video_statistics['total_downloads'] += 1
+        if success:
+            self.video_statistics['successful_downloads'] += 1
+            if file_path and file_path.exists():
+                try:
+                    size = file_path.stat().st_size
+                    self.video_statistics['total_size'] += size
+                except:
+                    pass
+        else:
+            self.video_statistics['failed_downloads'] += 1
+        self.video_statistics['last_download'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self._save_video_data()
+    
+    def _add_to_history(self, url, filename, status):
+        """Fügt Eintrag zur Download-Historie hinzu"""
+        self.video_download_history.append({
+            'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            'url': url,
+            'filename': filename,
+            'status': status
+        })
+        # Behalte nur die letzten 1000 Einträge
+        if len(self.video_download_history) > 1000:
+            self.video_download_history = self.video_download_history[-1000:]
+        self._save_video_data()
+    
+    def _load_settings(self):
+        """Lädt gespeicherte Einstellungen"""
+        default_settings = {
+            'default_music_path': str(self.base_download_path / "Musik"),  # Gemeinsamer Pfad für Deezer & Spotify
+            'default_deezer_path': str(self.base_download_path / "Deezer"),  # Legacy
+            'default_audible_path': str(self.base_download_path / "Audible"),
+            'default_video_path': str(self.base_download_path / "Video"),
+            'default_spotify_path': str(self.base_download_path / "Spotify"),  # Legacy
+            'default_video_quality': 'best',
+            'default_video_format': 'mp4',
+            'auto_open_folder': False,
+            'max_concurrent_downloads': 3,
+            'show_notifications': True,
+            'language': 'de',
+            'log_cleanup_enabled': False,
+            'log_cleanup_days': 30,
+            'log_cleanup_on_exit': False,
+            'auto_check_updates': True,  # Automatische Update-Prüfung beim Start
+            'log_level': 'debug',  # Log-Level: 'normal' oder 'debug'
+            'video_accounts': []  # Liste von Account-Dictionaries
+        }
+        
+        try:
+            config_file = self.base_download_path / "settings.json"
+            if config_file.exists():
+                with open(config_file, 'r', encoding='utf-8') as f:
+                    saved_settings = json.load(f)
+                    # Merge mit Defaults (falls neue Einstellungen hinzugefügt wurden)
+                    default_settings.update(saved_settings)
+                    # Stelle sicher, dass video_accounts existiert
+                    if 'video_accounts' not in default_settings:
+                        default_settings['video_accounts'] = []
+                    return default_settings
+        except Exception as e:
+            pass
+        return default_settings
+    
+    def _save_settings(self):
+        """Speichert Einstellungen"""
+        try:
+            config_file = self.base_download_path / "settings.json"
+            with open(config_file, 'w', encoding='utf-8') as f:
+                json.dump(self.settings, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            pass
+    
+    def _encrypt_password(self, password: str) -> str:
+        """Verschlüsselt ein Passwort mit Base64 (einfache Kodierung)"""
+        if not password:
+            return ""
+        return base64.b64encode(password.encode('utf-8')).decode('utf-8')
+    
+    def _decrypt_password(self, encrypted_password: str) -> str:
+        """Entschlüsselt ein Base64-kodiertes Passwort"""
+        if not encrypted_password:
+            return ""
+        try:
+            return base64.b64decode(encrypted_password.encode('utf-8')).decode('utf-8')
+        except:
+            return ""
+    
+    def show_settings_dialog(self):
+        """Zeigt das Einstellungsfenster"""
+        settings_window = tk.Toplevel(self.root)
+        settings_window.title("⚙️ Einstellungen")
+        settings_window.geometry("600x700")
+        settings_window.transient(self.root)
+        settings_window.grab_set()
+        
+        # Hauptframe mit Scrollbar
+        main_frame = ttk.Frame(settings_window, padding="15")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Scrollbar
+        canvas = tk.Canvas(main_frame)
+        scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+        
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        # Standard-Download-Pfade
+        paths_frame = ttk.LabelFrame(scrollable_frame, text="📁 Standard-Download-Pfade", padding="10")
+        paths_frame.pack(fill=tk.X, pady=5, padx=5)
+        
+        # Deezer-Pfad
+        ttk.Label(paths_frame, text="Deezer:").grid(row=0, column=0, sticky=tk.W, pady=5)
+        deezer_path_var = tk.StringVar(value=self.settings.get('default_deezer_path', ''))
+        deezer_entry = ttk.Entry(paths_frame, textvariable=deezer_path_var, width=50)
+        deezer_entry.grid(row=0, column=1, padx=5, pady=5, sticky=(tk.W, tk.E))
+        ttk.Button(paths_frame, text="📂", command=lambda: self._browse_folder(deezer_path_var)).grid(row=0, column=2, padx=5)
+        
+        # Audible-Pfad
+        ttk.Label(paths_frame, text="Audible:").grid(row=1, column=0, sticky=tk.W, pady=5)
+        audible_path_var = tk.StringVar(value=self.settings.get('default_audible_path', ''))
+        audible_entry = ttk.Entry(paths_frame, textvariable=audible_path_var, width=50)
+        audible_entry.grid(row=1, column=1, padx=5, pady=5, sticky=(tk.W, tk.E))
+        ttk.Button(paths_frame, text="📂", command=lambda: self._browse_folder(audible_path_var)).grid(row=1, column=2, padx=5)
+        
+        # Video-Pfad
+        ttk.Label(paths_frame, text="Video:").grid(row=2, column=0, sticky=tk.W, pady=5)
+        video_path_var = tk.StringVar(value=self.settings.get('default_video_path', ''))
+        video_entry = ttk.Entry(paths_frame, textvariable=video_path_var, width=50)
+        video_entry.grid(row=2, column=1, padx=5, pady=5, sticky=(tk.W, tk.E))
+        ttk.Button(paths_frame, text="📂", command=lambda: self._browse_folder(video_path_var)).grid(row=2, column=2, padx=5)
+        
+        paths_frame.columnconfigure(1, weight=1)
+        
+        # Video-Einstellungen
+        video_frame = ttk.LabelFrame(scrollable_frame, text="🎬 Video-Einstellungen", padding="10")
+        video_frame.pack(fill=tk.X, pady=5, padx=5)
+        
+        # Standard-Qualität
+        ttk.Label(video_frame, text="Standard-Qualität:").grid(row=0, column=0, sticky=tk.W, pady=5)
+        quality_var = tk.StringVar(value=self.settings.get('default_video_quality', 'best'))
+        quality_combo = ttk.Combobox(video_frame, textvariable=quality_var, values=['best', '1080p', '720p', 'niedrigste'], state='readonly', width=15)
+        quality_combo.grid(row=0, column=1, padx=5, pady=5, sticky=tk.W)
+        
+        # Standard-Format
+        ttk.Label(video_frame, text="Standard-Format:").grid(row=1, column=0, sticky=tk.W, pady=5)
+        format_var = tk.StringVar(value=self.settings.get('default_video_format', 'mp4'))
+        format_combo = ttk.Combobox(video_frame, textvariable=format_var, values=['mp4', 'mp3', 'webm', 'mkv', 'avi'], state='readonly', width=15)
+        format_combo.grid(row=1, column=1, padx=5, pady=5, sticky=tk.W)
+        
+        # Geschwindigkeits-Limit
+        ttk.Label(video_frame, text="Geschwindigkeits-Limit:").grid(row=2, column=0, sticky=tk.W, pady=5)
+        speed_limit_frame = ttk.Frame(video_frame)
+        speed_limit_frame.grid(row=2, column=1, padx=5, pady=5, sticky=tk.W)
+        
+        speed_limit_enabled_var = tk.BooleanVar(value=self.settings.get('speed_limit_enabled', False))
+        speed_limit_check = ttk.Checkbutton(speed_limit_frame, text="Aktivieren", variable=speed_limit_enabled_var)
+        speed_limit_check.pack(side=tk.LEFT, padx=(0, 5))
+        
+        speed_limit_value_var = tk.StringVar(value=str(self.settings.get('speed_limit_value', '5')))
+        speed_limit_entry = ttk.Entry(speed_limit_frame, textvariable=speed_limit_value_var, width=8)
+        speed_limit_entry.pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Label(speed_limit_frame, text="MB/s").pack(side=tk.LEFT)
+        
+        # Untertitel-Einstellungen
+        subtitle_settings_frame = ttk.LabelFrame(scrollable_frame, text="📝 Untertitel-Einstellungen", padding="10")
+        subtitle_settings_frame.pack(fill=tk.X, pady=5, padx=5)
+        
+        subtitle_enabled_by_default_var = tk.BooleanVar(value=self.settings.get('subtitle_enabled_by_default', False))
+        ttk.Checkbutton(subtitle_settings_frame, text="Untertitel standardmäßig aktivieren", variable=subtitle_enabled_by_default_var).pack(anchor=tk.W, pady=5)
+        
+        ttk.Label(subtitle_settings_frame, text="Standard-Untertitel-Sprache:").pack(anchor=tk.W, pady=(10, 5))
+        subtitle_default_lang_var = tk.StringVar(value=self.settings.get('subtitle_default_lang', 'de'))
+        subtitle_default_lang_combo = ttk.Combobox(subtitle_settings_frame, textvariable=subtitle_default_lang_var, values=['de', 'en', 'all'], state='readonly', width=15)
+        subtitle_default_lang_combo.pack(anchor=tk.W, pady=5)
+        
+        # Allgemeine Einstellungen
+        general_frame = ttk.LabelFrame(scrollable_frame, text="⚙️ Allgemeine Einstellungen", padding="10")
+        general_frame.pack(fill=tk.X, pady=5, padx=5)
+        
+        # Versionsinformationen
+        version_frame = ttk.Frame(general_frame)
+        version_frame.pack(fill=tk.X, pady=(0, 10))
+        ttk.Label(version_frame, text="Version:", font=("Arial", 9, "bold")).pack(side=tk.LEFT, padx=(0, 5))
+        version_text = get_version_string()
+        ttk.Label(version_frame, text=version_text, font=("Arial", 9)).pack(side=tk.LEFT)
+        
+        # Separator
+        ttk.Separator(general_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=10)
+        
+        # Automatisch Ordner öffnen
+        auto_open_var = tk.BooleanVar(value=self.settings.get('auto_open_folder', False))
+        ttk.Checkbutton(general_frame, text="Ordner nach Download automatisch öffnen", variable=auto_open_var).pack(anchor=tk.W, pady=5)
+        
+        # Benachrichtigungen
+        notifications_var = tk.BooleanVar(value=self.settings.get('show_notifications', True))
+        ttk.Checkbutton(general_frame, text="Benachrichtigungen anzeigen", variable=notifications_var).pack(anchor=tk.W, pady=5)
+        
+        # Automatische Update-Prüfung
+        auto_check_updates_var = tk.BooleanVar(value=self.settings.get('auto_check_updates', True))
+        ttk.Checkbutton(general_frame, text="Automatisch auf Updates prüfen beim Start", variable=auto_check_updates_var).pack(anchor=tk.W, pady=5)
+        
+        # Log-Level-Einstellung
+        log_level_frame = ttk.Frame(general_frame)
+        log_level_frame.pack(fill=tk.X, pady=10)
+        ttk.Label(log_level_frame, text="Log-Level:").pack(side=tk.LEFT, padx=(0, 10))
+        log_level_var = tk.StringVar(value=self.settings.get('log_level', 'debug'))
+        log_level_combo = ttk.Combobox(
+            log_level_frame, 
+            textvariable=log_level_var, 
+            values=['normal', 'debug'], 
+            state='readonly', 
+            width=15
+        )
+        log_level_combo.pack(side=tk.LEFT, padx=5)
+        
+        # Info-Text für Log-Level
+        log_level_info = ttk.Label(
+            log_level_frame,
+            text="Debug: Alle Logs (inkl. Debug-Informationen) | Normal: Nur wichtige Logs",
+            foreground="gray",
+            font=("Arial", 8)
+        )
+        log_level_info.pack(side=tk.LEFT, padx=10)
+        
+        # Maximale gleichzeitige Downloads
+        ttk.Label(general_frame, text="Max. gleichzeitige Downloads:").pack(anchor=tk.W, pady=(10, 5))
+        max_downloads_var = tk.StringVar(value=str(self.settings.get('max_concurrent_downloads', 3)))
+        max_downloads_spin = ttk.Spinbox(general_frame, from_=1, to=10, textvariable=max_downloads_var, width=10)
+        max_downloads_spin.pack(anchor=tk.W, pady=5)
+        
+        # Sprache
+        ttk.Label(general_frame, text="Sprache:").pack(anchor=tk.W, pady=(10, 5))
+        language_var = tk.StringVar(value=self.settings.get('language', 'de'))
+        language_combo = ttk.Combobox(general_frame, textvariable=language_var, values=['de', 'en'], state='readonly', width=15)
+        language_combo.pack(anchor=tk.W, pady=5)
+        
+        # Log-Verwaltung
+        log_frame = ttk.LabelFrame(scrollable_frame, text="📋 Log-Verwaltung", padding="10")
+        log_frame.pack(fill=tk.X, pady=5, padx=5)
+        
+        # Automatisches Aufräumen aktivieren
+        log_cleanup_enabled_var = tk.BooleanVar(value=self.settings.get('log_cleanup_enabled', False))
+        ttk.Checkbutton(log_frame, text="Automatisches Aufräumen alter Logs aktivieren", variable=log_cleanup_enabled_var).pack(anchor=tk.W, pady=5)
+        
+        # Tage bis zum Löschen
+        log_days_frame = ttk.Frame(log_frame)
+        log_days_frame.pack(anchor=tk.W, pady=5)
+        ttk.Label(log_days_frame, text="Logs älter als:").pack(side=tk.LEFT, padx=(0, 5))
+        log_cleanup_days_var = tk.StringVar(value=str(self.settings.get('log_cleanup_days', 30)))
+        log_days_spin = ttk.Spinbox(log_days_frame, from_=1, to=365, textvariable=log_cleanup_days_var, width=10)
+        log_days_spin.pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Label(log_days_frame, text="Tage werden gelöscht").pack(side=tk.LEFT)
+        
+        # Beim Beenden löschen
+        log_cleanup_on_exit_var = tk.BooleanVar(value=self.settings.get('log_cleanup_on_exit', False))
+        ttk.Checkbutton(log_frame, text="Logs beim Beenden der Anwendung löschen", variable=log_cleanup_on_exit_var).pack(anchor=tk.W, pady=5)
+        
+        # Buttons
+        button_frame = ttk.Frame(scrollable_frame)
+        button_frame.pack(fill=tk.X, pady=20, padx=5)
+        
+        def save_settings():
+            self.settings['default_deezer_path'] = deezer_path_var.get()
+            self.settings['default_audible_path'] = audible_path_var.get()
+            self.settings['default_video_path'] = video_path_var.get()
+            self.settings['default_video_quality'] = quality_var.get()
+            self.settings['default_video_format'] = format_var.get()
+            self.settings['speed_limit_enabled'] = speed_limit_enabled_var.get()
+            self.settings['speed_limit_value'] = speed_limit_value_var.get()
+            self.settings['subtitle_enabled_by_default'] = subtitle_enabled_by_default_var.get()
+            self.settings['subtitle_default_lang'] = subtitle_default_lang_var.get()
+            self.settings['auto_open_folder'] = auto_open_var.get()
+            self.settings['show_notifications'] = notifications_var.get()
+            self.settings['max_concurrent_downloads'] = int(max_downloads_var.get())
+            self.settings['language'] = language_var.get()
+            self.settings['log_cleanup_enabled'] = log_cleanup_enabled_var.get()
+            self.settings['log_cleanup_days'] = int(log_cleanup_days_var.get())
+            self.settings['log_cleanup_on_exit'] = log_cleanup_on_exit_var.get()
+            self.settings['auto_check_updates'] = auto_check_updates_var.get()
+            self.settings['log_level'] = log_level_var.get()
+            
+            self._save_settings()
+            
+            # Führe Log-Aufräumen aus wenn aktiviert
+            if log_cleanup_enabled_var.get():
+                self._cleanup_old_logs()
+            
+            # Aktualisiere Download-Pfade
+            self.download_path = Path(self.settings['default_deezer_path'])
+            self.audible_download_path = Path(self.settings['default_audible_path'])
+            self.video_download_path = Path(self.settings['default_video_path'])
+            
+            # Erstelle Ordner falls nicht vorhanden
+            self.download_path.mkdir(parents=True, exist_ok=True)
+            self.audible_download_path.mkdir(parents=True, exist_ok=True)
+            self.video_download_path.mkdir(parents=True, exist_ok=True)
+            
+            # Aktualisiere UI
+            self.update_download_path()
+            if hasattr(self, 'audible_download_path_var'):
+                self.audible_download_path_var.set(str(self.audible_download_path))
+            if hasattr(self, 'video_download_path_var'):
+                self.video_download_path_var.set(str(self.video_download_path))
+            
+            # Aktualisiere Video-Tab UI basierend auf Einstellungen
+            self._update_video_tab_visibility()
+            
+            messagebox.showinfo("Einstellungen", "Einstellungen wurden gespeichert!")
+            settings_window.destroy()
+        
+        ttk.Button(button_frame, text="💾 Speichern", command=save_settings).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="❌ Abbrechen", command=settings_window.destroy).pack(side=tk.LEFT, padx=5)
+        
+        # Pack canvas und scrollbar
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Fokus auf erstes Widget
+        deezer_entry.focus()
+    
+    def _browse_folder(self, path_var):
+        """Öffnet einen Ordner-Dialog"""
+        folder = filedialog.askdirectory(initialdir=path_var.get())
+        if folder:
+            path_var.set(folder)
+    
+    def _load_window_geometry(self):
+        """Lädt gespeicherte Fenstergröße"""
+        try:
+            config_file = self.base_download_path / "window_config.json"
+            if config_file.exists():
+                import json
+                with open(config_file, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+                    geometry = config.get('geometry')
+                    if geometry:
+                        # Validiere die Geometrie (sollte Format "WIDTHxHEIGHT+X+Y" haben)
+                        parts = geometry.split('+')
+                        if len(parts) >= 2:
+                            size_part = parts[0]
+                            if 'x' in size_part.lower():
+                                return geometry
+                        # Falls Format nicht stimmt, versuche es trotzdem
+                        return geometry
+        except Exception as e:
+            # Fehler beim Laden ignorieren
+            pass
+        return None
+    
+    def _save_window_geometry(self):
+        """Speichert aktuelle Fenstergröße"""
+        try:
+            config_file = self.base_download_path / "window_config.json"
+            import json
+            geometry = self.root.geometry()
+            config = {'geometry': geometry}
+            with open(config_file, 'w', encoding='utf-8') as f:
+                json.dump(config, f, indent=2)
+            # Debug: Log nur wenn Logging aktiv ist
+            if hasattr(self, 'log_file') and self.log_file:
+                try:
+                    self._write_to_log_file(f"[WINDOW] Fenstergröße gespeichert: {geometry}")
+                except:
+                    pass
+        except Exception as e:
+            # Debug: Fehler loggen
+            try:
+                if hasattr(self, 'log_file') and self.log_file:
+                    self._write_to_log_file(f"[WINDOW] Fehler beim Speichern der Fenstergröße: {e}")
+            except:
+                pass
+    
+    def _on_window_configure(self, event):
+        """Wird aufgerufen, wenn sich die Fenstergröße ändert"""
+        # Nur speichern, wenn es sich um das Hauptfenster handelt (nicht um Child-Windows)
+        if event.widget == self.root:
+            # Prüfe ob sich die Größe tatsächlich geändert hat
+            current_geometry = self.root.geometry()
+            if not hasattr(self, '_last_geometry') or self._last_geometry != current_geometry:
+                self._last_geometry = current_geometry
+                # Debounce: Speichere nur nach einer kurzen Verzögerung
+                if self._geometry_save_timer is not None:
+                    self.root.after_cancel(self._geometry_save_timer)
+                self._geometry_save_timer = self.root.after(1000, self._save_window_geometry)
+    
+    def _load_video_data(self):
+        """Lädt gespeicherte Video-Daten"""
+        try:
+            data_file = self.base_download_path / "video_data.json"
+            if data_file.exists():
+                import json
+                with open(data_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    self.video_scheduled_downloads = [
+                        {**item, 'scheduled_time': datetime.fromisoformat(item['scheduled_time'])}
+                        for item in data.get('scheduled_downloads', [])
+                    ]
+                    self.video_download_history = data.get('download_history', [])
+                    self.video_favorites = data.get('favorites', [])
+                    self.video_statistics = data.get('statistics', self.video_statistics)
+        except Exception as e:
+            self.video_log(f"⚠ Fehler beim Laden der Video-Daten: {e}")
+    
+    def _save_video_data(self):
+        """Speichert Video-Daten"""
+        try:
+            data_file = self.base_download_path / "video_data.json"
+            import json
+            data = {
+                'scheduled_downloads': [
+                    {**item, 'scheduled_time': item['scheduled_time'].isoformat()}
+                    for item in self.video_scheduled_downloads
+                ],
+                'download_history': self.video_download_history,
+                'favorites': self.video_favorites,
+                'statistics': self.video_statistics
+            }
+            with open(data_file, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            self.video_log(f"⚠ Fehler beim Speichern der Video-Daten: {e}")
+    
+    def video_log(self, message: str, level: str = "INFO"):
+        """Fügt eine Nachricht zum Video-Log hinzu"""
+        # Bestimme Level basierend auf Nachricht
+        if "[DEBUG]" in message:
+            level = "DEBUG"
+        elif "[WARNING]" in message or "⚠" in message:
+            level = "WARNING"
+        elif "[ERROR]" in message or "✗" in message:
+            level = "ERROR"
+        
+        # Prüfe Log-Level-Einstellung
+        log_level_setting = self.settings.get('log_level', 'debug')
+        
+        # In normalem Modus: Überspringe DEBUG-Logs in GUI
+        show_in_gui = True
+        if log_level_setting == 'normal' and level == 'DEBUG':
+            show_in_gui = False
+        
+        # Schreibe in Log-Datei (immer, aber mit Level-Filterung)
+        self._write_to_log_file(f"[VIDEO] {message}", level)
+        
+        # Zeige in GUI (wenn nicht übersprungen)
+        if show_in_gui and hasattr(self, 'video_log_text'):
+            self.video_log_text.config(state=tk.NORMAL)
+            level_prefix = f"[{level}] " if level != "INFO" else ""
+            self.video_log_text.insert(tk.END, f"{level_prefix}{message}\n")
+            self.video_log_text.see(tk.END)
+            self.video_log_text.config(state=tk.DISABLED)
+            self.root.update_idletasks()
+    
+    def log(self, message: str, level: str = "INFO"):
+        """Fügt eine Nachricht zum Log hinzu"""
+        # Bestimme Level basierend auf Nachricht
+        if "[DEBUG]" in message:
+            level = "DEBUG"
+        elif "[WARNING]" in message or "⚠" in message:
+            level = "WARNING"
+        elif "[ERROR]" in message or "✗" in message:
+            level = "ERROR"
+        
+        # Prüfe Log-Level-Einstellung
+        log_level_setting = self.settings.get('log_level', 'debug')
+        
+        # In normalem Modus: Überspringe DEBUG-Logs in GUI
+        show_in_gui = True
+        if log_level_setting == 'normal' and level == 'DEBUG':
+            show_in_gui = False
+        
+        # Schreibe in Log-Datei (immer, aber mit Level-Filterung)
+        self._write_to_log_file(f"[DEEZER] {message}", level)
+        
+        # Zeige in GUI (wenn nicht übersprungen)
+        if show_in_gui and hasattr(self, 'log_text'):
+            self.log_text.config(state=tk.NORMAL)
+            level_prefix = f"[{level}] " if level != "INFO" else ""
+            self.log_text.insert(tk.END, f"{level_prefix}{message}\n")
+        self.log_text.see(tk.END)
+        self.log_text.config(state=tk.DISABLED)
+        self.root.update_idletasks()
+    
+    def show_quality_dialog(self, default_quality: str = "MP3_320") -> Optional[str]:
+        """
+        Zeigt Qualitätsauswahl-Dialog
+        
+        Args:
+            default_quality: Standard-Qualität
+            
+        Returns:
+            Gewählte Qualität oder None bei Abbruch
+        """
+        quality_window = tk.Toplevel(self.root)
+        quality_window.title("Qualität auswählen")
+        quality_window.geometry("400x300")
+        quality_window.transient(self.root)
+        quality_window.grab_set()
+        
+        quality_frame = ttk.Frame(quality_window, padding="20")
+        quality_frame.pack(fill=tk.BOTH, expand=True)
+        
+        ttk.Label(
+            quality_frame,
+            text="Wählen Sie die gewünschte Qualität:",
+            font=("Arial", 10, "bold")
+        ).pack(pady=10)
+        
+        selected_quality = tk.StringVar(value=default_quality)
+        
+        qualities = [
+            ("FLAC (Lossless, beste Qualität)", "FLAC"),
+            ("MP3 320 kbps (hohe Qualität)", "MP3_320"),
+            ("MP3 192 kbps (mittlere Qualität)", "MP3_192"),
+            ("MP3 128 kbps (niedrige Qualität)", "MP3_128"),
+        ]
+        
+        for text, value in qualities:
+            rb = ttk.Radiobutton(
+                quality_frame,
+                text=text,
+                variable=selected_quality,
+                value=value
+            )
+            rb.pack(anchor=tk.W, pady=5)
+        
+        result = [None]
+        
+        def confirm():
+            result[0] = selected_quality.get()
+            quality_window.destroy()
+        
+        def cancel():
+            quality_window.destroy()
+        
+        button_frame = ttk.Frame(quality_frame)
+        button_frame.pack(pady=20)
+        
+        ttk.Button(button_frame, text="Bestätigen", command=confirm).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Abbrechen", command=cancel).pack(side=tk.LEFT, padx=5)
+        
+        quality_window.wait_window()
+        return result[0]
+    
+    def start_download(self):
+        """Startet den Download in einem separaten Thread"""
+        url = self.url_var.get().strip()
+        
+        if not url:
+            messagebox.showwarning("Warnung", "Bitte geben Sie eine Deezer-URL ein.")
+            return
+        
+        # Downloader initialisieren
+        self.download_path = Path(self.path_var.get())
+        self.downloader = DeezerDownloader(download_path=str(self.download_path), auth=self.auth)
+        
+        # Qualitätsauswahl-Dialog
+        default_quality = self.downloader.quality if self.downloader else "MP3_320"
+        selected_quality = self.show_quality_dialog(default_quality)
+        if not selected_quality:
+            return  # Benutzer hat abgebrochen
+        
+        # Setze gewählte Qualität
+        self.downloader.quality = selected_quality
+        
+        # UI deaktivieren
+        self.download_button.config(state=tk.DISABLED)
+        self.progress_bar.start()
+        self.status_var.set("Download läuft...")
+        
+        # Download in separatem Thread starten
+        thread = threading.Thread(target=self.download_thread, args=(url,))
+        thread.daemon = True
+        thread.start()
+    
+    def download_thread(self, url: str):
+        """Download-Thread"""
+        try:
+            self.log(f"Starte Download für: {url}")
+            self.log("=" * 60)
+            
+            # Führe Download durch
+            count = self.downloader.download_from_url(url)
+            
+            # Zeige alle Log-Einträge an
+            for log_entry in self.downloader.download_log:
+                self.log(log_entry)
+            
+            # Zeige Zusammenfassung
+            if self.downloader.download_results:
+                successful = sum(1 for r in self.downloader.download_results if r.success)
+                deezer_count = sum(1 for r in self.downloader.download_results if r.source == "Deezer")
+                youtube_count = sum(1 for r in self.downloader.download_results if r.source == "YouTube")
+                
+                self.log("")
+                self.log("=" * 60)
+                self.log("ZUSAMMENFASSUNG:")
+                self.log(f"Erfolgreich: {successful}/{len(self.downloader.download_results)}")
+                self.log(f"  • Deezer: {deezer_count}")
+                self.log(f"  • YouTube (Fallback): {youtube_count}")
+                self.log("=" * 60)
+            
+            if count > 0:
+                successful = sum(1 for r in self.downloader.download_results if r.success) if self.downloader.download_results else count
+                deezer_count = sum(1 for r in self.downloader.download_results if r.source == "Deezer") if self.downloader.download_results else 0
+                youtube_count = sum(1 for r in self.downloader.download_results if r.source == "YouTube") if self.downloader.download_results else 0
+                
+                self.status_var.set(f"Download abgeschlossen: {count} Track(s)")
+                messagebox.showinfo(
+                    "Erfolg",
+                    f"Download erfolgreich abgeschlossen!\n{count} Track(s) heruntergeladen.\n\n"
+                    f"Deezer: {deezer_count}\n"
+                    f"YouTube: {youtube_count}"
+                )
+            else:
+                self.log("\n✗ Download fehlgeschlagen")
+                self.status_var.set("Download fehlgeschlagen")
+                messagebox.showerror("Fehler", "Download fehlgeschlagen. Bitte Log prüfen.")
+        
+        except Exception as e:
+            error_msg = f"Fehler: {str(e)}"
+            self.log(f"\n✗ {error_msg}")
+            self.status_var.set("Fehler aufgetreten")
+            messagebox.showerror("Fehler", error_msg)
+        
+        finally:
+            # UI wieder aktivieren
+            self.progress_bar.stop()
+            self.download_button.config(state=tk.NORMAL)
+            self.status_var.set("Bereit")
+
+
+def main():
+    """Hauptfunktion"""
+    # Setze RESOURCE_NAME Umgebungsvariable für Linux (MUSS vor tk.Tk() gesetzt werden)
+    if sys.platform.startswith("linux"):
+        os.environ['RESOURCE_NAME'] = 'UniversalDownloader'
+    
+    root = tk.Tk()
+    
+    # Setze WM_CLASS für Linux (MUSS sofort nach tk.Tk() gesetzt werden, vor allem anderen)
+    if sys.platform.startswith("linux"):
+        def set_wm_class():
+            """Setze WM_CLASS mit mehreren Methoden für maximale Kompatibilität"""
+            try:
+                # Methode 1: tkinter wm_class (beide Parameter)
+                root.wm_class("UniversalDownloader", "UniversalDownloader")
+            except:
+                pass
+            
+            try:
+                # Methode 2: Direkter tk.call Zugriff
+                root.tk.call('wm', 'class', root._w, 'UniversalDownloader')
+            except:
+                pass
+            
+            try:
+                # Methode 3: WM_NAME separat setzen
+                root.tk.call('wm', 'name', root._w, 'Universal Downloader')
+            except:
+                pass
+        
+        # Setze sofort
+        set_wm_class()
+        
+        # Setze erneut nach update_idletasks (wenn Fenster vollständig initialisiert ist)
+        root.after(10, set_wm_class)
+        root.after(100, set_wm_class)
+        root.after(500, set_wm_class)
+        
+        # Verwende xprop als Fallback (nachdem Fenster erstellt wurde)
+        root.after(200, lambda: _set_wm_class_x11(root))
+        root.after(1000, lambda: _set_wm_class_x11(root))
+    
+    # Setze Fenstertitel (wichtig für Windows Taskleiste)
+    root.title("Universal Downloader")
+    
+    # Wichtig: update_idletasks() vor dem Erstellen der App, damit das Fenster initialisiert ist
+    root.update_idletasks()
+    
+    app = DeezerDownloaderGUI(root)
+    
+    # Setze Icon erneut nach vollständiger Initialisierung
+    if sys.platform == "win32":
+        root.after(100, app._set_application_icon)
+        
+        # Versuche App-Namen für Windows Taskleiste zu setzen
+        try:
+            import ctypes
+            from ctypes import wintypes
+            
+            # Setze App User Model ID (für Windows 7+)
+            # Dies hilft Windows, die Anwendung korrekt zu identifizieren
+            try:
+                shell32 = ctypes.windll.shell32
+                # SetCurrentProcessExplicitAppUserModelID
+                app_id = "UniversalDownloader.UniversalDownloader.1.0"
+                shell32.SetCurrentProcessExplicitAppUserModelID(app_id)
+            except:
+                pass
+        except:
+            pass
+    elif sys.platform.startswith("linux"):
+        # Für Linux: Setze Icon sofort
+        root.after(100, app._set_application_icon)
+    
+    # Cleanup beim Schließen
+    def on_closing():
+        app._save_window_geometry()  # Speichere Fenstergröße
+        app._close_log_file()
+        root.destroy()
+    
+    root.protocol("WM_DELETE_WINDOW", on_closing)
+    root.mainloop()
+
+
+def _set_wm_class_x11(root):
+    """Setze WM_CLASS über xprop (X11 direkt) - Fallback-Methode"""
+    if not sys.platform.startswith("linux"):
+        return
+    
+    try:
+        # Hole Fenster-ID
+        window_id = root.winfo_id()
+        if window_id:
+            # Verwende xprop um WM_CLASS zu setzen
+            # Format: WM_CLASS(STRING) = "name", "class"
+            # WICHTIG: xprop erwartet "name,class" als einen String
+            cmd = ['xprop', '-id', str(window_id), '-f', 'WM_CLASS', '8s', '-set', 'WM_CLASS', 'UniversalDownloader,UniversalDownloader']
+            result = subprocess.run(cmd, capture_output=True, timeout=2, check=False)
+            
+            # Setze auch WM_NAME
+            cmd_name = ['xprop', '-id', str(window_id), '-f', 'WM_NAME', '8s', '-set', 'WM_NAME', 'Universal Downloader']
+            subprocess.run(cmd_name, capture_output=True, timeout=2, check=False)
+            
+            # Setze auch _NET_WM_NAME (für moderne Desktop Environments)
+            try:
+                cmd_net_name = ['xprop', '-id', str(window_id), '-f', '_NET_WM_NAME', '8s', '-set', '_NET_WM_NAME', 'Universal Downloader']
+                subprocess.run(cmd_net_name, capture_output=True, timeout=2, check=False)
+            except:
+                pass
+    except Exception:
+        # xprop nicht verfügbar oder Fehler - ignoriere
+        pass
+
+
+if __name__ == "__main__":
+    main()
+
