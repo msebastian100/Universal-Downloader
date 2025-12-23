@@ -4171,17 +4171,40 @@ class DeezerDownloaderGUI:
             if messagebox.askyesno("Bestätigen", "Queue wirklich löschen?"):
                 self.video_download_queue.clear()
                 refresh_queue()
+                self._update_queue_status()
         
-        def start_queue():
-            if not self.video_download_queue:
-                messagebox.showwarning("Warnung", "Queue ist leer!")
-                return
-            queue_window.destroy()
-            self.start_queue_download()
+        def move_up():
+            selection = queue_tree.selection()
+            if selection:
+                item_id = selection[0]
+                index = queue_tree.index(item_id)
+                if index > 0:
+                    # Tausche Positionen
+                    self.video_download_queue[index], self.video_download_queue[index-1] = \
+                        self.video_download_queue[index-1], self.video_download_queue[index]
+                    refresh_queue()
+                    queue_tree.selection_set(queue_tree.get_children()[index-1])
+                    self._update_queue_status()
         
-        ttk.Button(button_frame, text="Ausgewähltes entfernen", command=remove_selected).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_frame, text="Queue löschen", command=clear_queue).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_frame, text="Queue starten", command=start_queue).pack(side=tk.RIGHT, padx=5)
+        def move_down():
+            selection = queue_tree.selection()
+            if selection:
+                item_id = selection[0]
+                index = queue_tree.index(item_id)
+                if index < len(self.video_download_queue) - 1:
+                    # Tausche Positionen
+                    self.video_download_queue[index], self.video_download_queue[index+1] = \
+                        self.video_download_queue[index+1], self.video_download_queue[index]
+                    refresh_queue()
+                    queue_tree.selection_set(queue_tree.get_children()[index+1])
+                    self._update_queue_status()
+        
+        # Buttons in Header-Frame einfügen (button_frame wurde bereits oben erstellt)
+        ttk.Button(button_frame, text="↑", command=move_up, width=3).pack(side=tk.LEFT, padx=2)
+        ttk.Button(button_frame, text="↓", command=move_down, width=3).pack(side=tk.LEFT, padx=2)
+        ttk.Button(button_frame, text="Entfernen", command=remove_selected).pack(side=tk.LEFT, padx=2)
+        ttk.Button(button_frame, text="Löschen", command=clear_queue).pack(side=tk.LEFT, padx=2)
+        ttk.Button(button_frame, text="🔄", command=refresh_queue, width=3).pack(side=tk.LEFT, padx=2)
     
     def start_queue_download(self):
         """Startet Downloads aus der Queue (manuell)"""
