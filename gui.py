@@ -3985,8 +3985,14 @@ class DeezerDownloaderGUI:
             except Exception as e:
                 messagebox.showerror("Fehler", f"Fehler beim Laden der Datei: {e}")
     
-    def _add_to_download_queue(self, url: str, episode_info: Optional[Dict] = None):
-        """Fügt einen Download zur Queue hinzu"""
+    def _add_to_download_queue(self, url: str, episode_info: Optional[Dict] = None, show_dialog: bool = True):
+        """Fügt einen Download zur Queue hinzu
+        
+        Args:
+            url: Die Video-URL
+            episode_info: Optional: Episode-Informationen für Serien
+            show_dialog: Wenn True, wird ein Dialog-Fenster angezeigt (Standard: True)
+        """
         from datetime import datetime
         
         # Erstelle Queue-Eintrag mit allen notwendigen Informationen
@@ -4013,11 +4019,29 @@ class DeezerDownloaderGUI:
             queue_item['episode_title'] = episode_info.get('title', '')
         
         self.video_download_queue.append(queue_item)
-        self.video_log(f"📋 Zur Queue hinzugefügt: {url[:60]}...")
-        messagebox.showinfo("Zur Queue hinzugefügt", 
-                          f"Download wurde zur Warteschlange hinzugefügt.\n\n"
-                          f"URL: {url[:80]}{'...' if len(url) > 80 else ''}\n\n"
-                          f"Downloads in Queue: {len(self.video_download_queue)}")
+        
+        # Zeige Episode-Titel oder URL im Log
+        if episode_info:
+            episode_title = episode_info.get('title', '')
+            series_name = episode_info.get('series_name', '')
+            if series_name and episode_title:
+                log_text = f"📋 Zur Queue hinzugefügt: {series_name} - {episode_title[:50]}..."
+            elif episode_title:
+                log_text = f"📋 Zur Queue hinzugefügt: {episode_title[:60]}..."
+            else:
+                log_text = f"📋 Zur Queue hinzugefügt: {url[:60]}..."
+        else:
+            log_text = f"📋 Zur Queue hinzugefügt: {url[:60]}..."
+        
+        self.video_log(log_text)
+        
+        # Zeige Dialog nur wenn gewünscht (nicht bei Batch-Hinzufügung von Episoden)
+        if show_dialog:
+            messagebox.showinfo("Zur Queue hinzugefügt", 
+                              f"Download wurde zur Warteschlange hinzugefügt.\n\n"
+                              f"URL: {url[:80]}{'...' if len(url) > 80 else ''}\n\n"
+                              f"Downloads in Queue: {len(self.video_download_queue)}")
+        
         self._update_queue_status()
     
     def add_video_to_queue(self):
@@ -4063,15 +4087,17 @@ class DeezerDownloaderGUI:
                         self.video_log("Benutzer hat abgebrochen")
                         return  # Benutzer hat abgebrochen
                     
-                    # Füge alle ausgewählten Episoden zur Queue hinzu
+                    # Füge alle ausgewählten Episoden zur Queue hinzu (ohne Dialog für jede Episode)
                     self.video_log(f"✓ {len(selected_episodes)} Folgen zur Queue hinzufügen...")
                     for episode in selected_episodes:
                         episode_url = episode.get('url', url)
-                        # Erstelle Queue-Eintrag für jede Episode
-                        self._add_to_download_queue(episode_url, episode_info=episode)
+                        # Erstelle Queue-Eintrag für jede Episode (ohne Dialog)
+                        self._add_to_download_queue(episode_url, episode_info=episode, show_dialog=False)
                     
+                    # Zeige nur einmal eine Zusammenfassung
                     messagebox.showinfo("Zur Queue hinzugefügt", 
                                       f"{len(selected_episodes)} Folgen wurden zur Warteschlange hinzugefügt.")
+                    self._update_queue_status()
                     return
                 except Exception as e:
                     self.video_log(f"✗ Fehler beim Öffnen des Dialogs: {e}")
