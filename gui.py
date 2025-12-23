@@ -4129,6 +4129,8 @@ class DeezerDownloaderGUI:
         
         # Prüfe ob Queue-Einträge vorhanden sind
         if not self.video_download_queue:
+            if hasattr(self, 'video_download_queue_processing'):
+                self.video_download_queue_processing = False
             return  # Queue ist leer
         
         # Starte nächsten Download aus Queue
