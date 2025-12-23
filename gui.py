@@ -4194,16 +4194,39 @@ class DeezerDownloaderGUI:
                         added_str = added.strftime("%H:%M:%S")
                     else:
                         added_str = str(added)
+                    
+                    # Zeige Episode-Informationen falls vorhanden
+                    episode_info = item.get('episode_info')
+                    if episode_info:
+                        episode_title = episode_info.get('title', '')
+                        series_name = episode_info.get('series_name', item.get('series_name', ''))
+                        season_num = episode_info.get('season_number', item.get('season_number'))
+                        episode_num = episode_info.get('episode_number', item.get('episode_number'))
+                        
+                        if series_name:
+                            display_text = f"{series_name}"
+                            if season_num:
+                                display_text += f" S{season_num:02d}"
+                            if episode_num:
+                                display_text += f"E{episode_num:02d}"
+                            if episode_title:
+                                display_text += f": {episode_title}"
+                            url_display = display_text[:60] + "..." if len(display_text) > 60 else display_text
+                        else:
+                            url_display = episode_title[:60] + "..." if episode_title and len(episode_title) > 60 else (episode_title or url[:60] + "..." if len(url) > 60 else url)
+                    else:
+                        url_display = url[:60] + "..." if len(url) > 60 else url
                 else:
                     url = item
                     status = 'Wartend'
                     quality = self.video_quality_var.get()
                     format_val = self.video_format_var.get()
                     added_str = "Jetzt"
+                    url_display = url[:60] + "..." if len(url) > 60 else url
                 
                 queue_tree.insert("", tk.END, values=(
                     status,
-                    url[:60] + "..." if len(url) > 60 else url,
+                    url_display,
                     quality,
                     format_val,
                     added_str
