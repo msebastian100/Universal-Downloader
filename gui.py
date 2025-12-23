@@ -4308,7 +4308,28 @@ class DeezerDownloaderGUI:
                     queue_tree.selection_set(queue_tree.get_children()[index+1])
                     self._update_queue_status()
         
+        def start_queue():
+            """Startet die Queue manuell"""
+            if not self.video_download_queue:
+                messagebox.showwarning("Warnung", "Queue ist leer!")
+                return
+            
+            # Prüfe ob bereits ein Download läuft
+            is_download_running = (
+                self.video_download_process is not None or 
+                (hasattr(self, 'video_download_episodes_total') and self.video_download_episodes_total > 0)
+            )
+            
+            if is_download_running:
+                messagebox.showwarning("Warnung", "Ein Download läuft bereits. Die Queue wird automatisch fortgesetzt, sobald der aktuelle Download fertig ist.")
+                return
+            
+            if messagebox.askyesno("Queue starten", f"{len(self.video_download_queue)} Downloads in der Queue.\n\nDownloads nacheinander starten?"):
+                queue_window.destroy()
+                self.start_queue_download()
+        
         # Buttons in Header-Frame einfügen (button_frame wurde bereits oben erstellt)
+        ttk.Button(button_frame, text="▶ Starten", command=start_queue).pack(side=tk.LEFT, padx=2)
         ttk.Button(button_frame, text="↑", command=move_up, width=3).pack(side=tk.LEFT, padx=2)
         ttk.Button(button_frame, text="↓", command=move_down, width=3).pack(side=tk.LEFT, padx=2)
         ttk.Button(button_frame, text="Entfernen", command=remove_selected).pack(side=tk.LEFT, padx=2)
