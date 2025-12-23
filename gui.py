@@ -4121,9 +4121,9 @@ class DeezerDownloaderGUI:
     
     def _process_download_queue(self):
         """Startet automatisch den nächsten Download aus der Queue"""
-        # Prüfe ob bereits ein Download läuft
+        # Prüfe ob bereits ein Download läuft (aber ignoriere video_download_queue_processing, 
+        # da das nur ein Flag ist, dass die Queue aktiv ist)
         if (self.video_download_process is not None or 
-            self.video_download_queue_processing or
             (hasattr(self, 'video_download_episodes_total') and self.video_download_episodes_total > 0)):
             return  # Download läuft noch
         
