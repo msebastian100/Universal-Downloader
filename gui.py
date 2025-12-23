@@ -3809,12 +3809,12 @@ class DeezerDownloaderGUI:
                 if self.video_status_var.get().startswith("Download läuft"):
                     self.video_status_var.set("Bereit")
             
-            # Prüfe ob Queue-Downloads vorhanden sind und starte automatisch
-            self._process_download_queue()
-            
-            # Reset Variablen erst NACH dem UI-Update, wenn Download wirklich beendet ist
+            # Reset Variablen ZUERST, damit _process_download_queue erkennt, dass Download beendet ist
             self.video_download_episodes_total = 0
             self.video_download_cancel_current_only = False
+            
+            # Prüfe ob Queue-Downloads vorhanden sind und starte automatisch
+            self._process_download_queue()
     
     def _setup_logging(self):
         """Richtet File-Logging ein"""
@@ -3985,7 +3985,7 @@ class DeezerDownloaderGUI:
             except Exception as e:
                 messagebox.showerror("Fehler", f"Fehler beim Laden der Datei: {e}")
     
-    def _add_to_download_queue(self, url: str):
+    def _add_to_download_queue(self, url: str, episode_info: Optional[Dict] = None):
         """Fügt einen Download zur Queue hinzu"""
         from datetime import datetime
         
@@ -4003,6 +4003,15 @@ class DeezerDownloaderGUI:
             'status': 'Wartend'
         }
         
+        # Füge Episode-Informationen hinzu falls vorhanden
+        if episode_info:
+            queue_item['episode_info'] = episode_info
+            queue_item['is_series'] = True
+            queue_item['series_name'] = episode_info.get('series_name', '')
+            queue_item['season_number'] = episode_info.get('season_number')
+            queue_item['episode_number'] = episode_info.get('episode_number')
+            queue_item['episode_title'] = episode_info.get('title', '')
+        
         self.video_download_queue.append(queue_item)
         self.video_log(f"📋 Zur Queue hinzugefügt: {url[:60]}...")
         messagebox.showinfo("Zur Queue hinzugefügt", 
@@ -4012,13 +4021,64 @@ class DeezerDownloaderGUI:
         self._update_queue_status()
     
     def add_video_to_queue(self):
-        """Fügt aktuelles Video zur Queue hinzu"""
+        """Fügt aktuelles Video zur Queue hinzu (mit Serien/Playlist-Erkennung)"""
         url = self.video_url_var.get().strip()
         
         if not url:
             messagebox.showwarning("Warnung", "Bitte geben Sie eine Video-URL ein.")
             return
         
+        # Downloader initialisieren falls noch nicht geschehen
+        if not hasattr(self, 'video_downloader') or self.video_downloader is None:
+            self.video_download_path = Path(self.video_path_var.get())
+            quality = self.video_quality_var.get()
+            output_format = self.video_format_var.get()
+            self.video_downloader = VideoDownloader(
+                download_path=str(self.video_download_path),
+                quality=quality,
+                output_format=output_format,
+                gui_instance=self
+            )
+        
+        # Prüfe ob es eine YouTube-URL ist
+        is_youtube = 'youtube.com' in url.lower() or 'youtu.be' in url.lower()
+        is_youtube_playlist = is_youtube and ('list=' in url.lower() or '/playlist' in url.lower())
+        
+        # Prüfe ob es eine Serie/Staffel oder YouTube-Playlist ist
+        is_series_or_playlist = False
+        if is_youtube_playlist:
+            is_series_or_playlist = True
+        elif not is_youtube and self.video_downloader.is_series_or_season(url):
+            is_series_or_playlist = True
+        
+        if is_series_or_playlist:
+            # Zeige Dialog zur Auswahl
+            self.video_log("Prüfe ob es eine Serie/Playlist ist...")
+            series_data = self.video_downloader.get_series_episodes(url)
+            
+            if series_data and series_data.get('seasons'):
+                try:
+                    selected_episodes = self.show_series_selection_dialog(series_data, is_youtube_playlist=is_youtube_playlist)
+                    if not selected_episodes:
+                        self.video_log("Benutzer hat abgebrochen")
+                        return  # Benutzer hat abgebrochen
+                    
+                    # Füge alle ausgewählten Episoden zur Queue hinzu
+                    self.video_log(f"✓ {len(selected_episodes)} Folgen zur Queue hinzufügen...")
+                    for episode in selected_episodes:
+                        episode_url = episode.get('url', url)
+                        # Erstelle Queue-Eintrag für jede Episode
+                        self._add_to_download_queue(episode_url, episode_info=episode)
+                    
+                    messagebox.showinfo("Zur Queue hinzugefügt", 
+                                      f"{len(selected_episodes)} Folgen wurden zur Warteschlange hinzugefügt.")
+                    return
+                except Exception as e:
+                    self.video_log(f"✗ Fehler beim Öffnen des Dialogs: {e}")
+                    import traceback
+                    self.video_log(traceback.format_exc())
+        
+        # Normales einzelnes Video
         self._add_to_download_queue(url)
     
     def _update_queue_status(self):
