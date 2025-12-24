@@ -473,48 +473,133 @@ class StreamAutomation:
                 print(f"⏳ Warte {recording_duration:.1f} Sekunden (bei {self.playback_speed}x Geschwindigkeit)...")
                 time.sleep(recording_duration + 2)  # +2 Sekunden Puffer
             else:
-                # Warte auf Track-Ende (verbesserte Erkennung)
+                # Warte auf Track-Ende (verbesserte Erkennung, auch bei Wiederholung)
                 print("⏳ Warte auf Track-Ende...")
                 max_wait = 600  # Maximal 10 Minuten
                 waited = 0
                 track_ended = False
+                last_position = 0
+                position_unchanged_count = 0
+                
+                # JavaScript-Funktion für Track-Ende-Erkennung (auch bei Wiederholung)
+                self.driver.execute_script("""
+                    window._trackEndDetected = false;
+                    window._lastTrackTime = 0;
+                    window._trackEndCheck = function() {
+                        const audio = document.querySelector('audio');
+                        if (!audio) return false;
+                        
+                        const currentTime = audio.currentTime;
+                        const duration = audio.duration;
+                        
+                        // Prüfe ob Track beendet ist
+                        if (audio.ended) {
+                            window._trackEndDetected = true;
+                            return true;
+                        }
+                        
+                        // Prüfe ob wir am Ende sind (auch bei Wiederholung)
+                        // Wenn currentTime nahe bei duration ist und dann zurück springt, ist ein Durchlauf beendet
+                        if (duration > 0 && currentTime >= duration - 0.5) {
+                            // Track ist am Ende - warte kurz ob er wiederholt wird
+                            setTimeout(function() {
+                                if (audio.currentTime < 0.5) {
+                                    // Track wurde wiederholt - ein Durchlauf ist beendet
+                                    window._trackEndDetected = true;
+                                } else if (audio.ended) {
+                                    // Track ist wirklich beendet
+                                    window._trackEndDetected = true;
+                                }
+                            }, 500);
+                            return true;
+                        }
+                        
+                        return false;
+                    };
+                    
+                    // Starte kontinuierliche Prüfung
+                    const checkInterval = setInterval(function() {
+                        if (window._trackEndCheck()) {
+                            clearInterval(checkInterval);
+                        }
+                    }, 200); // Prüfe alle 200ms
+                    
+                    window._trackEndCheckInterval = checkInterval;
+                """)
                 
                 while waited < max_wait and not track_ended:
-                    time.sleep(2)  # Prüfe alle 2 Sekunden
-                    waited += 2
+                    time.sleep(0.5)  # Prüfe alle 0.5 Sekunden für schnellere Reaktion
+                    waited += 0.5
                     
                     try:
-                        # Methode 1: Prüfe Audio-Element direkt
-                        is_playing = self.driver.execute_script("""
+                        # Methode 1: Prüfe JavaScript-Flag
+                        track_end_detected = self.driver.execute_script("return window._trackEndDetected || false;")
+                        if track_end_detected:
+                            print("✓ Track beendet (JavaScript-Erkennung)")
+                            track_ended = True
+                            break
+                        
+                        # Methode 2: Prüfe Audio-Element direkt
+                        audio_state = self.driver.execute_script("""
                             const audio = document.querySelector('audio');
-                            if (audio) {
-                                return !audio.paused && !audio.ended && audio.currentTime > 0;
-                            }
-                            return false;
+                            if (!audio) return {ended: false, currentTime: 0, duration: 0, paused: true};
+                            
+                            return {
+                                ended: audio.ended,
+                                currentTime: audio.currentTime,
+                                duration: audio.duration,
+                                paused: audio.paused
+                            };
                         """)
                         
-                        if not is_playing:
-                            # Prüfe ob Track wirklich beendet ist (nicht nur pausiert)
-                            is_ended = self.driver.execute_script("""
-                                const audio = document.querySelector('audio');
-                                if (audio) {
-                                    return audio.ended || (audio.currentTime >= audio.duration - 0.5);
-                                }
-                                return false;
-                            """)
-                            
-                            if is_ended:
-                                print("✓ Track beendet (Audio-Element)")
-                                track_ended = True
-                                break
+                        if audio_state['ended']:
+                            print("✓ Track beendet (Audio-Element: ended=true)")
+                            track_ended = True
+                            break
                         
-                        # Methode 2: Prüfe Play-Button-Status
+                        # Methode 3: Prüfe ob wir am Ende sind (auch bei Wiederholung)
+                        if audio_state['duration'] > 0:
+                            current_time = audio_state['currentTime']
+                            duration = audio_state['duration']
+                            
+                            # Wenn wir sehr nah am Ende sind (letzte 0.5 Sekunden)
+                            if current_time >= duration - 0.5:
+                                # Warte kurz und prüfe ob Track wiederholt wurde oder beendet ist
+                                time.sleep(0.6)
+                                new_state = self.driver.execute_script("""
+                                    const audio = document.querySelector('audio');
+                                    if (!audio) return {ended: false, currentTime: 0};
+                                    return {ended: audio.ended, currentTime: audio.currentTime};
+                                """)
+                                
+                                if new_state['ended']:
+                                    print("✓ Track beendet (am Ende erkannt)")
+                                    track_ended = True
+                                    break
+                                elif new_state['currentTime'] < 1.0:
+                                    # Track wurde wiederholt - ein Durchlauf ist beendet
+                                    print("✓ Track-Durchlauf beendet (Wiederholung erkannt)")
+                                    track_ended = True
+                                    break
+                            
+                            # Prüfe ob Position sich nicht ändert (Track hängt)
+                            if abs(current_time - last_position) < 0.1:
+                                position_unchanged_count += 1
+                                if position_unchanged_count > 10:  # 5 Sekunden keine Bewegung
+                                    print("⚠️ Track scheint zu hängen, stoppe Aufnahme")
+                                    track_ended = True
+                                    break
+                            else:
+                                position_unchanged_count = 0
+                                last_position = current_time
+                        
+                        # Methode 4: Prüfe Play-Button-Status (als Fallback)
                         try:
                             play_button = self.driver.find_element(By.CSS_SELECTOR, 
                                 "button[data-testid='play-button'], button[aria-label*='Play'], button[aria-label*='Wiedergabe']")
                             aria_label = play_button.get_attribute("aria-label") or ""
                             
-                            # Wenn Play-Button sichtbar ist und nicht "Pause" sagt, ist Track beendet
+                            # Wenn Play-Button sichtbar ist und nicht "Pause" sagt
                             if play_button.is_displayed() and "play" in aria_label.lower() and "pause" not in aria_label.lower():
                                 # Prüfe nochmal ob Audio wirklich beendet ist
                                 audio_ended = self.driver.execute_script("""
@@ -532,6 +617,16 @@ class StreamAutomation:
                     except Exception as e:
                         # Ignoriere Fehler und prüfe weiter
                         pass
+                
+                # Stoppe JavaScript-Interval
+                try:
+                    self.driver.execute_script("""
+                        if (window._trackEndCheckInterval) {
+                            clearInterval(window._trackEndCheckInterval);
+                        }
+                    """)
+                except:
+                    pass
                 
                 if not track_ended and waited >= max_wait:
                     print("⚠️ Maximale Wartezeit erreicht, stoppe Aufnahme")
