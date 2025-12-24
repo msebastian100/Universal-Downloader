@@ -1283,9 +1283,49 @@ class DeezerDownloaderGUI:
         # Auch in Log-Datei schreiben (immer, aber mit Level-Filterung)
         self._write_to_log_file(f"[MUSIK] {message}", level)
     
+    def _clean_url(self, url: str) -> str:
+        """Bereinigt eine URL von doppelten Einträgen und Whitespace"""
+        url = url.strip()
+        if not url:
+            return url
+        
+        # Prüfe ob die URL doppelt vorkommt (z.B. "urlurl" oder "url url")
+        # Finde die längste mögliche URL und prüfe ob sie sich wiederholt
+        import re
+        # Suche nach URLs im Text
+        url_pattern = r'https?://[^\s]+'
+        urls = re.findall(url_pattern, url)
+        
+        if len(urls) > 1:
+            # Wenn mehrere URLs gefunden wurden, nimm die erste
+            url = urls[0]
+        elif len(urls) == 1:
+            url = urls[0]
+        else:
+            # Keine URL gefunden, prüfe ob die URL sich selbst wiederholt
+            # Beispiel: "https://example.comhttps://example.com"
+            # Finde die erste vollständige URL
+            match = re.search(r'(https?://[^\s]+)', url)
+            if match:
+                first_url = match.group(1)
+                # Prüfe ob die URL sich wiederholt
+                if url.startswith(first_url + first_url):
+                    url = first_url
+                elif first_url in url and url.count(first_url) > 1:
+                    # URL kommt mehrfach vor, nimm nur die erste
+                    url = first_url
+        
+        return url.strip()
+    
     def start_music_download(self):
         """Startet den Musik-Download (Deezer oder Spotify)"""
         url = self.music_url_var.get().strip()
+        
+        # Bereinige URL von doppelten Einträgen
+        url = self._clean_url(url)
+        
+        # Aktualisiere das Feld mit der bereinigten URL
+        self.music_url_var.set(url)
         
         if not url:
             messagebox.showwarning("Keine URL", "Bitte geben Sie eine URL ein.")
@@ -1309,6 +1349,12 @@ class DeezerDownloaderGUI:
     def add_music_to_queue(self):
         """Fügt einen Musik-Download zur Queue hinzu"""
         url = self.music_url_var.get().strip()
+        
+        # Bereinige URL von doppelten Einträgen
+        url = self._clean_url(url)
+        
+        # Aktualisiere das Feld mit der bereinigten URL
+        self.music_url_var.set(url)
         
         if not url:
             messagebox.showwarning("Keine URL", "Bitte geben Sie eine URL ein.")
@@ -4098,6 +4144,12 @@ class DeezerDownloaderGUI:
     def add_video_to_queue(self):
         """Fügt aktuelles Video zur Queue hinzu (mit Serien/Playlist-Erkennung)"""
         url = self.video_url_var.get().strip()
+        
+        # Bereinige URL von doppelten Einträgen
+        url = self._clean_url(url)
+        
+        # Aktualisiere das Feld mit der bereinigten URL
+        self.video_url_var.set(url)
         
         if not url:
             messagebox.showwarning("Warnung", "Bitte geben Sie eine Video-URL ein.")
