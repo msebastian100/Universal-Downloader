@@ -42,6 +42,7 @@ class AudioRecorder:
         Args:
             duration: Aufnahmedauer in Sekunden (None = unbegrenzt)
             playback_speed: Wiedergabegeschwindigkeit (1.0 = normal, 2.0 = doppelt so schnell)
+                           HINWEIS: Die Geschwindigkeit muss in der Wiedergabe-App eingestellt werden!
             
         Returns:
             True wenn Aufnahme gestartet wurde
@@ -65,17 +66,22 @@ class AudioRecorder:
             
             # Baue ffmpeg-Kommando für Audio-Aufnahme
             # Aufnahme vom Standard-Audio-Input (System-Audio)
-            cmd = [
-                "ffmpeg",
-                "-f", "pulse" if sys.platform.startswith("linux") else "avfoundation" if sys.platform == "darwin" else "dshow",
-                "-i", ":0" if sys.platform.startswith("linux") else ":0" if sys.platform == "darwin" else "audio=virtual-audio-capturer",
-                "-ar", str(self.sample_rate),
-                "-ac", str(self.channels),
-                "-acodec", "libmp3lame",
-                "-ab", "320k",
-                "-y",
-                str(self.output_path)
-            ]
+            # HINWEIS: playback_speed wird hier nicht verwendet, da die Geschwindigkeit
+            # in der Wiedergabe-App (Spotify/Deezer) eingestellt werden muss
+            
+            # Für Linux: PulseAudio
+            if sys.platform.startswith("linux"):
+                cmd = [
+                    "ffmpeg",
+                    "-f", "pulse",
+                    "-i", "default",  # Standard-Audio-Input
+                    "-ar", str(self.sample_rate),
+                    "-ac", str(self.channels),
+                    "-acodec", "libmp3lame",
+                    "-ab", "320k",
+                    "-y",
+                    str(self.output_path)
+                ]
             
             # Für macOS: Verwende BlackHole oder ähnliches für System-Audio-Aufnahme
             if sys.platform == "darwin":
@@ -130,6 +136,9 @@ class AudioRecorder:
             print(f"   Dauer: {'Unbegrenzt' if not duration else f'{duration:.1f} Sekunden'}")
             print(f"   Sample-Rate: {self.sample_rate} Hz")
             print(f"   Kanäle: {self.channels}")
+            if playback_speed != 1.0:
+                print(f"   💡 Tipp: Stellen Sie die Wiedergabegeschwindigkeit auf {playback_speed}x in der App ein")
+                print(f"      (z.B. Spotify: Einstellungen → Wiedergabe → Geschwindigkeit)")
             
             return True
             

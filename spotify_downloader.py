@@ -855,6 +855,19 @@ class SpotifyDownloader:
             except Exception as e:
                 self.log(f"  ✗ Deezer-Download fehlgeschlagen: {e}", "ERROR")
         
+        # Methode 3: Audio-Aufnahme während der Wiedergabe (nur für privaten Gebrauch)
+        # Wenn alle anderen Methoden fehlgeschlagen sind, biete Audio-Aufnahme an
+        try:
+            from audio_recorder import AudioRecorder
+            
+            self.log(f"  ⚠ Alle Download-Methoden fehlgeschlagen", "WARNING")
+            self.log(f"  → Audio-Aufnahme während der Wiedergabe verfügbar (nur für privaten Gebrauch)", "INFO")
+            self.log(f"  💡 Tipp: Verwenden Sie die Audio-Aufnahme-Funktion in der GUI", "INFO")
+            self.log(f"     für DRM-geschützte Inhalte (nur für privaten Gebrauch)", "INFO")
+            
+        except ImportError:
+            pass
+        
         # Alle Methoden fehlgeschlagen
         error_msg = f"Download fehlgeschlagen für: {track_name}"
         self.log(f"  ✗ {error_msg}", "ERROR")
