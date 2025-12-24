@@ -507,12 +507,13 @@ class DeezerDownloader:
                         search_url = f"ytsearch5:{search_query}"
                         
                         # Zuerst: Hole Metadaten aller Ergebnisse
+                        # WICHTIG: --flat-playlist funktioniert nicht mit --dump-json für Suchanfragen
+                        # Wir müssen jedes Ergebnis einzeln abrufen
                         cmd_metadata = [
                             sys.executable, "-m", "yt_dlp",
                             "--dump-json",
                             "--no-warnings",
                             "--quiet",
-                            "--flat-playlist",
                             search_url
                         ]
                         
