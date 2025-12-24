@@ -820,9 +820,10 @@ class DeezerDownloader:
             return 0
         
         artist_name = artist_info.get('name', f'Artist_{artist_id}')
-        self.log(f"Lade Top-Tracks von {artist_name} herunter...", "INFO")
+        self.log(f"Lade Tracks von {artist_name} herunter...", "INFO")
         
-        # Hole Top-Tracks
+        # Methode 1: Versuche Top-Tracks
+        tracks = []
         try:
             url = f"{self.api_base}/artist/{artist_id}/top?limit={limit}"
             self.log(f"[DEBUG] API-URL: {url}", "INFO")
@@ -832,10 +833,75 @@ class DeezerDownloader:
             
             self.log(f"[DEBUG] API-Response: {data}", "INFO")
             tracks = data.get('data', [])
-            if not tracks:
-                self.log(f"Keine Tracks für {artist_name} gefunden", "WARNING")
-                self.log(f"[DEBUG] API-Response-Daten: {data}", "WARNING")
+            
+            if tracks:
+                self.log(f"Gefunden: {len(tracks)} Top-Track(s)", "INFO")
+            else:
+                self.log(f"Keine Top-Tracks gefunden, versuche Alben...", "INFO")
+        except Exception as e:
+            self.log(f"Fehler beim Abrufen der Top-Tracks: {e}", "WARNING")
+        
+        # Methode 2: Falls keine Top-Tracks, hole Tracks aus Alben
+        if not tracks:
+            try:
+                self.log(f"Lade Alben von {artist_name}...", "INFO")
+                albums_url = f"{self.api_base}/artist/{artist_id}/albums?limit=25"
+                response = self.session.get(albums_url, timeout=10)
+                response.raise_for_status()
+                albums_data = response.json()
+                albums = albums_data.get('data', [])
+                
+                if albums:
+                    self.log(f"Gefunden: {len(albums)} Album(s), extrahiere Tracks...", "INFO")
+                    
+                    # Sammle Tracks aus allen Alben
+                    all_tracks = []
+                    seen_track_ids = set()
+                    
+                    for album in albums[:10]:  # Maximal 10 Alben durchsuchen
+                        album_id = album.get('id')
+                        if not album_id:
+                            continue
+                        
+                        try:
+                            # Hole Album-Tracks
+                            album_tracks_url = f"{self.api_base}/album/{album_id}/tracks"
+                            album_response = self.session.get(album_tracks_url, timeout=10)
+                            album_response.raise_for_status()
+                            album_tracks_data = album_response.json()
+                            album_tracks = album_tracks_data.get('data', [])
+                            
+                            for track in album_tracks:
+                                track_id = track.get('id')
+                                if track_id and track_id not in seen_track_ids:
+                                    all_tracks.append(track)
+                                    seen_track_ids.add(track_id)
+                                    
+                                    if len(all_tracks) >= limit:
+                                        break
+                            
+                            if len(all_tracks) >= limit:
+                                break
+                        except Exception as e:
+                            self.log(f"Fehler beim Abrufen von Album {album_id}: {e}", "WARNING")
+                            continue
+                    
+                    tracks = all_tracks[:limit]  # Begrenze auf limit
+                    if tracks:
+                        self.log(f"Gefunden: {len(tracks)} Track(s) aus Alben", "INFO")
+                    else:
+                        self.log(f"Keine Tracks für {artist_name} gefunden", "WARNING")
+                        return 0
+                else:
+                    self.log(f"Keine Alben für {artist_name} gefunden", "WARNING")
+                    return 0
+            except Exception as e:
+                self.log(f"Fehler beim Abrufen der Alben: {e}", "ERROR")
                 return 0
+        
+        if not tracks:
+            self.log(f"Keine Tracks für {artist_name} gefunden", "WARNING")
+            return 0
             
             self.log(f"Gefunden: {len(tracks)} Track(s)", "INFO")
             
