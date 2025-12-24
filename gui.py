@@ -1449,6 +1449,9 @@ class DeezerDownloaderGUI:
             # Starte Automatisierung (4x Geschwindigkeit für schnellere Aufnahme)
             automation = StreamAutomation(output_path, playback_speed=4.0, arl_token=arl_token)
             
+            # Setze Progress-Callback für Fortschrittsanzeige
+            automation.progress_callback = update_progress
+            
             if automation.record_with_automation(url, provider, track_info=track_info):
                 self.root.after(0, lambda: self.music_status_var.set(f"✓ Audio-Aufnahme abgeschlossen: {filename}"))
                 self.root.after(0, lambda: self.music_log(f"\n✓ Audio-Aufnahme erfolgreich: {output_path}"))
