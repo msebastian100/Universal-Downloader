@@ -487,8 +487,7 @@ class DeezerDownloader:
             self.download_results.append(result)
             return result
         
-        # Methode 2: Fallback zu YouTube
-        # Prüfe auf DRM-Fehler (verschiedene Formate)
+        # Methode 2: Prüfe auf DRM-Fehler
         drm_detected = (
             "[DRM]" in source_or_error or 
             "DRM" in source_or_error.upper() or
@@ -497,6 +496,29 @@ class DeezerDownloader:
             "not supported" in source_or_error.lower() and "drm" in source_or_error.lower()
         )
         
+        # Methode 2a: Versuche Audio-Aufnahme während der Wiedergabe (nur für privaten Gebrauch)
+        if drm_detected:
+            try:
+                from audio_recorder import AudioRecorder
+                
+                self.log(f"  ⚠ Deezer-Download fehlgeschlagen (DRM-Schutz): {source_or_error[:100]}", "WARNING")
+                self.log(f"  → Audio-Aufnahme während der Wiedergabe verfügbar (nur für privaten Gebrauch)", "INFO")
+                self.log(f"  → Alternativ: YouTube-Fallback wird verwendet", "INFO")
+                
+                # Erstelle Plattform-Ordnerstruktur: deezer/künstlername/...
+                platform_output_dir = self._add_platform_folder(output_dir, "deezer")
+                output_path = platform_output_dir / f"{filename}.mp3"
+                
+                # Audio-Aufnahme ist verfügbar, aber wird nicht automatisch gestartet
+                # Benutzer kann sie manuell über GUI starten
+                # Hier nur Log-Meldung, GUI wird Option anbieten
+                self.log(f"  💡 Tipp: Verwenden Sie die Audio-Aufnahme-Funktion in der GUI", "INFO")
+                self.log(f"     für DRM-geschützte Inhalte (nur für privaten Gebrauch)", "INFO")
+                
+            except ImportError:
+                pass
+        
+        # Methode 2b: Fallback zu YouTube
         if use_youtube_fallback and drm_detected:
             self.log(f"  ⚠ Deezer-Download fehlgeschlagen (DRM-Schutz): {source_or_error[:100]}", "WARNING")
             self.log(f"  → Versuche YouTube als Fallback...", "INFO")
