@@ -825,13 +825,16 @@ class DeezerDownloader:
         # Hole Top-Tracks
         try:
             url = f"{self.api_base}/artist/{artist_id}/top?limit={limit}"
+            self.log(f"[DEBUG] API-URL: {url}", "INFO")
             response = self.session.get(url, timeout=10)
             response.raise_for_status()
             data = response.json()
             
+            self.log(f"[DEBUG] API-Response: {data}", "INFO")
             tracks = data.get('data', [])
             if not tracks:
                 self.log(f"Keine Tracks für {artist_name} gefunden", "WARNING")
+                self.log(f"[DEBUG] API-Response-Daten: {data}", "WARNING")
                 return 0
             
             self.log(f"Gefunden: {len(tracks)} Track(s)", "INFO")
