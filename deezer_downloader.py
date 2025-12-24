@@ -431,7 +431,7 @@ class DeezerDownloader:
             return False, str(e)[:200]
     
     def download_track(self, track_id: str, output_dir: Optional[Path] = None, 
-                       use_youtube_fallback: bool = True) -> DownloadResult:
+                       use_youtube_fallback: bool = True, prefer_youtube: bool = False) -> DownloadResult:
         """
         Lädt einen einzelnen Track herunter mit vollständigem Logging
         
@@ -464,8 +464,36 @@ class DeezerDownloader:
         filename = self.sanitize_filename(track_name)
         # Dateiendung wird basierend auf Qualität gesetzt
         
+        # Methode 0: Prüfe zuerst YouTube, wenn prefer_youtube=True (schneller, keine DRM-Probleme)
+        if prefer_youtube and use_youtube_fallback:
+            self.log(f"  → Prüfe zuerst YouTube-Verfügbarkeit...", "INFO")
+            
+            # Erstelle Plattform-Ordnerstruktur: youtube/künstlername/...
+            youtube_output_dir = self._add_platform_folder(output_dir, "youtube")
+            youtube_output_path = youtube_output_dir / f"{filename}.mp3"
+            
+            success, youtube_error = self.download_track_youtube(track_info, youtube_output_path)
+            
+            if success:
+                # Cover-Art herunterladen
+                cover_art = None
+                if 'album' in track_info and 'cover_medium' in track_info['album']:
+                    cover_art = self.download_cover_art(track_info['album']['cover_medium'])
+                
+                # Metadaten hinzufügen
+                self.add_metadata_to_mp3(youtube_output_path, track_info, cover_art)
+                
+                self.log(f"  ✓ Erfolgreich von YouTube heruntergeladen: {youtube_output_path}", "SUCCESS")
+                result = DownloadResult(track_id, track_name, True, "YouTube", youtube_output_path)
+                self.download_results.append(result)
+                return result
+            else:
+                self.log(f"  ⚠ YouTube nicht verfügbar: {youtube_error[:100] if youtube_error else 'Nicht gefunden'}", "WARNING")
+                self.log(f"  → Versuche Deezer-Download...", "INFO")
+        
         # Methode 1: Versuche Deezer-Download
-        self.log(f"  → Versuche Deezer-Download...", "INFO")
+        if not prefer_youtube:
+            self.log(f"  → Versuche Deezer-Download...", "INFO")
         
         # Erstelle Plattform-Ordnerstruktur: deezer/künstlername/...
         platform_output_dir = self._add_platform_folder(output_dir, "deezer")
@@ -518,8 +546,8 @@ class DeezerDownloader:
             except ImportError:
                 pass
         
-        # Methode 2b: Fallback zu YouTube
-        if use_youtube_fallback and drm_detected:
+        # Methode 2b: Fallback zu YouTube (nur wenn nicht bereits versucht)
+        if use_youtube_fallback and drm_detected and not prefer_youtube:
             self.log(f"  ⚠ Deezer-Download fehlgeschlagen (DRM-Schutz): {source_or_error[:100]}", "WARNING")
             self.log(f"  → Versuche YouTube als Fallback...", "INFO")
             
