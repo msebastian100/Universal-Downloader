@@ -292,18 +292,120 @@ class StreamAutomation:
                 except:
                     pass
             
-            # Warte auf Play-Button und klicke ihn
-            try:
-                play_button = WebDriverWait(self.driver, 10).until(
-                    EC.element_to_be_clickable((By.CSS_SELECTOR, "button[data-testid='play-button'], .control-play, button.play-button"))
-                )
-                play_button.click()
-                print("▶️ Play-Button geklickt")
-                time.sleep(2)
-            except:
-                # Versuche mit JavaScript
-                self.driver.execute_script("document.querySelector('button[data-testid=\"play-button\"]')?.click()")
-                time.sleep(2)
+            # Warte auf Play-Button und klicke ihn (mehrere Versuche)
+            play_clicked = False
+            for attempt in range(5):  # Maximal 5 Versuche
+                try:
+                    # Versuche verschiedene Selektoren
+                    play_selectors = [
+                        "button[data-testid='play-button']",
+                        "button[aria-label*='Play']",
+                        "button[aria-label*='Wiedergabe']",
+                        ".control-play",
+                        "button.play-button",
+                        "[data-testid='play']",
+                        "button[title*='Play']"
+                    ]
+                    
+                    for selector in play_selectors:
+                        try:
+                            play_button = WebDriverWait(self.driver, 3).until(
+                                EC.element_to_be_clickable((By.CSS_SELECTOR, selector))
+                            )
+                            if play_button.is_displayed():
+                                # Scroll zu Button falls nötig
+                                self.driver.execute_script("arguments[0].scrollIntoView(true);", play_button)
+                                time.sleep(0.3)
+                                
+                                # Klicke mit JavaScript (zuverlässiger)
+                                self.driver.execute_script("arguments[0].click();", play_button)
+                                print(f"▶️ Play-Button geklickt (Versuch {attempt + 1}, Selektor: {selector})")
+                                time.sleep(1)
+                                
+                                # Prüfe ob es funktioniert hat
+                                is_playing = self.driver.execute_script("""
+                                    const audio = document.querySelector('audio');
+                                    return audio ? (!audio.paused && audio.currentTime > 0) : false;
+                                """)
+                                
+                                if is_playing:
+                                    print("✓ Track spielt jetzt")
+                                    play_clicked = True
+                                    break
+                        except:
+                            continue
+                    
+                    if play_clicked:
+                        break
+                    
+                    # Fallback: Direktes JavaScript-Klicken
+                    if not play_clicked:
+                        self.driver.execute_script("""
+                            // Versuche verschiedene Methoden
+                            const selectors = [
+                                'button[data-testid="play-button"]',
+                                'button[aria-label*="Play"]',
+                                'button[aria-label*="Wiedergabe"]',
+                                '.control-play',
+                                'button.play-button'
+                            ];
+                            
+                            for (const selector of selectors) {
+                                const btn = document.querySelector(selector);
+                                if (btn && btn.offsetParent !== null) {
+                                    btn.click();
+                                    break;
+                                }
+                            }
+                            
+                            // Versuche auch über Audio-Element
+                            const audio = document.querySelector('audio');
+                            if (audio && audio.paused) {
+                                audio.play();
+                            }
+                        """)
+                        time.sleep(1)
+                        
+                        # Prüfe nochmal
+                        is_playing = self.driver.execute_script("""
+                            const audio = document.querySelector('audio');
+                            return audio ? (!audio.paused && audio.currentTime > 0) : false;
+                        """)
+                        
+                        if is_playing:
+                            print("✓ Track spielt jetzt (JavaScript-Fallback)")
+                            play_clicked = True
+                            break
+                    
+                    if not play_clicked:
+                        print(f"⚠️ Versuch {attempt + 1} fehlgeschlagen, versuche erneut...")
+                        time.sleep(1)
+                
+                except Exception as e:
+                    print(f"⚠️ Fehler beim Klicken auf Play-Button (Versuch {attempt + 1}): {e}")
+                    time.sleep(1)
+            
+            if not play_clicked:
+                print("⚠️ Konnte Play-Button nicht automatisch klicken")
+                print("   Bitte klicken Sie manuell auf Play")
+                # Warte auf manuelles Klicken
+                max_wait_manual = 30  # 30 Sekunden
+                waited_manual = 0
+                while waited_manual < max_wait_manual:
+                    time.sleep(1)
+                    waited_manual += 1
+                    is_playing = self.driver.execute_script("""
+                        const audio = document.querySelector('audio');
+                        return audio ? (!audio.paused && audio.currentTime > 0) : false;
+                    """)
+                    if is_playing:
+                        print("✓ Track spielt jetzt (manuell gestartet)")
+                        break
+                else:
+                    print("❌ Track wurde nicht gestartet")
+                    return False
+            
+            time.sleep(2)  # Warte auf Start der Wiedergabe
             
             # Setze Geschwindigkeit (verschiedene Methoden, auch für höhere Geschwindigkeiten)
             try:
@@ -575,11 +677,21 @@ class StreamAutomation:
                                 if new_state['ended']:
                                     print("✓ Track beendet (am Ende erkannt)")
                                     track_ended = True
+                                    # Stoppe Track automatisch
+                                    self.driver.execute_script("""
+                                        const audio = document.querySelector('audio');
+                                        if (audio) audio.pause();
+                                    """)
                                     break
                                 elif new_state['currentTime'] < 1.0:
                                     # Track wurde wiederholt - ein Durchlauf ist beendet
                                     print("✓ Track-Durchlauf beendet (Wiederholung erkannt)")
                                     track_ended = True
+                                    # Stoppe Track automatisch
+                                    self.driver.execute_script("""
+                                        const audio = document.querySelector('audio');
+                                        if (audio) audio.pause();
+                                    """)
                                     break
                             
                             # Prüfe ob Position sich nicht ändert (Track hängt)
