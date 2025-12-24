@@ -902,26 +902,22 @@ class DeezerDownloader:
         if not tracks:
             self.log(f"Keine Tracks für {artist_name} gefunden", "WARNING")
             return 0
+        
+        # Lade jeden Track herunter
+        self.log(f"Gefunden: {len(tracks)} Track(s)", "INFO")
+        
+        downloaded = 0
+        for i, track in enumerate(tracks, 1):
+            track_id = str(track['id'])
+            track_name = track.get('title', 'Unbekannt')
+            self.log(f"[{i}/{len(tracks)}] Lade herunter: {track_name}", "INFO")
             
-            self.log(f"Gefunden: {len(tracks)} Track(s)", "INFO")
-            
-            # Lade jeden Track herunter
-            downloaded = 0
-            for i, track in enumerate(tracks, 1):
-                track_id = str(track['id'])
-                track_name = track.get('title', 'Unbekannt')
-                self.log(f"[{i}/{len(tracks)}] Lade herunter: {track_name}", "INFO")
-                
-                result = self.download_track(track_id, output_dir=output_dir, use_youtube_fallback=True)
-                if result.success:
-                    downloaded += 1
-            
-            self.log(f"Artist-Download abgeschlossen: {downloaded}/{len(tracks)} Tracks erfolgreich", "INFO")
-            return downloaded
-            
-        except Exception as e:
-            self.log(f"Fehler beim Herunterladen der Artist-Tracks: {e}", "ERROR")
-            return 0
+            result = self.download_track(track_id, output_dir=output_dir, use_youtube_fallback=True)
+            if result.success:
+                downloaded += 1
+        
+        self.log(f"Artist-Download abgeschlossen: {downloaded}/{len(tracks)} Tracks erfolgreich", "INFO")
+        return downloaded
     
     def download_from_url(self, url: str) -> int:
         """
