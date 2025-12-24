@@ -131,7 +131,7 @@ class AudioRecordingSetup:
             return False
     
     def check_ffmpeg(self) -> Tuple[bool, str]:
-        """Prüft ob ffmpeg verfügbar ist"""
+        """Prüft ob ffmpeg verfügbar ist (wird bereits für Video-Downloader verwendet)"""
         try:
             result = subprocess.run(
                 ["ffmpeg", "-version"],
@@ -139,11 +139,11 @@ class AudioRecordingSetup:
                 timeout=5
             )
             if result.returncode == 0:
-                return True, "ffmpeg ist verfügbar"
+                return True, "ffmpeg ist verfügbar (bereits für Video-Downloader installiert)"
             else:
                 return False, "ffmpeg nicht gefunden"
         except FileNotFoundError:
-            return False, "ffmpeg nicht installiert"
+            return False, "ffmpeg nicht installiert (wird für Video-Downloader benötigt)"
         except Exception as e:
             return False, f"Fehler bei ffmpeg-Prüfung: {e}"
     
