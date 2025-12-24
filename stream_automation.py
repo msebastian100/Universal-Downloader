@@ -42,6 +42,10 @@ class StreamAutomation:
         
     def setup_browser(self, headless: bool = False) -> bool:
         """Richtet Browser ein"""
+        if not SELENIUM_AVAILABLE:
+            print("❌ Selenium nicht verfügbar. Bitte installieren Sie es mit: pip install selenium")
+            return False
+        
         try:
             chrome_options = Options()
             if headless:

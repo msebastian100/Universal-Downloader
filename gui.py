@@ -1335,6 +1335,102 @@ class DeezerDownloaderGUI:
         
         return url.strip()
     
+    def start_audio_recording(self):
+        """Startet automatische Audio-Aufnahme mit Browser-Automatisierung"""
+        url = self.music_url_var.get().strip()
+        
+        # Bereinige URL
+        url = self._clean_url(url)
+        self.music_url_var.set(url)
+        
+        if not url:
+            messagebox.showwarning("Keine URL", "Bitte geben Sie eine URL ein.")
+            return
+        
+        # Erkenne Provider
+        is_spotify = 'spotify.com' in url.lower()
+        is_deezer = 'deezer.com' in url.lower() or 'link.deezer.com' in url.lower()
+        
+        if not (is_spotify or is_deezer):
+            messagebox.showwarning("Ungültige URL", "Audio-Aufnahme funktioniert nur mit Spotify oder Deezer URLs.")
+            return
+        
+        # Bestätigungs-Dialog
+        provider = "Spotify" if is_spotify else "Deezer"
+        result = messagebox.askyesno(
+            "Audio-Automatisierung",
+            f"Automatische Audio-Aufnahme starten?\n\n"
+            f"Provider: {provider}\n"
+            f"URL: {url}\n\n"
+            f"Der Browser wird automatisch geöffnet, der Track wird abgespielt\n"
+            f"(stumm, 2x Geschwindigkeit) und die Aufnahme erfolgt automatisch.\n\n"
+            f"⚠️ Nur für privaten Gebrauch!"
+        )
+        
+        if not result:
+            return
+        
+        # Starte in separatem Thread
+        threading.Thread(
+            target=self.audio_recording_thread,
+            args=(url, provider.lower()),
+            daemon=True
+        ).start()
+    
+    def audio_recording_thread(self, url: str, provider: str):
+        """Thread für automatische Audio-Aufnahme"""
+        try:
+            from stream_automation import StreamAutomation
+            
+            # Erstelle Ausgabepfad
+            output_dir = Path(self.music_download_path)
+            output_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Erstelle Dateiname aus URL
+            import re
+            if provider == "spotify":
+                track_id_match = re.search(r'spotify\.com/track/([a-zA-Z0-9]+)', url)
+                filename = f"spotify_{track_id_match.group(1) if track_id_match else 'track'}.mp3"
+            else:
+                track_id_match = re.search(r'deezer\.com/(?:[a-z]{2}/)?track/(\d+)', url)
+                filename = f"deezer_{track_id_match.group(1) if track_id_match else 'track'}.mp3"
+            
+            output_path = output_dir / filename
+            
+            self.root.after(0, lambda: self.music_status_var.set("Audio-Aufnahme läuft..."))
+            self.root.after(0, lambda: self.music_progress_bar.start())
+            self.root.after(0, lambda: self.music_download_button.config(state=tk.DISABLED))
+            self.root.after(0, lambda: self.music_record_button.config(state=tk.DISABLED))
+            
+            self.music_log(f"🎙️ Starte automatische Audio-Aufnahme...")
+            self.music_log(f"Provider: {provider}")
+            self.music_log(f"URL: {url}")
+            self.music_log(f"Ausgabe: {output_path}")
+            
+            # Starte Automatisierung
+            automation = StreamAutomation(output_path, playback_speed=2.0)
+            
+            if automation.record_with_automation(url, provider):
+                self.root.after(0, lambda: self.music_status_var.set(f"✓ Audio-Aufnahme abgeschlossen: {filename}"))
+                self.root.after(0, lambda: self.music_log(f"\n✓ Audio-Aufnahme erfolgreich: {output_path}"))
+                self.root.after(0, lambda: messagebox.showinfo("Erfolg", f"Audio-Aufnahme abgeschlossen!\n\nDatei: {filename}"))
+            else:
+                self.root.after(0, lambda: self.music_status_var.set("✗ Audio-Aufnahme fehlgeschlagen"))
+                self.root.after(0, lambda: messagebox.showerror("Fehler", "Audio-Aufnahme fehlgeschlagen"))
+                
+        except ImportError as e:
+            self.music_log(f"❌ Fehler: {e}")
+            self.root.after(0, lambda: messagebox.showerror("Fehler", f"Automatisierung nicht verfügbar:\n{e}"))
+        except Exception as e:
+            self.music_log(f"❌ Fehler: {e}")
+            import traceback
+            self.music_log(traceback.format_exc())
+            self.root.after(0, lambda: messagebox.showerror("Fehler", f"Fehler bei Audio-Aufnahme:\n{e}"))
+        finally:
+            self.root.after(0, lambda: self.music_download_button.config(state=tk.NORMAL))
+            self.root.after(0, lambda: self.music_record_button.config(state=tk.NORMAL))
+            self.root.after(0, lambda: self.music_progress_bar.stop())
+    
     def start_music_download(self):
         """Startet den Musik-Download (Deezer oder Spotify)"""
         url = self.music_url_var.get().strip()
