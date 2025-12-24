@@ -149,10 +149,11 @@ class AudioDeviceDetector:
             
             if blackhole_installed:
                 # BlackHole ist installiert, aber noch nicht verfügbar (Neustart erforderlich)
-                return ":0", "BlackHole ist installiert, aber noch nicht verfügbar. Bitte Neustart durchführen! Verwende System-Audio (Device 0) als Fallback."
+                # Verwende System-Audio (Device 0) als Fallback - funktioniert sofort
+                return ":0", "BlackHole ist installiert, aber noch nicht verfügbar (Neustart erforderlich). Verwende System-Audio (Device 0) - funktioniert sofort!"
             else:
-                # Fallback: System-Audio (Device 0)
-                return ":0", "System-Audio (Device 0) - BlackHole wird empfohlen für bessere Qualität (brew install blackhole-2ch)"
+                # Fallback: System-Audio (Device 0) - funktioniert sofort ohne Installation
+                return ":0", "System-Audio (Device 0) - funktioniert sofort! (BlackHole optional für bessere Qualität: brew install blackhole-2ch)"
             
         except Exception as e:
             return ":0", f"Fehler bei Device-Erkennung, verwende Standard: {e}"

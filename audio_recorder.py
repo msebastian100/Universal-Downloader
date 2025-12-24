@@ -220,6 +220,8 @@ class AudioRecorder:
                 print(f"   Sample-Rate: {self.sample_rate} Hz")
                 print(f"   Kanäle: {self.channels}")
                 print(f"   Device: {device_info}")
+                if sys.platform == "darwin" and ":0" in str(cmd):
+                    print(f"   ℹ️  System-Audio (Device 0) wird verwendet - funktioniert sofort!")
                 if playback_speed != 1.0:
                     print(f"   💡 Tipp: Stellen Sie die Wiedergabegeschwindigkeit auf {playback_speed}x in der App ein")
                     print(f"      (z.B. Spotify: Einstellungen → Wiedergabe → Geschwindigkeit)")
