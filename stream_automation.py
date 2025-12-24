@@ -345,10 +345,10 @@ class StreamAutomation:
                     if play_clicked:
                         break
                     
-                    # Fallback: Direktes JavaScript-Klicken
+                    # Fallback: Direktes JavaScript-Klicken (vermeide Playlist-Buttons)
                     if not play_clicked:
-                        self.driver.execute_script("""
-                            // Versuche verschiedene Methoden
+                        play_button_found = self.driver.execute_script("""
+                            // Versuche verschiedene Methoden, vermeide Playlist-Buttons
                             const selectors = [
                                 'button[data-testid="play-button"]',
                                 'button[aria-label*="Play"]',
@@ -358,31 +358,55 @@ class StreamAutomation:
                             ];
                             
                             for (const selector of selectors) {
-                                const btn = document.querySelector(selector);
-                                if (btn && btn.offsetParent !== null) {
-                                    btn.click();
-                                    break;
+                                const buttons = document.querySelectorAll(selector);
+                                for (const btn of buttons) {
+                                    if (!btn.offsetParent) continue; // Nicht sichtbar
+                                    
+                                    const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
+                                    const title = (btn.getAttribute('title') || '').toLowerCase();
+                                    const text = (btn.textContent || '').toLowerCase();
+                                    
+                                    // Überspringe Playlist-Buttons
+                                    if (ariaLabel.includes('playlist') || ariaLabel.includes('hinzufügen') || 
+                                        ariaLabel.includes('add') || ariaLabel.includes('erstellen') ||
+                                        title.includes('playlist') || title.includes('hinzufügen') ||
+                                        text.includes('playlist') || text.includes('hinzufügen')) {
+                                        continue;
+                                    }
+                                    
+                                    // Prüfe ob es ein Play-Button ist
+                                    if (ariaLabel.includes('play') || ariaLabel.includes('wiedergabe') || 
+                                        title.includes('play') || btn.getAttribute('data-testid') === 'play-button') {
+                                        btn.click();
+                                        return true;
+                                    }
                                 }
                             }
                             
-                            // Versuche auch über Audio-Element
+                            // Versuche auch über Audio-Element direkt
                             const audio = document.querySelector('audio');
                             if (audio && audio.paused) {
                                 audio.play();
+                                return true;
                             }
-                        """)
-                        time.sleep(1)
-                        
-                        # Prüfe nochmal
-                        is_playing = self.driver.execute_script("""
-                            const audio = document.querySelector('audio');
-                            return audio ? (!audio.paused && audio.currentTime > 0) : false;
+                            
+                            return false;
                         """)
                         
-                        if is_playing:
-                            print("✓ Track spielt jetzt (JavaScript-Fallback)")
-                            play_clicked = True
-                            break
+                        if play_button_found:
+                            print(f"▶️ Play-Button per JavaScript geklickt (Versuch {attempt + 1})")
+                            time.sleep(1.5)
+                            
+                            # Prüfe ob es funktioniert hat
+                            is_playing = self.driver.execute_script("""
+                                const audio = document.querySelector('audio');
+                                return audio ? (!audio.paused && audio.currentTime > 0) : false;
+                            """)
+                            
+                            if is_playing:
+                                print("✓ Track spielt jetzt (JavaScript-Fallback)")
+                                play_clicked = True
+                                break
                     
                     if not play_clicked:
                         print(f"⚠️ Versuch {attempt + 1} fehlgeschlagen, versuche erneut...")
