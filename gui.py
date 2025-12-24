@@ -1422,10 +1422,26 @@ class DeezerDownloaderGUI:
             except:
                 pass
             
+            # Hole Track-Info für Metadaten (nur für Deezer)
+            track_info = None
+            if provider == "deezer":
+                try:
+                    import re
+                    import requests
+                    track_id_match = re.search(r'deezer\.com/(?:[a-z]{2}/)?track/(\d+)', url)
+                    if track_id_match:
+                        track_id = track_id_match.group(1)
+                        api_url = f"https://api.deezer.com/track/{track_id}"
+                        response = requests.get(api_url, timeout=10)
+                        if response.status_code == 200:
+                            track_info = response.json()
+                except:
+                    pass
+            
             # Starte Automatisierung
             automation = StreamAutomation(output_path, playback_speed=2.0, arl_token=arl_token)
             
-            if automation.record_with_automation(url, provider):
+            if automation.record_with_automation(url, provider, track_info=track_info):
                 self.root.after(0, lambda: self.music_status_var.set(f"✓ Audio-Aufnahme abgeschlossen: {filename}"))
                 self.root.after(0, lambda: self.music_log(f"\n✓ Audio-Aufnahme erfolgreich: {output_path}"))
                 self.root.after(0, lambda: messagebox.showinfo("Erfolg", f"Audio-Aufnahme abgeschlossen!\n\nDatei: {filename}"))

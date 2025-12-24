@@ -357,7 +357,7 @@ class StreamAutomation:
             return False
     
     def record_with_automation(self, url: str, provider: str = "spotify", 
-                               duration: Optional[float] = None) -> bool:
+                               duration: Optional[float] = None, track_info: Optional[Dict] = None) -> bool:
         """
         Nimmt automatisch Audio auf während der Wiedergabe
         
@@ -365,11 +365,16 @@ class StreamAutomation:
             url: URL des Tracks
             provider: "spotify" oder "deezer"
             duration: Erwartete Dauer (None = automatisch)
+            track_info: Optional Track-Informationen für Metadaten
             
         Returns:
             True bei Erfolg
         """
         try:
+            # Hole Track-Info falls nicht übergeben (für Metadaten)
+            if not track_info and provider.lower() == "deezer":
+                track_info = self._get_deezer_track_info(url)
+            
             # Starte Audio-Aufnahme
             print(f"🎙️ Starte Audio-Aufnahme...")
             self.recorder = AudioRecorder(self.output_path)
@@ -398,25 +403,67 @@ class StreamAutomation:
                 print(f"⏳ Warte {recording_duration:.1f} Sekunden (bei {self.playback_speed}x Geschwindigkeit)...")
                 time.sleep(recording_duration + 2)  # +2 Sekunden Puffer
             else:
-                # Warte auf Track-Ende (prüfe ob noch läuft)
+                # Warte auf Track-Ende (verbesserte Erkennung)
                 print("⏳ Warte auf Track-Ende...")
                 max_wait = 600  # Maximal 10 Minuten
                 waited = 0
-                while waited < max_wait:
-                    time.sleep(5)
-                    waited += 5
-                    # Prüfe ob Track noch läuft (vereinfacht)
+                track_ended = False
+                
+                while waited < max_wait and not track_ended:
+                    time.sleep(2)  # Prüfe alle 2 Sekunden
+                    waited += 2
+                    
                     try:
-                        # Versuche Play-Button-Status zu prüfen
-                        play_button = self.driver.find_element(By.CSS_SELECTOR, "button[data-testid='play-button']")
-                        if play_button.get_attribute("aria-label") and "play" in play_button.get_attribute("aria-label").lower():
-                            # Track ist beendet (Play-Button ist wieder sichtbar)
-                            print("✓ Track beendet")
-                            break
-                    except:
+                        # Methode 1: Prüfe Audio-Element direkt
+                        is_playing = self.driver.execute_script("""
+                            const audio = document.querySelector('audio');
+                            if (audio) {
+                                return !audio.paused && !audio.ended && audio.currentTime > 0;
+                            }
+                            return false;
+                        """)
+                        
+                        if not is_playing:
+                            # Prüfe ob Track wirklich beendet ist (nicht nur pausiert)
+                            is_ended = self.driver.execute_script("""
+                                const audio = document.querySelector('audio');
+                                if (audio) {
+                                    return audio.ended || (audio.currentTime >= audio.duration - 0.5);
+                                }
+                                return false;
+                            """)
+                            
+                            if is_ended:
+                                print("✓ Track beendet (Audio-Element)")
+                                track_ended = True
+                                break
+                        
+                        # Methode 2: Prüfe Play-Button-Status
+                        try:
+                            play_button = self.driver.find_element(By.CSS_SELECTOR, 
+                                "button[data-testid='play-button'], button[aria-label*='Play'], button[aria-label*='Wiedergabe']")
+                            aria_label = play_button.get_attribute("aria-label") or ""
+                            
+                            # Wenn Play-Button sichtbar ist und nicht "Pause" sagt, ist Track beendet
+                            if play_button.is_displayed() and "play" in aria_label.lower() and "pause" not in aria_label.lower():
+                                # Prüfe nochmal ob Audio wirklich beendet ist
+                                audio_ended = self.driver.execute_script("""
+                                    const audio = document.querySelector('audio');
+                                    return audio ? audio.ended : false;
+                                """)
+                                
+                                if audio_ended:
+                                    print("✓ Track beendet (Play-Button)")
+                                    track_ended = True
+                                    break
+                        except:
+                            pass
+                            
+                    except Exception as e:
+                        # Ignoriere Fehler und prüfe weiter
                         pass
                 
-                if waited >= max_wait:
+                if not track_ended and waited >= max_wait:
                     print("⚠️ Maximale Wartezeit erreicht, stoppe Aufnahme")
             
             # Stoppe Aufnahme
@@ -426,7 +473,15 @@ class StreamAutomation:
             
             # Normalisiere Geschwindigkeit (zurück auf 1x)
             print(f"🔄 Normalisiere Geschwindigkeit (zurück auf 1x)...")
-            return self.normalize_speed()
+            if not self.normalize_speed():
+                print("⚠️ Normalisierung fehlgeschlagen, verwende Original-Datei")
+            
+            # Füge Metadaten hinzu
+            if track_info and self.output_path.exists():
+                print("📝 Füge Metadaten hinzu...")
+                self._add_metadata(track_info)
+            
+            return True
             
         except Exception as e:
             print(f"❌ Fehler bei automatischer Aufnahme: {e}")
@@ -486,6 +541,120 @@ class StreamAutomation:
         except Exception as e:
             print(f"⚠️ Fehler bei Normalisierung: {e}")
             return True  # Verwende Original-Datei trotzdem
+    
+    def _get_deezer_track_info(self, url: str) -> Optional[Dict]:
+        """Ruft Track-Informationen von Deezer API ab"""
+        try:
+            import re
+            import requests
+            
+            # Extrahiere Track-ID aus URL
+            track_id_match = re.search(r'deezer\.com/(?:[a-z]{2}/)?track/(\d+)', url)
+            if not track_id_match:
+                return None
+            
+            track_id = track_id_match.group(1)
+            
+            # Rufe Deezer API auf
+            api_url = f"https://api.deezer.com/track/{track_id}"
+            response = requests.get(api_url, timeout=10)
+            
+            if response.status_code == 200:
+                return response.json()
+        except Exception as e:
+            print(f"⚠️ Konnte Track-Info nicht abrufen: {e}")
+        
+        return None
+    
+    def _add_metadata(self, track_info: Dict):
+        """Fügt Metadaten zur MP3-Datei hinzu"""
+        try:
+            from mutagen.id3 import ID3, TIT2, TPE1, TALB, TDRC, APIC
+            from mutagen.mp3 import MP3
+            import requests
+            
+            if not self.output_path.exists():
+                print("⚠️ Aufnahme-Datei existiert nicht")
+                return
+            
+            audio = MP3(str(self.output_path), ID3=ID3)
+            
+            # Erstelle ID3-Tags falls nicht vorhanden
+            try:
+                audio.add_tags()
+            except:
+                pass
+            
+            # Titel
+            if 'title' in track_info:
+                audio['TIT2'] = TIT2(encoding=3, text=track_info['title'])
+                print(f"  ✓ Titel: {track_info['title']}")
+            
+            # Künstler
+            if 'artist' in track_info and 'name' in track_info['artist']:
+                audio['TPE1'] = TPE1(encoding=3, text=track_info['artist']['name'])
+                print(f"  ✓ Künstler: {track_info['artist']['name']}")
+            
+            # Album
+            if 'album' in track_info and 'title' in track_info['album']:
+                audio['TALB'] = TALB(encoding=3, text=track_info['album']['title'])
+                print(f"  ✓ Album: {track_info['album']['title']}")
+            
+            # Jahr
+            if 'album' in track_info and 'release_date' in track_info['album']:
+                year = track_info['album']['release_date'][:4]
+                audio['TDRC'] = TDRC(encoding=3, text=year)
+                print(f"  ✓ Jahr: {year}")
+            
+            # Cover-Art
+            cover_art = None
+            if 'album' in track_info and 'cover_medium' in track_info['album']:
+                try:
+                    cover_url = track_info['album']['cover_medium']
+                    response = requests.get(cover_url, timeout=10)
+                    if response.status_code == 200:
+                        cover_art = response.content
+                        audio['APIC'] = APIC(
+                            encoding=3,
+                            mime='image/jpeg',
+                            type=3,
+                            desc='Cover',
+                            data=cover_art
+                        )
+                        print(f"  ✓ Cover-Art hinzugefügt")
+                except Exception as e:
+                    print(f"  ⚠️ Konnte Cover-Art nicht laden: {e}")
+            
+            # Benenne Datei um (mit Künstler und Titel)
+            if 'title' in track_info and 'artist' in track_info and 'name' in track_info['artist']:
+                import re
+                def sanitize_filename(name: str) -> str:
+                    invalid_chars = '<>:"/\\|?*'
+                    for char in invalid_chars:
+                        name = name.replace(char, '_')
+                    return name.strip('. ')
+                
+                artist = sanitize_filename(track_info['artist']['name'])
+                title = sanitize_filename(track_info['title'])
+                new_filename = f"{artist} - {title}.mp3"
+                new_path = self.output_path.parent / new_filename
+                
+                if new_path != self.output_path:
+                    audio.save()  # Speichere Metadaten zuerst
+                    self.output_path.rename(new_path)
+                    self.output_path = new_path
+                    print(f"  ✓ Datei umbenannt: {new_filename}")
+                else:
+                    audio.save()
+            else:
+                audio.save()
+            
+            print("✓ Metadaten erfolgreich hinzugefügt")
+            
+        except Exception as e:
+            print(f"⚠️ Fehler beim Hinzufügen der Metadaten: {e}")
+            import traceback
+            traceback.print_exc()
     
     def cleanup(self):
         """Räumt auf"""
