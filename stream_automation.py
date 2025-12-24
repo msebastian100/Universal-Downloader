@@ -305,17 +305,48 @@ class StreamAutomation:
                 self.driver.execute_script("document.querySelector('button[data-testid=\"play-button\"]')?.click()")
                 time.sleep(2)
             
-            # Setze Geschwindigkeit auf 2x
+            # Setze Geschwindigkeit auf 2x (verschiedene Methoden)
             try:
+                # Methode 1: Direktes Setzen der playbackRate
                 self.driver.execute_script(f"""
                     const audio = document.querySelector('audio');
                     if (audio) {{
                         audio.playbackRate = {self.playback_speed};
+                        // Stelle sicher, dass es gesetzt bleibt
+                        audio.addEventListener('ratechange', function() {{
+                            if (this.playbackRate !== {self.playback_speed}) {{
+                                this.playbackRate = {self.playback_speed};
+                            }}
+                        }});
                     }}
                 """)
-                print(f"⚡ Geschwindigkeit auf {self.playback_speed}x gesetzt")
-            except:
-                print(f"⚠️ Konnte Geschwindigkeit nicht automatisch setzen")
+                
+                # Methode 2: Prüfe ob es funktioniert hat
+                time.sleep(0.5)
+                actual_speed = self.driver.execute_script("""
+                    const audio = document.querySelector('audio');
+                    return audio ? audio.playbackRate : 1.0;
+                """)
+                
+                if abs(actual_speed - self.playback_speed) < 0.1:
+                    print(f"⚡ Geschwindigkeit auf {self.playback_speed}x gesetzt (tatsächlich: {actual_speed:.1f}x)")
+                else:
+                    print(f"⚠️ Geschwindigkeit konnte nicht auf {self.playback_speed}x gesetzt werden (aktuell: {actual_speed:.1f}x)")
+                    # Versuche es nochmal mit MutationObserver
+                    self.driver.execute_script(f"""
+                        const audio = document.querySelector('audio');
+                        if (audio) {{
+                            const observer = new MutationObserver(function() {{
+                                if (audio.playbackRate !== {self.playback_speed}) {{
+                                    audio.playbackRate = {self.playback_speed};
+                                }}
+                            }});
+                            observer.observe(audio, {{ attributes: true, attributeFilter: ['playbackRate'] }});
+                            audio.playbackRate = {self.playback_speed};
+                        }}
+                    """)
+            except Exception as e:
+                print(f"⚠️ Konnte Geschwindigkeit nicht automatisch setzen: {e}")
             
             # Stelle sicher, dass Audio stumm ist
             try:
