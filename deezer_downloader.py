@@ -648,7 +648,10 @@ class DeezerDownloader:
                     continue  # Versuche nächste Suchanfrage
             
             # Alle Suchanfragen fehlgeschlagen
-            return False, f"Keine Ergebnisse für: {artist_name} - {track_title}"
+            if is_audiobook_chapter:
+                return False, f"Kein vollständiges Hörbuch auf YouTube gefunden für: {artist_name} - {base_title}"
+            else:
+                return False, f"Keine Ergebnisse für: {artist_name} - {track_title}"
                 
         except Exception as e:
             return False, f"Fehler: {str(e)[:200]}"
