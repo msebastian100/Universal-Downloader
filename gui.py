@@ -3624,6 +3624,11 @@ class DeezerDownloaderGUI:
                             self._add_to_download_queue(remaining_url, episode_info=remaining_episode_info, show_dialog=False)
                     self.video_log(f"✓ {len(remaining_episodes)} Folgen zur Queue hinzugefügt")
                     self._update_queue_status()
+                    
+                    # WICHTIG: Setze episodes_total auf 1, damit nur die erste Episode in dieser Schleife heruntergeladen wird
+                    # Die restlichen werden über die Queue verarbeitet
+                    original_episodes_total = self.video_download_episodes_total
+                    self.video_download_episodes_total = 1  # Nur noch eine Episode in dieser Schleife
                 
                 self.video_log(f"\n[{i}/{len(episodes)}] Lade herunter: {title}")
                 if series_name:
@@ -3773,6 +3778,14 @@ class DeezerDownloaderGUI:
                 else:
                     self.video_log(f"  ✗ Fehlgeschlagen: {error}")
                     failed_count += 1
+                
+                # Wenn erste Episode heruntergeladen wurde und restliche zur Queue hinzugefügt wurden,
+                # beende die Schleife hier, damit die restlichen Episoden über die Queue verarbeitet werden
+                if i == 1 and len(episodes) > 1:
+                    self.video_log(f"\n📋 Erste Episode heruntergeladen. Restliche {len(episodes) - 1} Folgen werden über Queue verarbeitet.")
+                    # Setze episodes_total zurück, damit Queue starten kann
+                    self.video_download_episodes_total = 0
+                    break  # Beende Schleife, restliche Episoden werden über Queue verarbeitet
             
             # Zusammenfassung
             self.video_log("\n" + "=" * 60)
