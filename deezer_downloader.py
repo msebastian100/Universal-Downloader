@@ -471,8 +471,12 @@ class DeezerDownloader:
             if is_audiobook_chapter:
                 # Für Hörbuch-Kapitel: Suche nach vollständigem Hörbuch (lange Dauer)
                 # Entferne Kapitel-Nummer und Album-Titel-Präfix
-                base_title = re.sub(r'\bkapitel\s*\d+\s*-\s*', '', track_title, flags=re.IGNORECASE).strip()
-                base_title = re.sub(r'^.*?-\s*', '', base_title, count=1).strip()  # Entferne "Kapitel XX - " Präfix
+                # Beispiel: "Kapitel 01 - DICKE EIER IN UNTERFILZBACH" -> "DICKE EIER IN UNTERFILZBACH"
+                base_title = re.sub(r'^.*?kapitel\s*\d+\s*-\s*', '', track_title, flags=re.IGNORECASE).strip()
+                
+                # Debug-Log
+                self.log(f"  [DEBUG] Hörbuch-Kapitel erkannt: {track_title}", "DEBUG")
+                self.log(f"  [DEBUG] Bereinigter Titel: {base_title}", "DEBUG")
                 
                 # Suche nach vollständigem Hörbuch (nicht einzelnen Kapiteln)
                 search_queries = [
@@ -518,6 +522,8 @@ class DeezerDownloader:
                             import json
                             lines = result_metadata.stdout.strip().split('\n')
                             
+                            self.log(f"  [DEBUG] Gefunden: {len([l for l in lines if l.strip()])} YouTube-Ergebnisse", "DEBUG")
+                            
                             for line in lines:
                                 if not line.strip():
                                     continue
@@ -526,19 +532,25 @@ class DeezerDownloader:
                                     video_info = json.loads(line)
                                     duration = video_info.get('duration', 0)
                                     video_id = video_info.get('id', '')
-                                    title = video_info.get('title', '').lower()
+                                    title = video_info.get('title', '')
+                                    title_lower = title.lower()
+                                    
+                                    self.log(f"  [DEBUG] Prüfe: {title[:60]}... (Dauer: {duration // 60} min)", "DEBUG")
                                     
                                     # Prüfe ob es ein vollständiges Hörbuch ist
                                     # Mindestdauer: 30 Minuten (vermeidet Demo-Tracks)
                                     if duration < 1800:
+                                        self.log(f"  [DEBUG]   → Zu kurz ({duration // 60} min < 30 min), überspringe", "DEBUG")
                                         continue
                                     
                                     # Vermeide Demo/Trailer/Preview
-                                    if any(word in title for word in ['demo', 'trailer', 'preview', 'vorschau']):
+                                    if any(word in title_lower for word in ['demo', 'trailer', 'preview', 'vorschau', 'sample']):
+                                        self.log(f"  [DEBUG]   → Demo/Trailer erkannt, überspringe", "DEBUG")
                                         continue
                                     
                                     # Vermeide einzelne Kapitel (wenn "Kapitel XX" im Titel)
-                                    if re.search(r'\bkapitel\s*\d+', title):
+                                    if re.search(r'\bkapitel\s*\d+', title_lower):
+                                        self.log(f"  [DEBUG]   → Einzelnes Kapitel erkannt, überspringe", "DEBUG")
                                         continue
                                     
                                     # Wenn länger als bisher gefundenes Video, speichere es
@@ -547,10 +559,15 @@ class DeezerDownloader:
                                         best_result = {
                                             'video_id': video_id,
                                             'duration': duration,
-                                            'title': video_info.get('title', '')
+                                            'title': title
                                         }
+                                        self.log(f"  [DEBUG]   → Neues bestes Ergebnis: {title[:60]}... ({duration // 60} min)", "DEBUG")
                                 
-                                except json.JSONDecodeError:
+                                except json.JSONDecodeError as e:
+                                    self.log(f"  [DEBUG] JSON-Fehler: {e}", "DEBUG")
+                                    continue
+                                except Exception as e:
+                                    self.log(f"  [DEBUG] Fehler beim Verarbeiten: {e}", "DEBUG")
                                     continue
                             
                             # Wenn wir ein gutes Ergebnis gefunden haben, lade es herunter
