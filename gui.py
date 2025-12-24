@@ -531,6 +531,13 @@ class DeezerDownloaderGUI:
                 command=self.show_spotify_api_config
             ).pack(side=tk.RIGHT, padx=5)
         
+        # Setup Button für Audio-Aufnahme
+        ttk.Button(
+            auth_frame,
+            text="🔧 Audio-Aufnahme Setup",
+            command=self.show_audio_setup
+        ).pack(side=tk.RIGHT, padx=5)
+        
         # Download-Pfad Auswahl
         ttk.Label(main_frame, text="Download-Pfad:").grid(
             row=2, column=0, sticky=tk.W, pady=5
