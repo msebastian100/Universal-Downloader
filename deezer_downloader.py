@@ -108,6 +108,7 @@ class DeezerDownloader:
         patterns = [
             r'deezer\.com/(?:[a-z]{2}/)?(?:track|album|playlist|artist)/(\d+)',
             r'/(track|album|playlist|artist)/(\d+)',
+            r'artist-(\d+)',  # Für URLs mit artist-{id} in Query-Parametern
         ]
         
         for pattern in patterns:
@@ -874,7 +875,8 @@ class DeezerDownloader:
                 self.log(f"Fehler beim Auflösen der link.deezer.com URL: {e}", "WARNING")
                 # Versuche trotzdem mit der ursprünglichen URL
         
-        # Bestimme Typ und ID
+        # Bestimme Typ und ID (Prüfe in der Reihenfolge: track, album, playlist, artist)
+        # WICHTIG: Prüfe artist VOR playlist, da artist auch in playlist-URLs vorkommen kann
         if '/track/' in url:
             track_id = self.extract_id_from_url(url)
             if track_id:
@@ -885,16 +887,17 @@ class DeezerDownloader:
             album_id = self.extract_id_from_url(url)
             if album_id:
                 return self.download_album(album_id)
+        elif '/artist/' in url or 'artist-' in url:
+            artist_id = self.extract_id_from_url(url)
+            self.log(f"[DEBUG] Artist-ID extrahiert: {artist_id}", "INFO")
+            if artist_id:
+                return self.download_artist(artist_id)
         elif '/playlist/' in url:
             playlist_id = self.extract_id_from_url(url)
             if playlist_id:
                 return self.download_playlist(playlist_id)
-        elif '/artist/' in url:
-            artist_id = self.extract_id_from_url(url)
-            if artist_id:
-                return self.download_artist(artist_id)
         
-        self.log("Ungültige oder nicht unterstützte Deezer-URL", "ERROR")
+        self.log(f"Ungültige oder nicht unterstützte Deezer-URL: {url}", "ERROR")
         return 0
 
 
