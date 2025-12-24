@@ -466,7 +466,12 @@ class DeezerDownloader:
             track_title = track_info['title']
             
             # Prüfe ob es ein Hörbuch-Kapitel ist
+            # Suche nach "Kapitel" gefolgt von einer Zahl (z.B. "Kapitel 01", "Kapitel 1")
             is_audiobook_chapter = bool(re.search(r'\bkapitel\s*\d+', track_title, re.IGNORECASE))
+            
+            # Debug: Zeige was erkannt wurde
+            self.log(f"  [DEBUG] Track-Titel: {track_title}", "DEBUG")
+            self.log(f"  [DEBUG] Hörbuch-Kapitel erkannt: {is_audiobook_chapter}", "DEBUG")
             
             if is_audiobook_chapter:
                 # Für Hörbuch-Kapitel: Suche nach vollständigem Hörbuch (lange Dauer)
