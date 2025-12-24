@@ -1492,30 +1492,36 @@ class DeezerDownloaderGUI:
             def setup_thread():
                 try:
                     from setup_audio_recording import AudioRecordingSetup
+                    import io
+                    import sys
                     
                     setup = AudioRecordingSetup()
                     
                     # Leite Output zu Text-Widget um
                     class TextRedirect:
-                        def __init__(self, text_widget):
+                        def __init__(self, text_widget, root):
                             self.text_widget = text_widget
+                            self.root = root
+                            self.buffer = ""
                         
                         def write(self, s):
-                            self.root.after(0, lambda: self._append_log(s))
+                            self.buffer += s
+                            # Aktualisiere GUI im Hauptthread
+                            self.root.after(0, lambda: self._append_log())
                         
                         def flush(self):
                             pass
                         
-                        def _append_log(self, s):
-                            self.text_widget.config(state=tk.NORMAL)
-                            self.text_widget.insert(tk.END, s)
-                            self.text_widget.see(tk.END)
-                            self.text_widget.config(state=tk.DISABLED)
+                        def _append_log(self):
+                            if self.buffer:
+                                self.text_widget.config(state=tk.NORMAL)
+                                self.text_widget.insert(tk.END, self.buffer)
+                                self.text_widget.see(tk.END)
+                                self.text_widget.config(state=tk.DISABLED)
+                                self.buffer = ""
                     
-                    text_redirect = TextRedirect(log_text)
-                    text_redirect.root = self.root
+                    text_redirect = TextRedirect(log_text, self.root)
                     
-                    import sys
                     from contextlib import redirect_stdout, redirect_stderr
                     
                     with redirect_stdout(text_redirect), redirect_stderr(text_redirect):
@@ -1535,14 +1541,16 @@ class DeezerDownloaderGUI:
                         ))
                 
                 except Exception as e:
-                    log_text.config(state=tk.NORMAL)
-                    log_text.insert(tk.END, f"\n❌ Fehler beim Setup: {e}\n")
-                    log_text.config(state=tk.DISABLED)
-                    import traceback
-                    self.root.after(0, lambda: messagebox.showerror(
-                        "Setup-Fehler",
-                        f"Fehler beim Setup:\n{e}"
-                    ))
+                    def show_error():
+                        log_text.config(state=tk.NORMAL)
+                        log_text.insert(tk.END, f"\n❌ Fehler beim Setup: {e}\n")
+                        log_text.config(state=tk.DISABLED)
+                        import traceback
+                        messagebox.showerror(
+                            "Setup-Fehler",
+                            f"Fehler beim Setup:\n{e}"
+                        )
+                    self.root.after(0, show_error)
             
             threading.Thread(target=setup_thread, daemon=True).start()
         
