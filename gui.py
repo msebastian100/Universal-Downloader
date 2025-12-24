@@ -4067,6 +4067,103 @@ class DeezerDownloaderGUI:
         selection_window.wait_window()
         return selected_albums
     
+    def _show_audiobook_search_option(self, albums: List[Dict], artist_name: str):
+        """Zeigt Option zur Multi-Anbieter-Suche für Hörbücher"""
+        try:
+            from audiobook_search import AudiobookSearch
+            from tkinter import messagebox
+            
+            # Frage ob nach alternativen Anbietern gesucht werden soll
+            album_titles = [album.get('title', 'Unbekannt') for album in albums[:3]]  # Erste 3 Alben
+            titles_text = '\n'.join(f"  • {title}" for title in album_titles)
+            if len(albums) > 3:
+                titles_text += f"\n  ... und {len(albums) - 3} weitere"
+            
+            response = messagebox.askyesno(
+                "Hörbuch erkannt",
+                f"Es wurden Hörbücher erkannt:\n{titles_text}\n\n"
+                f"Möchten Sie prüfen, ob diese Hörbücher auf anderen Plattformen verfügbar sind?\n"
+                f"(YouTube, Audible, Spotify, Storytel, Nextory, BookBeat)\n\n"
+                f"Dies kann einige Minuten dauern.",
+                icon='question'
+            )
+            
+            if response:
+                # Starte Suche in separatem Thread
+                import threading
+                search_thread = threading.Thread(
+                    target=self._search_audiobooks_thread,
+                    args=(albums, artist_name),
+                    daemon=True
+                )
+                search_thread.start()
+        
+        except ImportError:
+            pass  # audiobook_search nicht verfügbar
+        except Exception as e:
+            print(f"Fehler bei Hörbuch-Suche: {e}")
+    
+    def _search_audiobooks_thread(self, albums: List[Dict], artist_name: str):
+        """Thread für Multi-Anbieter-Suche"""
+        try:
+            from audiobook_search import AudiobookSearch
+            
+            searcher = AudiobookSearch()
+            
+            for album in albums:
+                album_title = album.get('title', 'Unbekannt')
+                self.music_log(f"\n🔍 Suche nach alternativen Anbietern für: {album_title}")
+                
+                # Entferne "Kapitel" und ähnliche Präfixe
+                import re
+                cleaned_title = re.sub(r'^.*? - ', '', album_title, count=1)  # Entferne alles vor " - "
+                cleaned_title = re.sub(r'\(.*?\)', '', cleaned_title).strip()  # Entferne Klammern
+                
+                # Suche auf allen Plattformen
+                results = searcher.search_all_providers(cleaned_title, artist_name)
+                
+                # Zeige Ergebnisse
+                available_providers = [p for p, d in results.items() if d.get('available', False)]
+                if available_providers:
+                    self.music_log(f"  ✅ Verfügbar auf: {', '.join(available_providers)}")
+                    
+                    # Frage ob von alternativem Anbieter heruntergeladen werden soll
+                    self.root.after(0, lambda p=available_providers, t=cleaned_title, a=artist_name, s=searcher: 
+                        self._ask_download_from_alternative(p, t, a, s))
+                else:
+                    self.music_log(f"  ❌ Nicht auf anderen Plattformen verfügbar")
+        
+        except ImportError:
+            self.music_log("⚠️ Multi-Anbieter-Suche nicht verfügbar (audiobook_search.py fehlt)")
+        except Exception as e:
+            self.music_log(f"❌ Fehler bei Multi-Anbieter-Suche: {e}")
+    
+    def _ask_download_from_alternative(self, providers: List[str], title: str, artist: str, searcher):
+        """Fragt ob von alternativem Anbieter heruntergeladen werden soll"""
+        try:
+            from tkinter import messagebox
+            
+            provider_text = ', '.join(providers)
+            response = messagebox.askyesno(
+                "Alternativer Anbieter gefunden",
+                f"'{title}' ist verfügbar auf: {provider_text}\n\n"
+                f"Möchten Sie von einem dieser Anbieter herunterladen?\n"
+                f"(Empfohlen: YouTube - kostenlos und schnell)",
+                icon='question'
+            )
+            
+            if response:
+                # Lade vom besten Anbieter herunter
+                import threading
+                download_thread = threading.Thread(
+                    target=lambda: searcher.download_from_best_provider(title, artist, Path(self.music_download_path)),
+                    daemon=True
+                )
+                download_thread.start()
+        
+        except Exception as e:
+            messagebox.showerror("Fehler", f"Fehler beim Starten des Downloads: {e}")
+    
     def download_selected_tracks(self, tracks: List[Dict], context_type: str = 'track', 
                                  context_name: str = '', artist_name: str = '') -> int:
         """
