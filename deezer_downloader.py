@@ -391,6 +391,64 @@ class DeezerDownloader:
         except Exception as e:
             return False, str(e)[:200]
     
+    def check_track_youtube_availability(self, track_info: Dict) -> bool:
+        """
+        Prüft schnell, ob ein Track auf YouTube verfügbar ist (ohne Download)
+        
+        Returns:
+            True wenn verfügbar, False sonst
+        """
+        try:
+            import subprocess
+            import sys
+            import re
+            import tempfile
+            from pathlib import Path
+            
+            # Optimiere Suchanfrage
+            artist_name = track_info['artist']['name']
+            track_title = track_info['title']
+            
+            # Entferne "Kapitel XX - " Präfix
+            cleaned_title = re.sub(r'^Kapitel \d+ - ', '', track_title, flags=re.IGNORECASE)
+            
+            # Verwende die beste Suchanfrage
+            search_query = f"{artist_name} {cleaned_title}"
+            search_url = f"ytsearch1:{search_query}"
+            
+            # Erstelle temporäre Datei
+            with tempfile.NamedTemporaryFile(suffix='.mp3', delete=False) as tmp_file:
+                tmp_path = Path(tmp_file.name)
+            
+            try:
+                cmd = [
+                    sys.executable, "-m", "yt_dlp",
+                    "-x",
+                    "--audio-format", "mp3",
+                    "--audio-quality", "0",
+                    "--no-warnings",
+                    "--quiet",
+                    "-f", "bestaudio/best",
+                    "-o", str(tmp_path),
+                    search_url
+                ]
+                
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+                
+                if result.returncode == 0 and tmp_path.exists() and tmp_path.stat().st_size > 100 * 1024:
+                    tmp_path.unlink(missing_ok=True)
+                    return True
+                else:
+                    tmp_path.unlink(missing_ok=True)
+                    return False
+                    
+            except Exception:
+                tmp_path.unlink(missing_ok=True)
+                return False
+                
+        except Exception:
+            return False
+    
     def download_track_youtube(self, track_info: Dict, output_path: Path) -> Tuple[bool, str]:
         """
         Lädt Track von YouTube herunter
@@ -890,6 +948,66 @@ class DeezerDownloader:
         except Exception as e:
             self.log(f"Fehler beim Abrufen der Artist-Info: {e}", "ERROR")
             return None
+    
+    def get_artist_albums(self, artist_id: str, limit: int = 50) -> List[Dict]:
+        """
+        Ruft alle Alben eines Artists ab
+        
+        Args:
+            artist_id: Deezer Artist-ID
+            limit: Maximale Anzahl Alben
+            
+        Returns:
+            Liste von Album-Dictionaries
+        """
+        try:
+            albums_url = f"{self.api_base}/artist/{artist_id}/albums?limit={limit}"
+            response = self.session.get(albums_url, timeout=10)
+            response.raise_for_status()
+            albums_data = response.json()
+            albums = albums_data.get('data', [])
+            return albums
+        except Exception as e:
+            self.log(f"Fehler beim Abrufen der Alben: {e}", "ERROR")
+            return []
+    
+    def check_album_youtube_availability(self, album: Dict) -> bool:
+        """
+        Prüft, ob ein Album auf YouTube verfügbar ist (durch Prüfung des ersten Tracks)
+        
+        Args:
+            album: Album-Dictionary von Deezer API
+            
+        Returns:
+            True wenn verfügbar, False sonst
+        """
+        try:
+            album_id = album.get('id')
+            if not album_id:
+                return False
+            
+            # Hole ersten Track des Albums
+            album_tracks_url = f"{self.api_base}/album/{album_id}/tracks?limit=1"
+            response = self.session.get(album_tracks_url, timeout=10)
+            response.raise_for_status()
+            tracks_data = response.json()
+            tracks = tracks_data.get('data', [])
+            
+            if not tracks:
+                return False
+            
+            first_track = tracks[0]
+            track_info = {
+                'artist': {'name': album.get('artist', {}).get('name', 'Unknown')},
+                'title': first_track.get('title', '')
+            }
+            
+            # Prüfe YouTube-Verfügbarkeit
+            return self.check_track_youtube_availability(track_info)
+            
+        except Exception as e:
+            self.log(f"Fehler beim Prüfen der YouTube-Verfügbarkeit für Album {album.get('id')}: {e}", "WARNING")
+            return False
     
     def download_artist(self, artist_id: str, output_dir: Optional[Path] = None, limit: int = 50) -> int:
         """

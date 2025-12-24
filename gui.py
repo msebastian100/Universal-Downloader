@@ -1707,48 +1707,92 @@ class DeezerDownloaderGUI:
                 if '/artist/' in url:
                     artist_id = self.downloader.extract_id_from_url(url)
                     if artist_id:
-                        # Hole Artist-Info und Tracks
+                        # Hole Artist-Info und Alben
                         artist_info = self.downloader.get_artist_info(artist_id)
                         if artist_info:
-                            # Hole Top-Tracks
+                            artist_name = artist_info.get('name', 'Unbekannt')
+                            
+                            # Hole Alben
                             try:
-                                tracks_url = f"{self.downloader.api_base}/artist/{artist_id}/top?limit=100"
-                                response = self.downloader.session.get(tracks_url, timeout=10)
-                                response.raise_for_status()
-                                data = response.json()
-                                tracks = data.get('data', [])
+                                self.root.after(0, lambda: self.music_status_var.set("Lade Alben..."))
+                                albums = self.downloader.get_artist_albums(artist_id, limit=50)
                                 
-                                if tracks:
-                                    # Zeige Auswahl-Dialog
-                                    selected_tracks = self.show_track_selection_dialog(
-                                        title=f"🎵 Artist: {artist_info.get('name', 'Unbekannt')}",
-                                        tracks=tracks,
-                                        is_artist=True
+                                if albums:
+                                    # Prüfe YouTube-Verfügbarkeit für jedes Album
+                                    self.root.after(0, lambda: self.music_status_var.set("Prüfe YouTube-Verfügbarkeit..."))
+                                    self.music_log(f"Prüfe YouTube-Verfügbarkeit für {len(albums)} Album(s)...")
+                                    
+                                    albums_with_availability = []
+                                    for i, album in enumerate(albums, 1):
+                                        self.music_log(f"[{i}/{len(albums)}] Prüfe: {album.get('title', 'Unbekannt')}...")
+                                        youtube_available = self.downloader.check_album_youtube_availability(album)
+                                        album['youtube_available'] = youtube_available
+                                        albums_with_availability.append(album)
+                                    
+                                    # Zeige Album-Auswahl-Dialog
+                                    selected_albums = self.show_album_selection_dialog(
+                                        title=f"💿 Artist: {artist_name}",
+                                        albums=albums_with_availability
                                     )
                                     
-                                    if selected_tracks:
-                                        # Lade ausgewählte Tracks herunter
-                                        artist_name = artist_info.get('name', 'Unbekannt')
-                                        count = self.download_selected_tracks(
-                                            selected_tracks,
-                                            context_type='artist',
-                                            context_name=artist_name,
-                                            artist_name=artist_name
-                                        )
-                                        if count > 0:
-                                            self.root.after(0, lambda: self.music_status_var.set(f"✓ Download abgeschlossen: {count} Track(s)"))
-                                            self.root.after(0, lambda: self.music_log(f"\n✓ Download erfolgreich abgeschlossen: {count} Track(s)"))
-                                            self.root.after(0, lambda: messagebox.showinfo("Erfolg", f"Download abgeschlossen!\n{count} Track(s) heruntergeladen."))
+                                    if selected_albums:
+                                        # Lade ausgewählte Alben herunter
+                                        total_count = 0
+                                        for album in selected_albums:
+                                            album_id = album.get('id')
+                                            if album_id:
+                                                self.music_log(f"\nLade Album: {album.get('title', 'Unbekannt')}")
+                                                count = self.downloader.download_album(album_id)
+                                                total_count += count
+                                        
+                                        if total_count > 0:
+                                            self.root.after(0, lambda: self.music_status_var.set(f"✓ Download abgeschlossen: {total_count} Track(s)"))
+                                            self.root.after(0, lambda: self.music_log(f"\n✓ Download erfolgreich abgeschlossen: {total_count} Track(s) aus {len(selected_albums)} Album(s)"))
+                                            self.root.after(0, lambda: messagebox.showinfo("Erfolg", f"Download abgeschlossen!\n{total_count} Track(s) aus {len(selected_albums)} Album(s) heruntergeladen."))
                                         else:
                                             self.root.after(0, lambda: self.music_status_var.set("✗ Download fehlgeschlagen"))
                                             self.root.after(0, lambda: messagebox.showerror("Fehler", "Download fehlgeschlagen. Bitte prüfen Sie die Logs."))
                                     else:
                                         self.root.after(0, lambda: self.music_status_var.set("Download abgebrochen"))
                                 else:
-                                    self.root.after(0, lambda: messagebox.showwarning("Warnung", "Keine Tracks für diesen Artist gefunden."))
+                                    # Fallback: Versuche Top-Tracks
+                                    self.root.after(0, lambda: self.music_status_var.set("Keine Alben gefunden, versuche Top-Tracks..."))
+                                    tracks_url = f"{self.downloader.api_base}/artist/{artist_id}/top?limit=100"
+                                    response = self.downloader.session.get(tracks_url, timeout=10)
+                                    response.raise_for_status()
+                                    data = response.json()
+                                    tracks = data.get('data', [])
+                                    
+                                    if tracks:
+                                        # Zeige Auswahl-Dialog
+                                        selected_tracks = self.show_track_selection_dialog(
+                                            title=f"🎵 Artist: {artist_name}",
+                                            tracks=tracks,
+                                            is_artist=True
+                                        )
+                                        
+                                        if selected_tracks:
+                                            # Lade ausgewählte Tracks herunter
+                                            count = self.download_selected_tracks(
+                                                selected_tracks,
+                                                context_type='artist',
+                                                context_name=artist_name,
+                                                artist_name=artist_name
+                                            )
+                                            if count > 0:
+                                                self.root.after(0, lambda: self.music_status_var.set(f"✓ Download abgeschlossen: {count} Track(s)"))
+                                                self.root.after(0, lambda: self.music_log(f"\n✓ Download erfolgreich abgeschlossen: {count} Track(s)"))
+                                                self.root.after(0, lambda: messagebox.showinfo("Erfolg", f"Download abgeschlossen!\n{count} Track(s) heruntergeladen."))
+                                            else:
+                                                self.root.after(0, lambda: self.music_status_var.set("✗ Download fehlgeschlagen"))
+                                                self.root.after(0, lambda: messagebox.showerror("Fehler", "Download fehlgeschlagen. Bitte prüfen Sie die Logs."))
+                                        else:
+                                            self.root.after(0, lambda: self.music_status_var.set("Download abgebrochen"))
+                                    else:
+                                        self.root.after(0, lambda: messagebox.showwarning("Warnung", "Keine Alben oder Tracks für diesen Artist gefunden."))
                             except Exception as e:
-                                self.music_log(f"Fehler beim Abrufen der Artist-Tracks: {e}")
-                                self.root.after(0, lambda: messagebox.showerror("Fehler", f"Fehler beim Abrufen der Tracks: {e}"))
+                                self.music_log(f"Fehler beim Abrufen der Artist-Alben: {e}")
+                                self.root.after(0, lambda: messagebox.showerror("Fehler", f"Fehler beim Abrufen der Alben: {e}"))
                         else:
                             self.root.after(0, lambda: messagebox.showerror("Fehler", "Konnte Artist-Informationen nicht abrufen."))
                     else:
@@ -3805,6 +3849,200 @@ class DeezerDownloaderGUI:
         
         selection_window.wait_window()
         return selected_tracks
+    
+    def show_album_selection_dialog(self, title: str, albums: List[Dict]) -> Optional[List[Dict]]:
+        """
+        Zeigt Dialog zur Auswahl von Alben mit YouTube-Verfügbarkeitsanzeige
+        
+        Args:
+            title: Titel des Dialogs
+            albums: Liste von Album-Dictionaries (mit 'youtube_available' Feld)
+            
+        Returns:
+            Liste mit ausgewählten Alben oder None bei Abbruch
+        """
+        selection_window = tk.Toplevel(self.root)
+        selection_window.title("Alben auswählen")
+        selection_window.geometry("900x700")
+        selection_window.transient(self.root)
+        selection_window.grab_set()
+        
+        # Hauptcontainer
+        main_frame = ttk.Frame(selection_window, padding="15")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Titel-Bereich
+        title_frame = ttk.Frame(main_frame)
+        title_frame.pack(fill=tk.X, pady=(0, 15))
+        
+        title_label = ttk.Label(
+            title_frame,
+            text=title,
+            font=("Arial", 16, "bold")
+        )
+        title_label.pack(anchor=tk.W, pady=(0, 5))
+        
+        # Zähle YouTube-verfügbare Alben
+        youtube_count = sum(1 for album in albums if album.get('youtube_available', False))
+        info_label = ttk.Label(
+            title_frame,
+            text=f"{len(albums)} Album(s) gefunden. {youtube_count} auf YouTube verfügbar.",
+            font=("Arial", 10),
+            foreground="gray"
+        )
+        info_label.pack(anchor=tk.W)
+        
+        # Frame für Alben mit Scrollbar
+        list_frame = ttk.Frame(main_frame)
+        list_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        
+        canvas = tk.Canvas(list_frame, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(list_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+        
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        # Variablen für Checkboxen
+        album_vars = {}  # {album_index: BooleanVar}
+        
+        # Erstelle UI für jedes Album
+        for i, album in enumerate(albums):
+            var = tk.BooleanVar(value=False)
+            album_vars[i] = var
+            
+            # Album-Info
+            album_title = album.get('title', 'Unbekannt')
+            artist_name = album.get('artist', {}).get('name', 'Unbekannt') if isinstance(album.get('artist'), dict) else 'Unbekannt'
+            nb_tracks = album.get('nb_tracks', 0)
+            release_date = album.get('release_date', '')
+            
+            # YouTube-Verfügbarkeit
+            youtube_available = album.get('youtube_available', False)
+            youtube_icon = "✅" if youtube_available else "❌"
+            youtube_text = "YouTube verfügbar" if youtube_available else "Nur auf Deezer"
+            
+            # Erstelle Frame für jedes Album
+            album_frame = ttk.Frame(scrollable_frame)
+            album_frame.pack(fill=tk.X, padx=8, pady=4)
+            
+            # Checkbox
+            checkbox = ttk.Checkbutton(
+                album_frame,
+                variable=var
+            )
+            checkbox.pack(side=tk.LEFT, padx=(0, 10))
+            
+            # Album-Info Frame
+            info_frame = ttk.Frame(album_frame)
+            info_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            
+            # Album-Titel
+            title_label = ttk.Label(
+                info_frame,
+                text=f"💿 {album_title}",
+                font=("Arial", 11, "bold")
+            )
+            title_label.pack(anchor=tk.W)
+            
+            # Zusätzliche Info
+            info_text = f"👤 {artist_name}"
+            if nb_tracks > 0:
+                info_text += f" • {nb_tracks} Track(s)"
+            if release_date:
+                info_text += f" • {release_date[:4]}"
+            
+            info_label = ttk.Label(
+                info_frame,
+                text=info_text,
+                font=("Arial", 9),
+                foreground="gray"
+            )
+            info_label.pack(anchor=tk.W)
+            
+            # YouTube-Status
+            youtube_label = ttk.Label(
+                info_frame,
+                text=f"{youtube_icon} {youtube_text}",
+                font=("Arial", 9),
+                foreground="green" if youtube_available else "orange"
+            )
+            youtube_label.pack(anchor=tk.W, pady=(2, 0))
+        
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        # Buttons-Bereich
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(fill=tk.X, pady=(10, 0))
+        
+        # Linke Seite: Auswahl-Buttons
+        left_buttons = ttk.Frame(button_frame)
+        left_buttons.pack(side=tk.LEFT)
+        
+        def select_all():
+            for var in album_vars.values():
+                var.set(True)
+            update_button_text()
+        
+        def select_none():
+            for var in album_vars.values():
+                var.set(False)
+            update_button_text()
+        
+        def select_youtube_only():
+            for i, album in enumerate(albums):
+                if i in album_vars:
+                    album_vars[i].set(album.get('youtube_available', False))
+            update_button_text()
+        
+        ttk.Button(left_buttons, text="✓ Alle auswählen", command=select_all).pack(side=tk.LEFT, padx=3)
+        ttk.Button(left_buttons, text="✓ Nur YouTube", command=select_youtube_only).pack(side=tk.LEFT, padx=3)
+        ttk.Button(left_buttons, text="✗ Alle abwählen", command=select_none).pack(side=tk.LEFT, padx=3)
+        
+        # Rechte Seite: Download und Abbrechen-Buttons
+        right_buttons = ttk.Frame(button_frame)
+        right_buttons.pack(side=tk.RIGHT)
+        
+        selected_albums = []
+        
+        def confirm():
+            nonlocal selected_albums
+            # Sammle alle ausgewählten Alben
+            for i, album in enumerate(albums):
+                if i in album_vars and album_vars[i].get():
+                    selected_albums.append(album)
+            
+            if not selected_albums:
+                messagebox.showwarning("Warnung", "Bitte wählen Sie mindestens ein Album aus.")
+                return
+            selection_window.destroy()
+        
+        def cancel():
+            nonlocal selected_albums
+            selected_albums = None
+            selection_window.destroy()
+        
+        # Zähle ausgewählte Alben für Button-Text
+        def update_button_text():
+            count = sum(1 for var in album_vars.values() if var.get())
+            confirm_button.config(text=f"▶ Download ({count} Album(s))")
+        
+        confirm_button = ttk.Button(right_buttons, text="▶ Download (0 Album(s))", command=confirm)
+        confirm_button.pack(side=tk.LEFT, padx=5)
+        ttk.Button(right_buttons, text="❌ Abbrechen", command=cancel).pack(side=tk.LEFT, padx=5)
+        
+        # Aktualisiere Button-Text bei Änderungen
+        for var in album_vars.values():
+            var.trace_add("write", lambda *args: update_button_text())
+        
+        selection_window.wait_window()
+        return selected_albums
     
     def download_selected_tracks(self, tracks: List[Dict], context_type: str = 'track', 
                                  context_name: str = '', artist_name: str = '') -> int:
