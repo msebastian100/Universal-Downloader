@@ -296,15 +296,22 @@ class StreamAutomation:
             play_clicked = False
             for attempt in range(5):  # Maximal 5 Versuche
                 try:
-                    # Versuche verschiedene Selektoren
+                    # Versuche verschiedene Selektoren (spezifisch für Track-Seite)
+                    # WICHTIG: Vermeide Playlist-Erstellung-Button (+)
                     play_selectors = [
                         "button[data-testid='play-button']",
-                        "button[aria-label*='Play']",
-                        "button[aria-label*='Wiedergabe']",
-                        ".control-play",
-                        "button.play-button",
-                        "[data-testid='play']",
-                        "button[title*='Play']"
+                        "button[aria-label*='Play'][aria-label*='Track']",
+                        "button[aria-label*='Wiedergabe'][aria-label*='Track']",
+                        ".control-play:not([aria-label*='Playlist'])",
+                        "button.play-button:not([aria-label*='Playlist'])",
+                        "[data-testid='play']:not([aria-label*='Playlist'])",
+                        "button[title*='Play'][title*='Track']",
+                        # Spezifische Deezer-Track-Seite Selektoren
+                        ".track-actions button[data-testid='play-button']",
+                        ".track-header button[data-testid='play-button']",
+                        "button.button-play",
+                        # Vermeide explizit Playlist-Buttons
+                        "button:not([aria-label*='Playlist']):not([aria-label*='Hinzufügen']):not([aria-label*='Add'])[data-testid='play-button']"
                     ]
                     
                     for selector in play_selectors:
