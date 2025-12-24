@@ -3605,6 +3605,26 @@ class DeezerDownloaderGUI:
                 series_name = episode.get('series')
                 season_number = episode.get('season_number')
                 
+                # Wenn erste Episode startet, füge restliche Episoden zur Queue hinzu
+                if i == 1 and len(episodes) > 1:
+                    remaining_episodes = episodes[1:]  # Alle außer der ersten
+                    self.video_log(f"\n📋 Füge {len(remaining_episodes)} weitere Folgen zur Queue hinzu...")
+                    for remaining_episode in remaining_episodes:
+                        remaining_url = remaining_episode.get('url')
+                        if remaining_url:
+                            # Erstelle Episode-Info für Queue-Eintrag
+                            remaining_episode_info = {
+                                'title': remaining_episode.get('title', 'Unbekannt'),
+                                'series_name': remaining_episode.get('series', series_name),
+                                'season_number': remaining_episode.get('season_number', season_number),
+                                'episode_number': remaining_episode.get('episode_number'),
+                                'url': remaining_url
+                            }
+                            # Füge zur Queue hinzu ohne Dialog
+                            self._add_to_download_queue(remaining_url, episode_info=remaining_episode_info, show_dialog=False)
+                    self.video_log(f"✓ {len(remaining_episodes)} Folgen zur Queue hinzugefügt")
+                    self._update_queue_status()
+                
                 self.video_log(f"\n[{i}/{len(episodes)}] Lade herunter: {title}")
                 if series_name:
                     self.video_log(f"  Serie: {series_name}, Staffel: {season_number or 1}")
