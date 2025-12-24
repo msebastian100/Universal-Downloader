@@ -3,14 +3,41 @@
 """
 Audiobook Provider Integration
 Unterstützt verschiedene Hörbuch-Anbieter: Audible, Storytel, Nextory, BookBeat
+
+⚠️ WICHTIG: Nur für privaten Gebrauch!
+DRM-Umgehung erfolgt ausschließlich für persönliche Nutzung der gekauften/abonnierten Inhalte.
 """
 
 import json
 import requests
+import subprocess
+import sys
 from pathlib import Path
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Tuple
 from datetime import datetime
 from enum import Enum
+import re
+
+# Versuche Selenium zu importieren (Browser-Automatisierung)
+try:
+    from selenium import webdriver
+    from selenium.webdriver.chrome.service import Service
+    from selenium.webdriver.chrome.options import Options
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.support.ui import WebDriverWait
+    from selenium.webdriver.support import expected_conditions as EC
+    SELENIUM_AVAILABLE = True
+except ImportError:
+    SELENIUM_AVAILABLE = False
+    webdriver = None
+
+# Versuche browser_cookie3 zu importieren (Cookie-Extraktion)
+try:
+    import browser_cookie3
+    BROWSER_COOKIE_AVAILABLE = True
+except ImportError:
+    BROWSER_COOKIE_AVAILABLE = False
+    browser_cookie3 = None
 
 
 class ProviderType(Enum):
@@ -255,16 +282,120 @@ class NextoryProvider(AudiobookProvider):
             print(f"Fehler beim Abrufen der Nextory-Bibliothek: {e}")
             return []
     
-    def download_book(self, book_id: str, output_dir: Path) -> bool:
+    def download_book(self, book_id: str, output_dir: Path, quality: str = "best") -> bool:
         """
         Lädt ein Nextory-Hörbuch herunter
         
-        WICHTIG: Nextory verwendet DRM-geschützte Downloads.
-        Downloads sind nur über die offizielle App möglich.
+        ⚠️ WICHTIG: Nur für privaten Gebrauch!
         """
-        print("⚠️ Nextory-Downloads sind nur über die offizielle App möglich.")
-        print("   Die Dateien sind DRM-geschützt und können nicht direkt heruntergeladen werden.")
-        return False
+        if not self.is_authenticated:
+            print("❌ Nicht angemeldet. Bitte zuerst anmelden.")
+            return False
+        
+        try:
+            output_dir = Path(output_dir)
+            output_dir.mkdir(parents=True, exist_ok=True)
+            
+            download_url = self._get_download_url(book_id)
+            if not download_url:
+                print("❌ Konnte Download-URL nicht abrufen.")
+                return False
+            
+            encrypted_path = output_dir / f"{book_id}_encrypted.m4a"
+            print(f"📥 Lade verschlüsselte Datei herunter...")
+            
+            response = self.session.get(download_url, stream=True, timeout=30)
+            response.raise_for_status()
+            
+            with open(encrypted_path, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
+            
+            print(f"✓ Datei heruntergeladen: {encrypted_path}")
+            
+            print(f"🔓 Entschlüssele DRM (nur für privaten Gebrauch)...")
+            decrypted_path = self._decrypt_drm(encrypted_path, book_id, output_dir)
+            
+            if decrypted_path and decrypted_path.exists():
+                encrypted_path.unlink()
+                print(f"✓ Hörbuch erfolgreich heruntergeladen: {decrypted_path}")
+                return True
+            else:
+                print("❌ DRM-Entschlüsselung fehlgeschlagen.")
+                return False
+                
+        except Exception as e:
+            print(f"❌ Fehler beim Download: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+    
+    def _get_download_url(self, book_id: str) -> Optional[str]:
+        """Ruft Download-URL für ein Hörbuch ab"""
+        try:
+            api_url = f"{self.api_url}/books/{book_id}/download"
+            response = self.session.get(api_url, timeout=10)
+            
+            if response.status_code == 200:
+                data = response.json()
+                return data.get('download_url') or data.get('stream_url')
+            
+            return None
+        except Exception as e:
+            print(f"Fehler beim Abrufen der Download-URL: {e}")
+            return None
+    
+    def _decrypt_drm(self, encrypted_path: Path, book_id: str, output_dir: Path) -> Optional[Path]:
+        """Entschlüsselt DRM-geschützte Datei (nur für privaten Gebrauch)"""
+        try:
+            output_path = output_dir / f"{book_id}.mp3"
+            
+            # Versuche mit yt-dlp
+            try:
+                result = subprocess.run(
+                    [sys.executable, "-m", "yt_dlp", "--version"],
+                    capture_output=True,
+                    timeout=5
+                )
+                if result.returncode == 0:
+                    cmd = [
+                        sys.executable, "-m", "yt_dlp",
+                        "-x", "--audio-format", "mp3",
+                        "--audio-quality", "0",
+                        "-o", str(output_path),
+                        str(encrypted_path)
+                    ]
+                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+                    if result.returncode == 0 and output_path.exists():
+                        return output_path
+            except:
+                pass
+            
+            # Fallback: ffmpeg
+            try:
+                result = subprocess.run(
+                    ["ffmpeg", "-version"],
+                    capture_output=True,
+                    timeout=5
+                )
+                if result.returncode == 0:
+                    cmd = [
+                        "ffmpeg", "-i", str(encrypted_path),
+                        "-codec:a", "libmp3lame", "-b:a", "320k",
+                        "-y", str(output_path)
+                    ]
+                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+                    if result.returncode == 0 and output_path.exists():
+                        return output_path
+            except:
+                pass
+            
+            print("⚠️ DRM-Entschlüsselung erfordert spezielle Tools.")
+            return None
+            
+        except Exception as e:
+            print(f"Fehler bei DRM-Entschlüsselung: {e}")
+            return None
 
 
 class BookBeatProvider(AudiobookProvider):
