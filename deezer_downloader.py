@@ -475,10 +475,6 @@ class DeezerDownloader:
                 # Beispiel: "Kapitel 01 - DICKE EIER IN UNTERFILZBACH" -> "DICKE EIER IN UNTERFILZBACH"
                 base_title = re.sub(r'^.*?kapitel\s*\d+\s*-\s*', '', track_title, flags=re.IGNORECASE).strip()
                 
-                # Debug-Log
-                self.log(f"  [DEBUG] Hörbuch-Kapitel erkannt: {track_title}", "DEBUG")
-                self.log(f"  [DEBUG] Bereinigter Titel: {base_title}", "DEBUG")
-                
                 # Suche nach vollständigem Hörbuch (nicht einzelnen Kapiteln)
                 search_queries = [
                     f"{artist_name} {base_title} Hörbuch vollständig",
