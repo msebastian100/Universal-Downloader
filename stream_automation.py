@@ -59,6 +59,56 @@ class StreamAutomation:
         # Lade ARL-Token automatisch falls nicht übergeben
         if not self.arl_token:
             self.arl_token = self._load_arl_token()
+    
+    def _load_arl_token(self) -> Optional[str]:
+        """Lädt gespeicherten ARL-Token aus der Konfiguration"""
+        try:
+            from deezer_auth import DeezerAuth
+            auth = DeezerAuth()
+            if auth.is_logged_in():
+                return auth.arl_token
+        except Exception:
+            pass
+        
+        # Fallback: Versuche direkt aus Config-Datei zu laden
+        try:
+            import json
+            from pathlib import Path
+            config_path = Path(".deezer_config.json")
+            if config_path.exists():
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+                    arl = config.get('arl_token')
+                    if arl:
+                        return arl
+        except Exception:
+            pass
+        
+        return None
+    
+    def _set_deezer_cookie(self):
+        """Setzt Deezer ARL-Cookie im Browser"""
+        if not self.driver or not self.arl_token:
+            return
+        
+        try:
+            # Gehe zu Deezer-Hauptseite um Domain zu setzen
+            self.driver.get("https://www.deezer.com")
+            time.sleep(1)
+            
+            # Setze ARL-Cookie
+            self.driver.add_cookie({
+                'name': 'arl',
+                'value': self.arl_token,
+                'domain': '.deezer.com',
+                'path': '/',
+                'secure': True,
+                'httpOnly': False
+            })
+            
+            print("✓ Deezer ARL-Token als Cookie gesetzt (automatisch angemeldet)")
+        except Exception as e:
+            print(f"⚠️ Konnte ARL-Cookie nicht setzen: {e}")
         
     def setup_browser(self, headless: bool = False) -> bool:
         """Richtet Browser ein"""
