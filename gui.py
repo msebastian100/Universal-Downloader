@@ -1438,6 +1438,126 @@ class DeezerDownloaderGUI:
             self.root.after(0, lambda: self.music_record_button.config(state=tk.NORMAL))
             self.root.after(0, lambda: self.music_progress_bar.stop())
     
+    def show_audio_setup(self):
+        """Zeigt Setup-Dialog für Audio-Aufnahme"""
+        setup_window = tk.Toplevel(self.root)
+        setup_window.title("Audio-Aufnahme Setup")
+        setup_window.geometry("800x600")
+        setup_window.transient(self.root)
+        setup_window.grab_set()
+        
+        main_frame = ttk.Frame(setup_window, padding="20")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        ttk.Label(
+            main_frame,
+            text="Audio-Aufnahme Setup",
+            font=("Arial", 14, "bold")
+        ).pack(pady=(0, 10))
+        
+        info_text = (
+            "Dieses Setup prüft und installiert alle benötigten Komponenten\n"
+            "für die automatische Audio-Aufnahme von DRM-geschützten Streams.\n\n"
+            "⚠️ Nur für privaten Gebrauch!"
+        )
+        ttk.Label(
+            main_frame,
+            text=info_text,
+            justify=tk.CENTER
+        ).pack(pady=10)
+        
+        # Log-Bereich
+        log_frame = ttk.Frame(main_frame)
+        log_frame.pack(fill=tk.BOTH, expand=True, pady=10)
+        
+        log_text = scrolledtext.ScrolledText(
+            log_frame,
+            width=80,
+            height=20,
+            wrap=tk.WORD,
+            state=tk.DISABLED
+        )
+        log_text.pack(fill=tk.BOTH, expand=True)
+        
+        # Buttons
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(pady=10)
+        
+        def run_setup():
+            log_text.config(state=tk.NORMAL)
+            log_text.delete(1.0, tk.END)
+            log_text.config(state=tk.DISABLED)
+            
+            # Führe Setup in separatem Thread aus
+            def setup_thread():
+                try:
+                    from setup_audio_recording import AudioRecordingSetup
+                    
+                    setup = AudioRecordingSetup()
+                    
+                    # Leite Output zu Text-Widget um
+                    class TextRedirect:
+                        def __init__(self, text_widget):
+                            self.text_widget = text_widget
+                        
+                        def write(self, s):
+                            self.root.after(0, lambda: self._append_log(s))
+                        
+                        def flush(self):
+                            pass
+                        
+                        def _append_log(self, s):
+                            self.text_widget.config(state=tk.NORMAL)
+                            self.text_widget.insert(tk.END, s)
+                            self.text_widget.see(tk.END)
+                            self.text_widget.config(state=tk.DISABLED)
+                    
+                    text_redirect = TextRedirect(log_text)
+                    text_redirect.root = self.root
+                    
+                    import sys
+                    from contextlib import redirect_stdout, redirect_stderr
+                    
+                    with redirect_stdout(text_redirect), redirect_stderr(text_redirect):
+                        results = setup.run_full_setup()
+                    
+                    # Zeige Ergebnis
+                    all_ok = all(results.values())
+                    if all_ok:
+                        self.root.after(0, lambda: messagebox.showinfo(
+                            "Setup erfolgreich",
+                            "Alle Komponenten sind bereit!\n\nAudio-Aufnahme kann jetzt verwendet werden."
+                        ))
+                    else:
+                        self.root.after(0, lambda: messagebox.showwarning(
+                            "Setup unvollständig",
+                            "Einige Komponenten fehlen noch.\n\nBitte folgen Sie den Anweisungen im Log."
+                        ))
+                
+                except Exception as e:
+                    log_text.config(state=tk.NORMAL)
+                    log_text.insert(tk.END, f"\n❌ Fehler beim Setup: {e}\n")
+                    log_text.config(state=tk.DISABLED)
+                    import traceback
+                    self.root.after(0, lambda: messagebox.showerror(
+                        "Setup-Fehler",
+                        f"Fehler beim Setup:\n{e}"
+                    ))
+            
+            threading.Thread(target=setup_thread, daemon=True).start()
+        
+        ttk.Button(
+            button_frame,
+            text="▶️ Setup starten",
+            command=run_setup
+        ).pack(side=tk.LEFT, padx=5)
+        
+        ttk.Button(
+            button_frame,
+            text="Schließen",
+            command=setup_window.destroy
+        ).pack(side=tk.LEFT, padx=5)
+    
     def start_music_download(self):
         """Startet den Musik-Download (Deezer oder Spotify)"""
         url = self.music_url_var.get().strip()
