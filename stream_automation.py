@@ -722,6 +722,11 @@ class StreamAutomation:
                                 if audio_ended:
                                     print("✓ Track beendet (Play-Button)")
                                     track_ended = True
+                                    # Stoppe Track automatisch
+                                    self.driver.execute_script("""
+                                        const audio = document.querySelector('audio');
+                                        if (audio) audio.pause();
+                                    """)
                                     break
                         except:
                             pass
