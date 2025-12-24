@@ -744,7 +744,8 @@ class DeezerDownloader:
         
         for i, track in enumerate(tracks, 1):
             self.log(f"[{i}/{len(tracks)}] ", "INFO")
-            self.download_track(str(track['id']), output_dir)
+            # Priorisiere YouTube wenn verfügbar (schneller, keine DRM-Probleme)
+            self.download_track(str(track['id']), output_dir, use_youtube_fallback=True, prefer_youtube=True)
         
         # Vollständigkeitsprüfung
         completeness = self.verify_completeness(tracks, output_dir)
@@ -810,7 +811,8 @@ class DeezerDownloader:
         
         for i, track in enumerate(tracks, 1):
             self.log(f"[{i}/{len(tracks)}] ", "INFO")
-            self.download_track(str(track['id']), output_dir)
+            # Priorisiere YouTube wenn verfügbar (schneller, keine DRM-Probleme)
+            self.download_track(str(track['id']), output_dir, use_youtube_fallback=True, prefer_youtube=True)
         
         # Vollständigkeitsprüfung
         completeness = self.verify_completeness(tracks, output_dir)
