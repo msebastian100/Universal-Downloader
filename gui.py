@@ -1704,8 +1704,19 @@ class DeezerDownloaderGUI:
                 self.downloader.log = logged_log
                 
                 # Prüfe ob es Artist oder Playlist ist - zeige Auswahl-Dialog
-                if '/artist/' in url:
-                    artist_id = self.downloader.extract_id_from_url(url)
+                # WICHTIG: Prüfe zuerst, ob es ein Share-Link ist und löse ihn auf
+                resolved_url = url
+                if 'link.deezer.com' in url.lower():
+                    try:
+                        response = self.downloader.session.get(url, allow_redirects=True, timeout=10)
+                        resolved_url = response.url
+                        self.music_log(f"Share-Link aufgelöst: {resolved_url}")
+                    except Exception as e:
+                        self.music_log(f"Fehler beim Auflösen des Share-Links: {e}")
+                
+                # Prüfe ob es ein Artist ist (nach Auflösung des Share-Links)
+                if '/artist/' in resolved_url or 'artist-' in resolved_url:
+                    artist_id = self.downloader.extract_id_from_url(resolved_url)
                     if artist_id:
                         # Hole Artist-Info und Alben
                         artist_info = self.downloader.get_artist_info(artist_id)
