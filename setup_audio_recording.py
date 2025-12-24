@@ -133,19 +133,30 @@ class AudioRecordingSetup:
     def check_ffmpeg(self) -> Tuple[bool, str]:
         """Prüft ob ffmpeg verfügbar ist (wird bereits für Video-Downloader verwendet)"""
         try:
-            result = subprocess.run(
-                ["ffmpeg", "-version"],
-                capture_output=True,
-                timeout=5
-            )
-            if result.returncode == 0:
-                return True, "ffmpeg ist verfügbar (bereits für Video-Downloader installiert)"
+            # Verwende bestehende check_ffmpeg Funktion aus auto_install_dependencies
+            from auto_install_dependencies import check_ffmpeg as check_ffmpeg_existing
+            ffmpeg_ok, ffmpeg_version = check_ffmpeg_existing()
+            
+            if ffmpeg_ok:
+                return True, f"ffmpeg ist verfügbar: {ffmpeg_version} (bereits für Video-Downloader installiert)"
             else:
-                return False, "ffmpeg nicht gefunden"
-        except FileNotFoundError:
-            return False, "ffmpeg nicht installiert (wird für Video-Downloader benötigt)"
-        except Exception as e:
-            return False, f"Fehler bei ffmpeg-Prüfung: {e}"
+                return False, "ffmpeg nicht gefunden (wird für Video-Downloader benötigt)"
+        except ImportError:
+            # Fallback falls auto_install_dependencies nicht verfügbar ist
+            try:
+                result = subprocess.run(
+                    ["ffmpeg", "-version"],
+                    capture_output=True,
+                    timeout=5
+                )
+                if result.returncode == 0:
+                    return True, "ffmpeg ist verfügbar (bereits für Video-Downloader installiert)"
+                else:
+                    return False, "ffmpeg nicht gefunden"
+            except FileNotFoundError:
+                return False, "ffmpeg nicht installiert (wird für Video-Downloader benötigt)"
+            except Exception as e:
+                return False, f"Fehler bei ffmpeg-Prüfung: {e}"
     
     def check_audio_capture(self) -> Tuple[bool, str, List[str]]:
         """Prüft ob System-Audio-Aufnahme konfiguriert ist"""
