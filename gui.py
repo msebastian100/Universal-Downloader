@@ -581,7 +581,16 @@ class DeezerDownloaderGUI:
             button_frame,
             text="➕ Zur Queue",
             command=self.add_music_to_queue
-        ).pack(side=tk.LEFT)
+        ).pack(side=tk.LEFT, padx=(0, 5))
+        
+        # Audio-Aufnahme Button (für DRM-geschützte Inhalte)
+        self.music_record_button = ttk.Button(
+            button_frame,
+            text="🎙️ Audio-Aufnahme (DRM)",
+            command=self.start_audio_recording,
+            state=tk.NORMAL
+        )
+        self.music_record_button.pack(side=tk.LEFT)
         
         # Log-Ausgabe
         ttk.Label(main_frame, text="Log:").grid(
