@@ -551,6 +551,10 @@ class StreamAutomation:
             print(f"🎙️ Starte Audio-Aufnahme...")
             self.recorder = AudioRecorder(self.output_path)
             
+            # Setze Progress-Callback falls vorhanden
+            if hasattr(self, 'progress_callback'):
+                self.recorder.progress_callback = self.progress_callback
+            
             if not self.recorder.start_recording():
                 print("❌ Konnte Audio-Aufnahme nicht starten")
                 return False

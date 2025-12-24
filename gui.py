@@ -1414,6 +1414,14 @@ class DeezerDownloaderGUI:
             self.music_log(f"URL: {url}")
             self.music_log(f"Ausgabe: {output_path}")
             
+            # Zeige Fortschritt während der Aufnahme
+            def update_progress(elapsed: float):
+                minutes = int(elapsed // 60)
+                seconds = int(elapsed % 60)
+                self.root.after(0, lambda: self.music_status_var.set(
+                    f"🎙️ Aufnahme läuft... ({minutes:02d}:{seconds:02d})"
+                ))
+            
             # Lade ARL-Token für automatische Anmeldung
             arl_token = None
             try:

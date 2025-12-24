@@ -15,6 +15,14 @@ from typing import Optional, Callable
 import threading
 import time
 
+# Import Audio-Device-Detektor
+try:
+    from audio_device_detector import AudioDeviceDetector
+    DEVICE_DETECTOR_AVAILABLE = True
+except ImportError:
+    DEVICE_DETECTOR_AVAILABLE = False
+    AudioDeviceDetector = None
+
 
 class AudioRecorder:
     """Klasse für Audio-Aufnahme während der Wiedergabe"""
@@ -69,12 +77,29 @@ class AudioRecorder:
             # HINWEIS: playback_speed wird hier nicht verwendet, da die Geschwindigkeit
             # in der Wiedergabe-App (Spotify/Deezer) eingestellt werden muss
             
+            # Erkenne automatisch das richtige Audio-Device
+            audio_device = None
+            device_info = "Standard-Device"
+            
+            if DEVICE_DETECTOR_AVAILABLE:
+                try:
+                    audio_device, device_info = AudioDeviceDetector.detect_audio_device()
+                    if audio_device:
+                        print(f"🎤 Audio-Device erkannt: {device_info}")
+                except Exception as e:
+                    print(f"⚠️ Fehler bei Device-Erkennung: {e}, verwende Standard")
+            
             # Für Linux: PulseAudio
             if sys.platform.startswith("linux"):
+                if audio_device and audio_device.startswith("pulse:"):
+                    device_input = audio_device
+                else:
+                    device_input = "pulse:default"
+                
                 cmd = [
                     "ffmpeg",
                     "-f", "pulse",
-                    "-i", "default",  # Standard-Audio-Input
+                    "-i", device_input,
                     "-ar", str(self.sample_rate),
                     "-ac", str(self.channels),
                     "-acodec", "libmp3lame",
@@ -84,13 +109,16 @@ class AudioRecorder:
                 ]
             
             # Für macOS: Verwende BlackHole oder ähnliches für System-Audio-Aufnahme
-            if sys.platform == "darwin":
-                # Versuche verschiedene Audio-Quellen
-                # BlackHole ist ein virtuelles Audio-Device für macOS
+            elif sys.platform == "darwin":
+                if audio_device and audio_device.startswith(":"):
+                    device_input = audio_device
+                else:
+                    device_input = ":0"  # Fallback: System-Audio
+                
                 cmd = [
                     "ffmpeg",
                     "-f", "avfoundation",
-                    "-i", ":0",  # System-Audio
+                    "-i", device_input,
                     "-ar", str(self.sample_rate),
                     "-ac", str(self.channels),
                     "-acodec", "libmp3lame",
@@ -100,12 +128,35 @@ class AudioRecorder:
                 ]
             
             # Für Windows: Verwende virtual-audio-capturer oder Stereo Mix
-            if sys.platform == "win32":
-                # Versuche Stereo Mix (muss in Windows aktiviert sein)
+            elif sys.platform == "win32":
+                if audio_device and audio_device.startswith("audio="):
+                    device_input = audio_device
+                else:
+                    # Fallback: Versuche Stereo Mix manuell zu finden
+                    try:
+                        result = subprocess.run(
+                            ["ffmpeg", "-list_devices", "true", "-f", "dshow", "-i", "dummy"],
+                            capture_output=True,
+                            text=True,
+                            timeout=5
+                        )
+                        if "Stereo Mix" in result.stderr:
+                            # Extrahiere genauen Namen
+                            import re
+                            match = re.search(r'audio="([^"]*Stereo Mix[^"]*)"', result.stderr, re.IGNORECASE)
+                            if match:
+                                device_input = f"audio={match.group(1)}"
+                            else:
+                                device_input = "audio=virtual-audio-capturer"
+                        else:
+                            device_input = "audio=virtual-audio-capturer"
+                    except:
+                        device_input = "audio=virtual-audio-capturer"
+                
                 cmd = [
                     "ffmpeg",
                     "-f", "dshow",
-                    "-i", "audio=Stereo Mix (Realtek High Definition Audio)" if "Realtek" in str(subprocess.run(["ffmpeg", "-list_devices", "true", "-f", "dshow", "-i", "dummy"], capture_output=True, text=True).stderr) else "audio=virtual-audio-capturer",
+                    "-i", device_input,
                     "-ar", str(self.sample_rate),
                     "-ac", str(self.channels),
                     "-acodec", "libmp3lame",
@@ -113,6 +164,8 @@ class AudioRecorder:
                     "-y",
                     str(self.output_path)
                 ]
+            else:
+                raise RuntimeError(f"Unbekanntes System: {sys.platform}")
             
             # Starte Aufnahme-Prozess
             self.recording_process = subprocess.Popen(
@@ -123,14 +176,15 @@ class AudioRecorder:
             )
             
             self.is_recording = True
+            self.start_time = time.time()
+            self.recorded_duration = 0.0
             
-            # Starte Thread für Fortschrittsüberwachung
-            if duration:
-                threading.Thread(
-                    target=self._monitor_recording,
-                    args=(duration,),
-                    daemon=True
-                ).start()
+            # Starte Thread für Fortschrittsüberwachung (auch ohne duration)
+            threading.Thread(
+                target=self._monitor_progress,
+                daemon=True
+            ).start()
+            
             
             print(f"🎙️ Audio-Aufnahme gestartet: {self.output_path}")
             print(f"   Dauer: {'Unbegrenzt' if not duration else f'{duration:.1f} Sekunden'}")
