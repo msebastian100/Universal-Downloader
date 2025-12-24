@@ -197,7 +197,8 @@ class AudioRecorder:
                             print(f"      - Ist 'Stereo Mix' in Windows aktiviert?")
                             print(f"      - Rechtsklick auf Lautsprecher → Sounds → Aufnahme → Stereo Mix aktivieren")
                         elif sys.platform == "darwin":
-                            print(f"      - Ist BlackHole installiert?")
+                            print(f"      - Ist BlackHole installiert? (brew install blackhole-2ch)")
+                            print(f"      - Falls installiert: Neustart erforderlich!")
                             print(f"      - Oder verwenden Sie System-Audio (Device 0)")
                         elif sys.platform.startswith("linux"):
                             print(f"      - Ist PulseAudio installiert und läuft?")

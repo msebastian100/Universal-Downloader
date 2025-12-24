@@ -90,33 +90,69 @@ class AudioDeviceDetector:
             
             devices_text = result.stderr
             
-            # Suche nach BlackHole
+            # Suche nach BlackHole (verschiedene Varianten)
             blackhole_patterns = [
                 r'\[(\d+)\].*BlackHole',
                 r'BlackHole.*\[(\d+)\]',
                 r'BlackHole 2ch',
-                r'BlackHole 16ch'
+                r'BlackHole 16ch',
+                r'BlackHole.*\((\d+)\)'
             ]
             
-            for pattern in blackhole_patterns:
-                matches = re.findall(pattern, devices_text, re.IGNORECASE)
-                if matches:
-                    if matches[0].isdigit():
-                        device_id = matches[0]
+            # Durchsuche alle Zeilen nach BlackHole
+            lines = devices_text.split('\n')
+            for i, line in enumerate(lines):
+                if 'blackhole' in line.lower():
+                    # Suche nach Device-ID in dieser oder der nächsten Zeile
+                    id_match = re.search(r'\[(\d+)\]', line)
+                    if id_match:
+                        device_id = id_match.group(1)
                         return f":{device_id}", f"BlackHole gefunden (Device ID: {device_id})"
-                    else:
-                        # Suche nach Device-ID für BlackHole
-                        lines = devices_text.split('\n')
-                        for i, line in enumerate(lines):
-                            if 'blackhole' in line.lower():
-                                # Nächste Zeile könnte Device-ID enthalten
-                                if i + 1 < len(lines):
-                                    id_match = re.search(r'\[(\d+)\]', lines[i + 1])
-                                    if id_match:
-                                        return f":{id_match.group(1)}", f"BlackHole gefunden (Device ID: {id_match.group(1)})"
+                    
+                    # Prüfe nächste Zeile
+                    if i + 1 < len(lines):
+                        id_match = re.search(r'\[(\d+)\]', lines[i + 1])
+                        if id_match:
+                            device_id = id_match.group(1)
+                            return f":{device_id}", f"BlackHole gefunden (Device ID: {device_id})"
             
-            # Fallback: System-Audio (Device 0)
-            return ":0", "System-Audio (Device 0) - BlackHole wird empfohlen für bessere Qualität"
+            # BlackHole nicht gefunden - prüfe ob es installiert sein sollte
+            # (z.B. durch Prüfung ob BlackHole.app existiert oder durch Homebrew)
+            blackhole_installed = False
+            try:
+                # Prüfe ob BlackHole über Homebrew installiert ist
+                brew_result = subprocess.run(
+                    ["brew", "list", "--cask", "blackhole-2ch"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                if brew_result.returncode == 0:
+                    blackhole_installed = True
+            except:
+                pass
+            
+            # Prüfe ob BlackHole-Driver existiert
+            if not blackhole_installed:
+                try:
+                    driver_paths = [
+                        "/Library/Audio/Plug-Ins/HAL/BlackHole.driver",
+                        "/Library/Audio/Plug-Ins/HAL/BlackHole2ch.driver"
+                    ]
+                    for path in driver_paths:
+                        import os
+                        if os.path.exists(path):
+                            blackhole_installed = True
+                            break
+                except:
+                    pass
+            
+            if blackhole_installed:
+                # BlackHole ist installiert, aber noch nicht verfügbar (Neustart erforderlich)
+                return ":0", "BlackHole ist installiert, aber noch nicht verfügbar. Bitte Neustart durchführen! Verwende System-Audio (Device 0) als Fallback."
+            else:
+                # Fallback: System-Audio (Device 0)
+                return ":0", "System-Audio (Device 0) - BlackHole wird empfohlen für bessere Qualität (brew install blackhole-2ch)"
             
         except Exception as e:
             return ":0", f"Fehler bei Device-Erkennung, verwende Standard: {e}"
