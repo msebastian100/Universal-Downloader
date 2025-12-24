@@ -167,34 +167,69 @@ class AudioRecorder:
             else:
                 raise RuntimeError(f"Unbekanntes System: {sys.platform}")
             
+            # Debug: Zeige Kommando
+            print(f"[DEBUG] ffmpeg-Kommando: {' '.join(cmd)}")
+            
             # Starte Aufnahme-Prozess
-            self.recording_process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                stdin=subprocess.PIPE
-            )
-            
-            self.is_recording = True
-            self.start_time = time.time()
-            self.recorded_duration = 0.0
-            
-            # Starte Thread für Fortschrittsüberwachung (auch ohne duration)
-            threading.Thread(
-                target=self._monitor_progress,
-                daemon=True
-            ).start()
-            
-            
-            print(f"🎙️ Audio-Aufnahme gestartet: {self.output_path}")
-            print(f"   Dauer: {'Unbegrenzt' if not duration else f'{duration:.1f} Sekunden'}")
-            print(f"   Sample-Rate: {self.sample_rate} Hz")
-            print(f"   Kanäle: {self.channels}")
-            if playback_speed != 1.0:
-                print(f"   💡 Tipp: Stellen Sie die Wiedergabegeschwindigkeit auf {playback_speed}x in der App ein")
-                print(f"      (z.B. Spotify: Einstellungen → Wiedergabe → Geschwindigkeit)")
-            
-            return True
+            try:
+                self.recording_process = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    stdin=subprocess.PIPE
+                )
+                
+                # Warte kurz und prüfe ob Prozess noch läuft
+                time.sleep(0.5)
+                if self.recording_process.poll() is not None:
+                    # Prozess ist bereits beendet - Fehler!
+                    stderr_output = self.recording_process.stderr.read().decode('utf-8', errors='ignore') if self.recording_process.stderr else ""
+                    stdout_output = self.recording_process.stdout.read().decode('utf-8', errors='ignore') if self.recording_process.stdout else ""
+                    
+                    error_msg = stderr_output or stdout_output or "Unbekannter Fehler"
+                    print(f"❌ Audio-Aufnahme-Prozess ist sofort beendet (Exit-Code: {self.recording_process.returncode})")
+                    print(f"   Fehler: {error_msg[:500]}")
+                    
+                    # Zeige hilfreiche Fehlermeldung
+                    if "device" in error_msg.lower() or "not found" in error_msg.lower():
+                        print(f"   💡 Tipp: Audio-Device nicht gefunden. Bitte prüfen Sie:")
+                        if sys.platform == "win32":
+                            print(f"      - Ist 'Stereo Mix' in Windows aktiviert?")
+                            print(f"      - Rechtsklick auf Lautsprecher → Sounds → Aufnahme → Stereo Mix aktivieren")
+                        elif sys.platform == "darwin":
+                            print(f"      - Ist BlackHole installiert?")
+                            print(f"      - Oder verwenden Sie System-Audio (Device 0)")
+                        elif sys.platform.startswith("linux"):
+                            print(f"      - Ist PulseAudio installiert und läuft?")
+                    
+                    return False
+                
+                self.is_recording = True
+                self.start_time = time.time()
+                self.recorded_duration = 0.0
+                
+                # Starte Thread für Fortschrittsüberwachung (auch ohne duration)
+                threading.Thread(
+                    target=self._monitor_progress,
+                    daemon=True
+                ).start()
+                
+                print(f"🎙️ Audio-Aufnahme gestartet: {self.output_path}")
+                print(f"   Dauer: {'Unbegrenzt' if not duration else f'{duration:.1f} Sekunden'}")
+                print(f"   Sample-Rate: {self.sample_rate} Hz")
+                print(f"   Kanäle: {self.channels}")
+                print(f"   Device: {device_info}")
+                if playback_speed != 1.0:
+                    print(f"   💡 Tipp: Stellen Sie die Wiedergabegeschwindigkeit auf {playback_speed}x in der App ein")
+                    print(f"      (z.B. Spotify: Einstellungen → Wiedergabe → Geschwindigkeit)")
+                
+                return True
+                
+            except Exception as e:
+                print(f"❌ Fehler beim Starten des Aufnahme-Prozesses: {e}")
+                import traceback
+                traceback.print_exc()
+                return False
             
         except Exception as e:
             print(f"❌ Fehler beim Starten der Aufnahme: {e}")
