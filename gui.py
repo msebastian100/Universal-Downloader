@@ -960,9 +960,12 @@ class DeezerDownloaderGUI:
         url_entry = ttk.Entry(url_frame, textvariable=self.spotify_url_var)
         url_entry.pack(fill=tk.X, pady=(5, 0))
         url_entry.bind('<Return>', lambda e: self.start_spotify_download())
-        # Unterstützung für Paste (Strg+V / Cmd+V)
-        url_entry.bind('<Control-v>', lambda e: url_entry.event_generate('<<Paste>>'))
-        url_entry.bind('<Command-v>', lambda e: url_entry.event_generate('<<Paste>>'))
+        # Unterstützung für Paste (Strg+V / Cmd+V) - verhindere doppelte Auslösung
+        def handle_paste(event):
+            # Erlaube Standard-Paste-Verhalten
+            return None  # None erlaubt Standard-Verhalten
+        url_entry.bind('<Control-v>', handle_paste)
+        url_entry.bind('<Command-v>', handle_paste)
         # Stelle sicher, dass das Feld fokussierbar ist
         url_entry.focus_set()
         
