@@ -863,6 +863,17 @@ class DeezerDownloader:
         Returns:
             Anzahl erfolgreich heruntergeladener Tracks
         """
+        # Prüfe ob es eine link.deezer.com URL ist - diese muss zuerst aufgelöst werden
+        if 'link.deezer.com' in url.lower():
+            try:
+                # Folge Redirects um die echte URL zu bekommen
+                response = self.session.get(url, allow_redirects=True, timeout=10)
+                url = response.url
+                self.log(f"Share-Link aufgelöst: {url}", "INFO")
+            except Exception as e:
+                self.log(f"Fehler beim Auflösen der link.deezer.com URL: {e}", "WARNING")
+                # Versuche trotzdem mit der ursprünglichen URL
+        
         # Bestimme Typ und ID
         if '/track/' in url:
             track_id = self.extract_id_from_url(url)
