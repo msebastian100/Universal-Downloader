@@ -700,6 +700,11 @@ class StreamAutomation:
                                 if position_unchanged_count > 10:  # 5 Sekunden keine Bewegung
                                     print("⚠️ Track scheint zu hängen, stoppe Aufnahme")
                                     track_ended = True
+                                    # Stoppe Track automatisch
+                                    self.driver.execute_script("""
+                                        const audio = document.querySelector('audio');
+                                        if (audio) audio.pause();
+                                    """)
                                     break
                             else:
                                 position_unchanged_count = 0
