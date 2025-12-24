@@ -40,7 +40,7 @@ from audio_recorder import AudioRecorder
 class StreamAutomation:
     """Klasse für automatisiertes Abspielen und Aufnehmen von Streams"""
     
-    def __init__(self, output_path: Path, playback_speed: float = 2.0, arl_token: Optional[str] = None):
+    def __init__(self, output_path: Path, playback_speed: float = 4.0, arl_token: Optional[str] = None):
         """
         Initialisiert die Stream-Automatisierung
         
@@ -305,44 +305,83 @@ class StreamAutomation:
                 self.driver.execute_script("document.querySelector('button[data-testid=\"play-button\"]')?.click()")
                 time.sleep(2)
             
-            # Setze Geschwindigkeit auf 2x (verschiedene Methoden)
+            # Setze Geschwindigkeit (verschiedene Methoden, auch für höhere Geschwindigkeiten)
             try:
-                # Methode 1: Direktes Setzen der playbackRate
+                # Methode 1: Direktes Setzen der playbackRate mit mehreren Versuchen
+                # Für Geschwindigkeiten > 2x müssen wir möglicherweise mehrere atempo-Filter verwenden
+                max_playback_rate = 4.0  # Browser-Limit ist normalerweise 4x
+                target_speed = min(self.playback_speed, max_playback_rate)
+                
                 self.driver.execute_script(f"""
-                    const audio = document.querySelector('audio');
-                    if (audio) {{
-                        audio.playbackRate = {self.playback_speed};
-                        // Stelle sicher, dass es gesetzt bleibt
-                        audio.addEventListener('ratechange', function() {{
-                            if (this.playbackRate !== {self.playback_speed}) {{
-                                this.playbackRate = {self.playback_speed};
+                    (function() {{
+                        const audio = document.querySelector('audio');
+                        if (!audio) return;
+                        
+                        // Setze Geschwindigkeit
+                        audio.playbackRate = {target_speed};
+                        
+                        // Stelle sicher, dass es gesetzt bleibt - mehrere Event-Listener
+                        function enforceSpeed() {{
+                            if (audio.playbackRate !== {target_speed}) {{
+                                audio.playbackRate = {target_speed};
                             }}
+                        }}
+                        
+                        // Event-Listener für verschiedene Events
+                        audio.addEventListener('ratechange', enforceSpeed);
+                        audio.addEventListener('play', enforceSpeed);
+                        audio.addEventListener('playing', enforceSpeed);
+                        audio.addEventListener('timeupdate', enforceSpeed);
+                        
+                        // MutationObserver als Fallback
+                        const observer = new MutationObserver(function() {{
+                            enforceSpeed();
                         }});
-                    }}
+                        
+                        // Beobachte verschiedene Attribute
+                        observer.observe(audio, {{ 
+                            attributes: true, 
+                            attributeFilter: ['playbackRate', 'src'] 
+                        }});
+                        
+                        // Setze auch bei jedem timeupdate (häufigstes Event)
+                        const timeUpdateInterval = setInterval(function() {{
+                            if (audio.playbackRate !== {target_speed}) {{
+                                audio.playbackRate = {target_speed};
+                            }}
+                        }}, 100); // Alle 100ms prüfen
+                        
+                        // Speichere Interval-ID für späteres Aufräumen
+                        window._speedEnforcerInterval = timeUpdateInterval;
+                    }})();
                 """)
                 
-                # Methode 2: Prüfe ob es funktioniert hat
-                time.sleep(0.5)
+                # Prüfe ob es funktioniert hat
+                time.sleep(1)
                 actual_speed = self.driver.execute_script("""
                     const audio = document.querySelector('audio');
                     return audio ? audio.playbackRate : 1.0;
                 """)
                 
-                if abs(actual_speed - self.playback_speed) < 0.1:
-                    print(f"⚡ Geschwindigkeit auf {self.playback_speed}x gesetzt (tatsächlich: {actual_speed:.1f}x)")
+                if abs(actual_speed - target_speed) < 0.1:
+                    print(f"⚡ Geschwindigkeit auf {target_speed}x gesetzt (tatsächlich: {actual_speed:.1f}x)")
                 else:
-                    print(f"⚠️ Geschwindigkeit konnte nicht auf {self.playback_speed}x gesetzt werden (aktuell: {actual_speed:.1f}x)")
-                    # Versuche es nochmal mit MutationObserver
+                    print(f"⚠️ Geschwindigkeit konnte nicht auf {target_speed}x gesetzt werden (aktuell: {actual_speed:.1f}x)")
+                    print(f"   Versuche alternative Methode...")
+                    
+                    # Alternative: Versuche über MediaSource API
                     self.driver.execute_script(f"""
                         const audio = document.querySelector('audio');
                         if (audio) {{
-                            const observer = new MutationObserver(function() {{
-                                if (audio.playbackRate !== {self.playback_speed}) {{
-                                    audio.playbackRate = {self.playback_speed};
-                                }}
+                            // Versuche über verschiedene Wege
+                            Object.defineProperty(audio, 'playbackRate', {{
+                                get: function() {{ return {target_speed}; }},
+                                set: function(val) {{
+                                    Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'playbackRate').set.call(this, {target_speed});
+                                }},
+                                configurable: true
                             }});
-                            observer.observe(audio, {{ attributes: true, attributeFilter: ['playbackRate'] }});
-                            audio.playbackRate = {self.playback_speed};
+                            audio.playbackRate = {target_speed};
                         }}
                     """)
             except Exception as e:
