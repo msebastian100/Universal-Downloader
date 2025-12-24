@@ -401,34 +401,75 @@ class DeezerDownloader:
         try:
             import subprocess
             import sys
+            import re
             
-            search_query = f"{track_info['artist']['name']} {track_info['title']}"
-            search_url = f"ytsearch:{search_query}"
+            # Optimiere Suchanfrage: Entferne "Kapitel" und andere Hörbuch-spezifische Begriffe
+            artist_name = track_info['artist']['name']
+            track_title = track_info['title']
             
-            cmd = [
-                sys.executable, "-m", "yt_dlp",
-                "-x",
-                "--audio-format", "mp3",
-                "--audio-quality", "0",
-                "--no-warnings",
-                "--quiet",
-                "-f", "bestaudio/best",
-                "-o", str(output_path),
-                search_url
+            # Entferne "Kapitel XX - " Präfix für bessere Suche
+            cleaned_title = re.sub(r'^Kapitel \d+ - ', '', track_title, flags=re.IGNORECASE)
+            
+            # Erstelle mehrere Suchanfragen (verschiedene Kombinationen)
+            search_queries = [
+                f"{artist_name} {cleaned_title}",  # Ohne "Kapitel"
+                f"{artist_name} {track_title}",    # Mit vollständigem Titel
+                f"{artist_name} {cleaned_title} Hörbuch",  # Mit Hörbuch-Keyword
+                f"{artist_name} {cleaned_title} Audiobook",  # Mit Audiobook-Keyword
             ]
             
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+            for search_query in search_queries:
+                try:
+                    search_url = f"ytsearch1:{search_query}"  # Nur erstes Ergebnis
+                    
+                    cmd = [
+                        sys.executable, "-m", "yt_dlp",
+                        "-x",
+                        "--audio-format", "mp3",
+                        "--audio-quality", "0",
+                        "--no-warnings",
+                        "--quiet",
+                        "-f", "bestaudio/best",
+                        "-o", str(output_path),
+                        search_url
+                    ]
+                    
+                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+                    
+                    if result.returncode == 0 and output_path.exists() and output_path.stat().st_size > 0:
+                        file_size = output_path.stat().st_size
+                        # Prüfe ob Datei groß genug ist (mindestens 100KB für ein Hörbuch-Kapitel)
+                        if file_size > 100 * 1024:
+                            return True, "YouTube"
+                        else:
+                            # Datei zu klein, versuche nächste Suchanfrage
+                            output_path.unlink(missing_ok=True)
+                            continue
+                    
+                    # Extrahiere Fehlermeldung
+                    error_output = result.stderr or result.stdout
+                    if error_output:
+                        # Prüfe auf spezifische Fehler
+                        if "No video results" in error_output or "Did not get any data blocks" in error_output:
+                            # Keine Ergebnisse, versuche nächste Suchanfrage
+                            continue
+                        elif "ERROR" in error_output:
+                            error_msg = error_output.split("ERROR")[-1][:200]
+                        else:
+                            error_msg = error_output[:200]
+                    else:
+                        error_msg = "Keine Ausgabe von yt-dlp"
+                        
+                except subprocess.TimeoutExpired:
+                    continue  # Versuche nächste Suchanfrage
+                except Exception as e:
+                    continue  # Versuche nächste Suchanfrage
             
-            if result.returncode == 0 and output_path.exists() and output_path.stat().st_size > 0:
-                return True, "YouTube"
-            else:
-                error_msg = result.stderr[:200] if result.stderr else "Unbekannter Fehler"
-                return False, error_msg
+            # Alle Suchanfragen fehlgeschlagen
+            return False, f"Keine Ergebnisse für: {artist_name} - {track_title}"
                 
-        except subprocess.TimeoutExpired:
-            return False, "Timeout"
         except Exception as e:
-            return False, str(e)[:200]
+            return False, f"Fehler: {str(e)[:200]}"
     
     def download_track(self, track_id: str, output_dir: Optional[Path] = None, 
                        use_youtube_fallback: bool = True, prefer_youtube: bool = False) -> DownloadResult:
