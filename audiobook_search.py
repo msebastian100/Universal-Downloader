@@ -203,11 +203,14 @@ class AudiobookSearch:
                                 'duration': duration,
                                 'channel': video_info.get('uploader', ''),
                                 'views': video_info.get('view_count', 0)
-                            }
+                            },
+                            'downloadable': True,
+                            'method': 'yt-dlp',
+                            'drm': False
                         }
                 
                 tmp_path.unlink(missing_ok=True)
-                return {'available': False, 'url': None, 'info': {}}
+                return {'available': False, 'url': None, 'info': {}, 'downloadable': False, 'method': None, 'drm': False}
                 
             except Exception:
                 tmp_path.unlink(missing_ok=True)
