@@ -1414,8 +1414,16 @@ class DeezerDownloaderGUI:
             self.music_log(f"URL: {url}")
             self.music_log(f"Ausgabe: {output_path}")
             
+            # Lade ARL-Token für automatische Anmeldung
+            arl_token = None
+            try:
+                if hasattr(self, 'auth') and self.auth and self.auth.is_logged_in():
+                    arl_token = self.auth.arl_token
+            except:
+                pass
+            
             # Starte Automatisierung
-            automation = StreamAutomation(output_path, playback_speed=2.0)
+            automation = StreamAutomation(output_path, playback_speed=2.0, arl_token=arl_token)
             
             if automation.record_with_automation(url, provider):
                 self.root.after(0, lambda: self.music_status_var.set(f"✓ Audio-Aufnahme abgeschlossen: {filename}"))

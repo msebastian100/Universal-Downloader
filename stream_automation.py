@@ -40,19 +40,25 @@ from audio_recorder import AudioRecorder
 class StreamAutomation:
     """Klasse für automatisiertes Abspielen und Aufnehmen von Streams"""
     
-    def __init__(self, output_path: Path, playback_speed: float = 2.0):
+    def __init__(self, output_path: Path, playback_speed: float = 2.0, arl_token: Optional[str] = None):
         """
         Initialisiert die Stream-Automatisierung
         
         Args:
             output_path: Pfad zur Ausgabedatei
             playback_speed: Wiedergabegeschwindigkeit (2.0 = doppelt so schnell)
+            arl_token: Optionaler Deezer ARL-Token für automatische Anmeldung
         """
         self.output_path = Path(output_path)
         self.playback_speed = playback_speed
+        self.arl_token = arl_token
         self.driver: Optional[webdriver.Chrome] = None
         self.recorder: Optional[AudioRecorder] = None
         self.is_playing = False
+        
+        # Lade ARL-Token automatisch falls nicht übergeben
+        if not self.arl_token:
+            self.arl_token = self._load_arl_token()
         
     def setup_browser(self, headless: bool = False) -> bool:
         """Richtet Browser ein"""
@@ -207,9 +213,34 @@ class StreamAutomation:
                 return False
         
         try:
+            # Stelle sicher, dass wir angemeldet sind (falls ARL-Token vorhanden)
+            if self.arl_token and '.deezer.com' in url:
+                # Gehe zuerst zur Hauptseite um Cookie zu setzen (falls noch nicht gesetzt)
+                try:
+                    current_url = self.driver.current_url
+                    if 'deezer.com' not in current_url:
+                        self.driver.get("https://www.deezer.com")
+                        time.sleep(1)
+                        self._set_deezer_cookie()
+                except:
+                    pass
+            
             print(f"🌐 Öffne Deezer: {url}")
             self.driver.get(url)
             time.sleep(3)  # Warte auf Seitenladung
+            
+            # Prüfe ob Anmeldung erfolgreich war (falls ARL-Token verwendet wurde)
+            if self.arl_token:
+                try:
+                    # Prüfe ob Login-Button vorhanden ist (dann ist Anmeldung fehlgeschlagen)
+                    login_elements = self.driver.find_elements(By.CSS_SELECTOR, "a[href*='login'], button[data-testid='login-button']")
+                    if login_elements:
+                        print("⚠️ Automatische Anmeldung fehlgeschlagen, verwende manuelle Anmeldung")
+                        print("   Bitte melden Sie sich manuell an oder prüfen Sie den ARL-Token")
+                    else:
+                        print("✓ Automatisch bei Deezer angemeldet")
+                except:
+                    pass
             
             # Warte auf Play-Button und klicke ihn
             try:
