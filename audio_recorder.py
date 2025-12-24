@@ -42,6 +42,8 @@ class AudioRecorder:
         self.is_recording = False
         self.recording_process = None
         self.progress_callback: Optional[Callable[[float], None]] = None
+        self.start_time: Optional[float] = None
+        self.recorded_duration: float = 0.0
         
     def start_recording(self, duration: Optional[float] = None, playback_speed: float = 1.0) -> bool:
         """
@@ -267,11 +269,42 @@ class AudioRecorder:
             print(f"❌ Fehler beim Beenden der Aufnahme: {e}")
             return False
     
+    def _monitor_progress(self):
+        """Überwacht den Fortschritt der Aufnahme"""
+        while self.is_recording and self.recording_process and self.recording_process.poll() is None:
+            if self.start_time:
+                elapsed = time.time() - self.start_time
+                self.recorded_duration = elapsed
+                
+                # Rufe Progress-Callback auf falls vorhanden
+                if self.progress_callback:
+                    try:
+                        self.progress_callback(elapsed)
+                    except:
+                        pass
+            
+            time.sleep(0.5)  # Update alle 0.5 Sekunden
+    
     def _monitor_recording(self, duration: float):
         """Überwacht die Aufnahme und stoppt sie nach der angegebenen Dauer"""
         time.sleep(duration)
         if self.is_recording:
             self.stop_recording()
+    
+    def get_progress(self) -> Optional[float]:
+        """
+        Gibt den aktuellen Fortschritt zurück
+        
+        Returns:
+            Verstrichene Zeit in Sekunden oder None
+        """
+        if self.is_recording and self.start_time:
+            return time.time() - self.start_time
+        return None
+    
+    def get_recorded_duration(self) -> float:
+        """Gibt die aufgezeichnete Dauer zurück"""
+        return self.recorded_duration
     
     def is_active(self) -> bool:
         """Prüft ob Aufnahme aktiv ist"""
