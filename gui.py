@@ -556,6 +556,11 @@ class DeezerDownloaderGUI:
         url_entry = ttk.Entry(main_frame, textvariable=self.music_url_var, width=50)
         url_entry.grid(row=3, column=1, sticky=(tk.W, tk.E), padx=5, pady=5)
         url_entry.bind('<Return>', lambda e: self.start_music_download())
+        # Unterstützung für Paste (Strg+V / Cmd+V)
+        url_entry.bind('<Control-v>', lambda e: url_entry.event_generate('<<Paste>>'))
+        url_entry.bind('<Command-v>', lambda e: url_entry.event_generate('<<Paste>>'))
+        # Stelle sicher, dass das Feld fokussierbar ist
+        url_entry.focus_set()
         
         # Download-Buttons
         button_frame = ttk.Frame(main_frame)
@@ -737,6 +742,11 @@ class DeezerDownloaderGUI:
         url_entry = ttk.Entry(url_frame, textvariable=self.video_url_var)
         url_entry.pack(fill=tk.X, padx=(0, 5))
         url_entry.bind('<Return>', lambda e: self.start_video_download())
+        # Unterstützung für Paste (Strg+V / Cmd+V)
+        url_entry.bind('<Control-v>', lambda e: url_entry.event_generate('<<Paste>>'))
+        url_entry.bind('<Command-v>', lambda e: url_entry.event_generate('<<Paste>>'))
+        # Stelle sicher, dass das Feld fokussierbar ist
+        url_entry.focus_set()
         
         # Batch-Download Button
         ttk.Button(url_frame, text="📁 URLs aus Datei laden", command=self.load_urls_from_file).pack(fill=tk.X, pady=(5, 0))
