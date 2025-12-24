@@ -1747,6 +1747,18 @@ class DeezerDownloaderGUI:
                                     )
                                     
                                     if selected_albums:
+                                        # Prüfe ob es Hörbücher sind (z.B. "Kapitel" im Titel)
+                                        is_audiobook = any(
+                                            'kapitel' in album.get('title', '').lower() or 
+                                            'hörbuch' in album.get('title', '').lower() or
+                                            album.get('nb_tracks', 0) > 20  # Viele Tracks = wahrscheinlich Hörbuch
+                                            for album in selected_albums
+                                        )
+                                        
+                                        if is_audiobook:
+                                            # Zeige Option zur Multi-Anbieter-Suche
+                                            self.root.after(0, lambda: self._show_audiobook_search_option(selected_albums, artist_name))
+                                        
                                         # Lade ausgewählte Alben herunter
                                         total_count = 0
                                         for album in selected_albums:
