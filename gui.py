@@ -4122,38 +4122,81 @@ class DeezerDownloaderGUI:
                 # Suche auf allen Plattformen
                 results = searcher.search_all_providers(cleaned_title, artist_name)
                 
-                # Zeige Ergebnisse
-                available_providers = [p for p, d in results.items() if d.get('available', False)]
-                if available_providers:
-                    self.music_log(f"  ✅ Verfügbar auf: {', '.join(available_providers)}")
+                # Zeige Ergebnisse - nur herunterladbare Anbieter
+                downloadable_providers = [p for p, d in results.items() 
+                                         if d.get('available', False) and d.get('downloadable', False)]
+                no_drm_providers = [p for p in downloadable_providers if not results[p].get('drm', False)]
+                drm_providers = [p for p in downloadable_providers if results[p].get('drm', False)]
+                
+                if downloadable_providers:
+                    # Zeige detaillierte Informationen
+                    provider_info = []
+                    for provider in downloadable_providers:
+                        info = results[provider]
+                        method = info.get('method', 'unknown')
+                        has_drm = info.get('drm', False)
+                        status = "✅ Kein DRM" if not has_drm else "🔓 DRM (Umgehung möglich)"
+                        provider_info.append(f"{provider} ({status})")
+                    
+                    self.music_log(f"  ✅ Verfügbar und herunterladbar auf:")
+                    for info in provider_info:
+                        self.music_log(f"     • {info}")
+                    
+                    if no_drm_providers:
+                        self.music_log(f"  📥 Empfohlen (kein DRM): {', '.join(no_drm_providers)}")
                     
                     # Frage ob von alternativem Anbieter heruntergeladen werden soll
-                    self.root.after(0, lambda p=available_providers, t=cleaned_title, a=artist_name, s=searcher: 
-                        self._ask_download_from_alternative(p, t, a, s))
+                    self.root.after(0, lambda p=downloadable_providers, t=cleaned_title, a=artist_name, s=searcher, r=results: 
+                        self._ask_download_from_alternative(p, t, a, s, r))
                 else:
-                    self.music_log(f"  ❌ Nicht auf anderen Plattformen verfügbar")
+                    self.music_log(f"  ❌ Nicht auf anderen Plattformen verfügbar (oder nicht herunterladbar)")
         
         except ImportError:
             self.music_log("⚠️ Multi-Anbieter-Suche nicht verfügbar (audiobook_search.py fehlt)")
         except Exception as e:
             self.music_log(f"❌ Fehler bei Multi-Anbieter-Suche: {e}")
     
-    def _ask_download_from_alternative(self, providers: List[str], title: str, artist: str, searcher):
+    def _ask_download_from_alternative(self, providers: List[str], title: str, artist: str, searcher, results: Dict):
         """Fragt ob von alternativem Anbieter heruntergeladen werden soll"""
         try:
             from tkinter import messagebox
             
-            provider_text = ', '.join(providers)
+            # Erstelle detaillierte Anbieter-Liste
+            provider_details = []
+            no_drm_list = []
+            drm_list = []
+            
+            for provider in providers:
+                info = results.get(provider, {})
+                has_drm = info.get('drm', False)
+                method = info.get('method', 'unknown')
+                
+                if not has_drm:
+                    no_drm_list.append(provider)
+                    provider_details.append(f"  ✅ {provider} (kein DRM, direkter Download)")
+                else:
+                    drm_list.append(provider)
+                    method_text = {
+                        'aax-decrypt': 'AAX-Entschlüsselung',
+                        'audio-recording': 'Audio-Aufnahme',
+                        'yt-dlp': 'yt-dlp',
+                        'direct': 'Direkter Download'
+                    }.get(method, method)
+                    provider_details.append(f"  🔓 {provider} (DRM, {method_text})")
+            
+            details_text = '\n'.join(provider_details)
+            recommendation = f"Empfohlen: {', '.join(no_drm_list)}" if no_drm_list else f"Verfügbar: {', '.join(providers)}"
+            
             response = messagebox.askyesno(
                 "Alternativer Anbieter gefunden",
-                f"'{title}' ist verfügbar auf: {provider_text}\n\n"
-                f"Möchten Sie von einem dieser Anbieter herunterladen?\n"
-                f"(Empfohlen: YouTube - kostenlos und schnell)",
+                f"'{title}' ist verfügbar auf:\n{details_text}\n\n"
+                f"{recommendation}\n\n"
+                f"Möchten Sie von einem dieser Anbieter herunterladen?",
                 icon='question'
             )
             
             if response:
-                # Lade vom besten Anbieter herunter
+                # Lade vom besten Anbieter herunter (Priorität: kein DRM > DRM)
                 import threading
                 download_thread = threading.Thread(
                     target=lambda: searcher.download_from_best_provider(title, artist, Path(self.music_download_path)),
