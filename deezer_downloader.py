@@ -962,7 +962,8 @@ class DeezerDownloader:
             track_name = track.get('title', 'Unbekannt')
             self.log(f"[{i}/{len(tracks)}] Lade herunter: {track_name}", "INFO")
             
-            result = self.download_track(track_id, output_dir=output_dir, use_youtube_fallback=True)
+            # Priorisiere YouTube wenn verfügbar (schneller, keine DRM-Probleme)
+            result = self.download_track(track_id, output_dir=output_dir, use_youtube_fallback=True, prefer_youtube=True)
             if result.success:
                 downloaded += 1
         
