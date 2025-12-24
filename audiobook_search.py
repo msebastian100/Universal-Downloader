@@ -53,6 +53,7 @@ class AudiobookSearch:
     def search_all_providers(self, title: str, artist: Optional[str] = None) -> Dict[str, Dict]:
         """
         Sucht ein Hörbuch auf allen verfügbaren Plattformen
+        Fokussiert auf Anbieter, von denen tatsächlich heruntergeladen werden kann
         
         Args:
             title: Titel des Hörbuchs
@@ -61,21 +62,25 @@ class AudiobookSearch:
         Returns:
             Dictionary mit Verfügbarkeits-Informationen pro Anbieter
             Format: {
-                'youtube': {'available': bool, 'url': str, 'info': dict},
-                'audible': {'available': bool, 'asin': str, 'info': dict},
-                'spotify': {'available': bool, 'url': str, 'info': dict},
-                'storytel': {'available': bool, 'book_id': str, 'info': dict},
-                'nextory': {'available': bool, 'book_id': str, 'info': dict},
-                'bookbeat': {'available': bool, 'book_id': str, 'info': dict},
+                'youtube': {'available': bool, 'url': str, 'info': dict, 'downloadable': bool, 'method': str},
+                'librivox': {'available': bool, 'url': str, 'info': dict, 'downloadable': bool, 'method': str},
+                'internet_archive': {'available': bool, 'url': str, 'info': dict, 'downloadable': bool, 'method': str},
+                'audible': {'available': bool, 'asin': str, 'info': dict, 'downloadable': bool, 'method': str, 'drm': bool},
+                'spotify': {'available': bool, 'url': str, 'info': dict, 'downloadable': bool, 'method': str, 'drm': bool},
+                'storytel': {'available': bool, 'book_id': str, 'info': dict, 'downloadable': bool, 'method': str, 'drm': bool},
+                'nextory': {'available': bool, 'book_id': str, 'info': dict, 'downloadable': bool, 'method': str, 'drm': bool},
+                'bookbeat': {'available': bool, 'book_id': str, 'info': dict, 'downloadable': bool, 'method': str, 'drm': bool},
             }
         """
         results = {
-            'youtube': {'available': False, 'url': None, 'info': {}},
-            'audible': {'available': False, 'asin': None, 'info': {}},
-            'spotify': {'available': False, 'url': None, 'info': {}},
-            'storytel': {'available': False, 'book_id': None, 'info': {}},
-            'nextory': {'available': False, 'book_id': None, 'info': {}},
-            'bookbeat': {'available': False, 'book_id': None, 'info': {}},
+            'youtube': {'available': False, 'url': None, 'info': {}, 'downloadable': True, 'method': 'yt-dlp', 'drm': False},
+            'librivox': {'available': False, 'url': None, 'info': {}, 'downloadable': True, 'method': 'direct', 'drm': False},
+            'internet_archive': {'available': False, 'url': None, 'info': {}, 'downloadable': True, 'method': 'direct', 'drm': False},
+            'audible': {'available': False, 'asin': None, 'info': {}, 'downloadable': True, 'method': 'aax-decrypt', 'drm': True},
+            'spotify': {'available': False, 'url': None, 'info': {}, 'downloadable': True, 'method': 'audio-recording', 'drm': True},
+            'storytel': {'available': False, 'book_id': None, 'info': {}, 'downloadable': True, 'method': 'audio-recording', 'drm': True},
+            'nextory': {'available': False, 'book_id': None, 'info': {}, 'downloadable': True, 'method': 'audio-recording', 'drm': True},
+            'bookbeat': {'available': False, 'book_id': None, 'info': {}, 'downloadable': True, 'method': 'audio-recording', 'drm': True},
         }
         
         # Erstelle Suchanfrage
@@ -93,53 +98,53 @@ class AudiobookSearch:
         else:
             print(f"  ❌ Nicht verfügbar auf YouTube")
         
-        # 2. Prüfe Spotify
+        # 4. Prüfe Spotify (DRM, aber Audio-Aufnahme möglich)
         if self.spotify_downloader:
             print("🎵 Prüfe Spotify...")
             spotify_result = self._search_spotify(search_query)
             results['spotify'] = spotify_result
             if spotify_result['available']:
-                print(f"  ✅ Verfügbar auf Spotify")
+                print(f"  ✅ Verfügbar auf Spotify (DRM, Audio-Aufnahme möglich)")
             else:
                 print(f"  ❌ Nicht verfügbar auf Spotify")
         
-        # 3. Prüfe Audible
+        # 5. Prüfe Audible (DRM, aber AAX-Entschlüsselung möglich)
         if self.audible_library:
             print("📚 Prüfe Audible...")
             audible_result = self._search_audible(search_query)
             results['audible'] = audible_result
             if audible_result['available']:
-                print(f"  ✅ Verfügbar auf Audible")
+                print(f"  ✅ Verfügbar auf Audible (DRM, AAX-Entschlüsselung möglich)")
             else:
                 print(f"  ❌ Nicht verfügbar auf Audible")
         
-        # 4. Prüfe Storytel
+        # 6. Prüfe Storytel (DRM, aber Audio-Aufnahme möglich)
         if self.storytel:
             print("📖 Prüfe Storytel...")
             storytel_result = self._search_storytel(search_query)
             results['storytel'] = storytel_result
             if storytel_result['available']:
-                print(f"  ✅ Verfügbar auf Storytel")
+                print(f"  ✅ Verfügbar auf Storytel (DRM, Audio-Aufnahme möglich)")
             else:
                 print(f"  ❌ Nicht verfügbar auf Storytel")
         
-        # 5. Prüfe Nextory
+        # 7. Prüfe Nextory (DRM, aber Audio-Aufnahme möglich)
         if self.nextory:
             print("📕 Prüfe Nextory...")
             nextory_result = self._search_nextory(search_query)
             results['nextory'] = nextory_result
             if nextory_result['available']:
-                print(f"  ✅ Verfügbar auf Nextory")
+                print(f"  ✅ Verfügbar auf Nextory (DRM, Audio-Aufnahme möglich)")
             else:
                 print(f"  ❌ Nicht verfügbar auf Nextory")
         
-        # 6. Prüfe BookBeat
+        # 8. Prüfe BookBeat (DRM, aber Audio-Aufnahme möglich)
         if self.bookbeat:
             print("📗 Prüfe BookBeat...")
             bookbeat_result = self._search_bookbeat(search_query)
             results['bookbeat'] = bookbeat_result
             if bookbeat_result['available']:
-                print(f"  ✅ Verfügbar auf BookBeat")
+                print(f"  ✅ Verfügbar auf BookBeat (DRM, Audio-Aufnahme möglich)")
             else:
                 print(f"  ❌ Nicht verfügbar auf BookBeat")
         
@@ -211,6 +216,76 @@ class AudiobookSearch:
         except Exception as e:
             return {'available': False, 'url': None, 'info': {'error': str(e)}}
     
+    def _search_librivox(self, query: str) -> Dict:
+        """Sucht auf Librivox (kostenlose Hörbücher, kein DRM)"""
+        try:
+            # Librivox API oder Web-Suche
+            search_url = f"https://librivox.org/api/feed/audiobooks/?search={query}&format=json"
+            response = requests.get(search_url, timeout=10)
+            
+            if response.status_code == 200:
+                data = response.json()
+                books = data.get('books', [])
+                
+                if books:
+                    book = books[0]  # Erstes Ergebnis
+                    return {
+                        'available': True,
+                        'url': f"https://librivox.org/{book.get('url_librivox', '')}",
+                        'info': {
+                            'title': book.get('title', ''),
+                            'author': book.get('author', ''),
+                            'language': book.get('language', ''),
+                            'total_time': book.get('totaltime', '')
+                        },
+                        'downloadable': True,
+                        'method': 'direct',
+                        'drm': False
+                    }
+            
+            return {'available': False, 'url': None, 'info': {}, 'downloadable': False, 'method': None, 'drm': False}
+            
+        except Exception as e:
+            return {'available': False, 'url': None, 'info': {'error': str(e)}, 'downloadable': False, 'method': None, 'drm': False}
+    
+    def _search_internet_archive(self, query: str) -> Dict:
+        """Sucht auf Internet Archive (kostenlose Hörbücher, kein DRM)"""
+        try:
+            # Internet Archive API
+            search_url = "https://archive.org/advancedsearch.php"
+            params = {
+                'q': f'mediatype:audio AND title:"{query}"',
+                'fl': 'identifier,title,creator,date',
+                'output': 'json',
+                'rows': 1
+            }
+            response = requests.get(search_url, params=params, timeout=10)
+            
+            if response.status_code == 200:
+                data = response.json()
+                docs = data.get('response', {}).get('docs', [])
+                
+                if docs:
+                    doc = docs[0]
+                    identifier = doc.get('identifier', '')
+                    return {
+                        'available': True,
+                        'url': f"https://archive.org/details/{identifier}",
+                        'info': {
+                            'title': doc.get('title', ''),
+                            'creator': doc.get('creator', ''),
+                            'date': doc.get('date', '')
+                        },
+                        'downloadable': True,
+                        'method': 'direct',
+                        'drm': False
+                    }
+            
+            return {'available': False, 'url': None, 'info': {}, 'downloadable': False, 'method': None, 'drm': False}
+            
+        except Exception as e:
+            return {'available': False, 'url': None, 'info': {'error': str(e)}, 'downloadable': False, 'method': None, 'drm': False}
+    
     def _search_spotify(self, query: str) -> Dict:
         """Sucht auf Spotify"""
         try:
@@ -241,10 +316,13 @@ class AudiobookSearch:
                             'name': audiobook.get('name', ''),
                             'publisher': audiobook.get('publisher', ''),
                             'total_chapters': audiobook.get('total_chapters', 0)
-                        }
+                        },
+                        'downloadable': True,
+                        'method': 'audio-recording',
+                        'drm': True
                     }
             
-            return {'available': False, 'url': None, 'info': {}}
+            return {'available': False, 'url': None, 'info': {}, 'downloadable': False, 'method': None, 'drm': False}
             
         except Exception as e:
             return {'available': False, 'url': None, 'info': {'error': str(e)}}
@@ -269,10 +347,13 @@ class AudiobookSearch:
                             'title': book.get('title', ''),
                             'author': book.get('author', ''),
                             'runtime_length_ms': book.get('runtime_length_ms', 0)
-                        }
+                        },
+                        'downloadable': True,
+                        'method': 'aax-decrypt',
+                        'drm': True
                     }
             
-            return {'available': False, 'asin': None, 'info': {}}
+            return {'available': False, 'asin': None, 'info': {}, 'downloadable': False, 'method': None, 'drm': False}
             
         except Exception as e:
             return {'available': False, 'asin': None, 'info': {'error': str(e)}}
@@ -296,10 +377,13 @@ class AudiobookSearch:
                         'book_id': None,  # Erfordert Login für genaue ID
                         'info': {
                             'note': 'Erfordert Login für genaue Prüfung'
-                        }
+                        },
+                        'downloadable': True,
+                        'method': 'audio-recording',
+                        'drm': True
                     }
             
-            return {'available': False, 'book_id': None, 'info': {}}
+            return {'available': False, 'book_id': None, 'info': {}, 'downloadable': False, 'method': None, 'drm': False}
             
         except Exception as e:
             return {'available': False, 'book_id': None, 'info': {'error': str(e)}}
@@ -321,10 +405,13 @@ class AudiobookSearch:
                         'book_id': None,  # Erfordert Login für genaue ID
                         'info': {
                             'note': 'Erfordert Login für genaue Prüfung'
-                        }
+                        },
+                        'downloadable': True,
+                        'method': 'audio-recording',
+                        'drm': True
                     }
             
-            return {'available': False, 'book_id': None, 'info': {}}
+            return {'available': False, 'book_id': None, 'info': {}, 'downloadable': False, 'method': None, 'drm': False}
             
         except Exception as e:
             return {'available': False, 'book_id': None, 'info': {'error': str(e)}}
@@ -346,10 +433,13 @@ class AudiobookSearch:
                         'book_id': None,  # Erfordert Login für genaue ID
                         'info': {
                             'note': 'Erfordert Login für genaue Prüfung'
-                        }
+                        },
+                        'downloadable': True,
+                        'method': 'audio-recording',
+                        'drm': True
                     }
             
-            return {'available': False, 'book_id': None, 'info': {}}
+            return {'available': False, 'book_id': None, 'info': {}, 'downloadable': False, 'method': None, 'drm': False}
             
         except Exception as e:
             return {'available': False, 'book_id': None, 'info': {'error': str(e)}}
@@ -376,16 +466,24 @@ class AudiobookSearch:
         # Suche auf allen Plattformen
         results = self.search_all_providers(title, artist)
         
-        # Wähle besten Anbieter
+        # Wähle besten Anbieter (Priorität: Kein DRM > DRM mit Umgehung)
+        # 1. Kein DRM (direkter Download)
         if results['youtube']['available']:
-            print(f"\n📥 Lade von YouTube herunter...")
+            print(f"\n📥 Lade von YouTube herunter (kostenlos, kein DRM)...")
             return self._download_from_youtube(results['youtube']['url'], output_dir)
-        elif results['spotify']['available']:
-            print(f"\n📥 Lade von Spotify herunter...")
-            return self._download_from_spotify(results['spotify']['url'], output_dir)
+        elif results['librivox']['available']:
+            print(f"\n📥 Lade von Librivox herunter (kostenlos, kein DRM)...")
+            return self._download_from_librivox(results['librivox']['url'], output_dir)
+        elif results['internet_archive']['available']:
+            print(f"\n📥 Lade von Internet Archive herunter (kostenlos, kein DRM)...")
+            return self._download_from_internet_archive(results['internet_archive']['url'], output_dir)
+        # 2. DRM mit Umgehung
         elif results['audible']['available']:
-            print(f"\n📥 Lade von Audible herunter...")
+            print(f"\n📥 Lade von Audible herunter (DRM, AAX-Entschlüsselung)...")
             return self._download_from_audible(results['audible']['asin'], output_dir)
+        elif results['spotify']['available']:
+            print(f"\n📥 Lade von Spotify herunter (DRM, Audio-Aufnahme)...")
+            return self._download_from_spotify(results['spotify']['url'], output_dir)
         else:
             print("❌ Kein verfügbarer Anbieter gefunden")
             return False
@@ -411,13 +509,28 @@ class AudiobookSearch:
             return False
     
     def _download_from_spotify(self, url: str, output_dir: Optional[Path] = None) -> bool:
-        """Lädt von Spotify herunter"""
+        """Lädt von Spotify herunter (via Audio-Aufnahme wegen DRM)"""
         try:
-            if not self.spotify_downloader:
-                return False
+            from stream_automation import StreamAutomation
+            from pathlib import Path
+            import re
             
-            # Spotify-Downloader verwendet bereits YouTube-Fallback
-            return self.spotify_downloader.download_from_url(url)
+            if output_dir is None:
+                output_dir = Path("Downloads")
+            
+            output_dir = Path(output_dir) / "Spotify"
+            output_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Extrahiere Titel aus URL oder verwende Standard
+            title = "Spotify_Audiobook"
+            output_path = output_dir / f"{title}.mp3"
+            
+            print("⚠️ Spotify verwendet DRM - verwende Audio-Aufnahme (nur für privaten Gebrauch)")
+            print("   Dies kann einige Zeit dauern...")
+            
+            # Verwende StreamAutomation für Audio-Aufnahme
+            automation = StreamAutomation(output_path, playback_speed=4.0)
+            return automation.record_with_automation(url, provider="spotify")
             
         except Exception as e:
             print(f"❌ Fehler beim Spotify-Download: {e}")
