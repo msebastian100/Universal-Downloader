@@ -465,19 +465,125 @@ class DeezerDownloader:
             artist_name = track_info['artist']['name']
             track_title = track_info['title']
             
-            # Entferne "Kapitel XX - " Präfix für bessere Suche
-            cleaned_title = re.sub(r'^Kapitel \d+ - ', '', track_title, flags=re.IGNORECASE)
+            # Prüfe ob es ein Hörbuch-Kapitel ist
+            is_audiobook_chapter = bool(re.search(r'\bkapitel\s*\d+', track_title, re.IGNORECASE))
             
-            # Erstelle mehrere Suchanfragen (verschiedene Kombinationen)
-            search_queries = [
-                f"{artist_name} {cleaned_title}",  # Ohne "Kapitel"
-                f"{artist_name} {track_title}",    # Mit vollständigem Titel
-                f"{artist_name} {cleaned_title} Hörbuch",  # Mit Hörbuch-Keyword
-                f"{artist_name} {cleaned_title} Audiobook",  # Mit Audiobook-Keyword
-            ]
+            if is_audiobook_chapter:
+                # Für Hörbuch-Kapitel: Suche nach vollständigem Hörbuch (lange Dauer)
+                # Entferne Kapitel-Nummer und Album-Titel-Präfix
+                base_title = re.sub(r'\bkapitel\s*\d+\s*-\s*', '', track_title, flags=re.IGNORECASE).strip()
+                base_title = re.sub(r'^.*?-\s*', '', base_title, count=1).strip()  # Entferne "Kapitel XX - " Präfix
+                
+                # Suche nach vollständigem Hörbuch (nicht einzelnen Kapiteln)
+                search_queries = [
+                    f"{artist_name} {base_title} Hörbuch vollständig",
+                    f"{artist_name} {base_title} Hörbuch komplett",
+                    f"{artist_name} {base_title} Hörbuch",
+                    f"{base_title} {artist_name} Hörbuch vollständig",
+                    f"{artist_name} {base_title} Audiobook complete",
+                    f"{artist_name} {base_title} Audiobook full"
+                ]
+            else:
+                # Für normale Tracks: Standard-Suche
+                cleaned_title = re.sub(r'^Kapitel \d+ - ', '', track_title, flags=re.IGNORECASE)
+                search_queries = [
+                    f"{artist_name} {cleaned_title}",
+                    f"{artist_name} {track_title}",
+                    f"{artist_name} {cleaned_title} Hörbuch",
+                    f"{artist_name} {cleaned_title} Audiobook",
+                ]
+            
+            best_result = None
+            best_duration = 0
             
             for search_query in search_queries:
                 try:
+                    if is_audiobook_chapter:
+                        # Für Hörbuch-Kapitel: Suche mehrere Ergebnisse und wähle das längste
+                        search_url = f"ytsearch5:{search_query}"
+                        
+                        # Zuerst: Hole Metadaten aller Ergebnisse
+                        cmd_metadata = [
+                            sys.executable, "-m", "yt_dlp",
+                            "--dump-json",
+                            "--no-warnings",
+                            "--quiet",
+                            "--flat-playlist",
+                            search_url
+                        ]
+                        
+                        result_metadata = subprocess.run(cmd_metadata, capture_output=True, text=True, timeout=30)
+                        
+                        if result_metadata.returncode == 0 and result_metadata.stdout:
+                            import json
+                            lines = result_metadata.stdout.strip().split('\n')
+                            
+                            for line in lines:
+                                if not line.strip():
+                                    continue
+                                
+                                try:
+                                    video_info = json.loads(line)
+                                    duration = video_info.get('duration', 0)
+                                    video_id = video_info.get('id', '')
+                                    title = video_info.get('title', '').lower()
+                                    
+                                    # Prüfe ob es ein vollständiges Hörbuch ist
+                                    # Mindestdauer: 30 Minuten (vermeidet Demo-Tracks)
+                                    if duration < 1800:
+                                        continue
+                                    
+                                    # Vermeide Demo/Trailer/Preview
+                                    if any(word in title for word in ['demo', 'trailer', 'preview', 'vorschau']):
+                                        continue
+                                    
+                                    # Vermeide einzelne Kapitel (wenn "Kapitel XX" im Titel)
+                                    if re.search(r'\bkapitel\s*\d+', title):
+                                        continue
+                                    
+                                    # Wenn länger als bisher gefundenes Video, speichere es
+                                    if duration > best_duration:
+                                        best_duration = duration
+                                        best_result = {
+                                            'video_id': video_id,
+                                            'duration': duration,
+                                            'title': video_info.get('title', '')
+                                        }
+                                
+                                except json.JSONDecodeError:
+                                    continue
+                            
+                            # Wenn wir ein gutes Ergebnis gefunden haben, lade es herunter
+                            if best_result and best_duration >= 1800:  # Mindestens 30 Minuten
+                                video_url = f"https://www.youtube.com/watch?v={best_result['video_id']}"
+                                
+                                cmd = [
+                                    sys.executable, "-m", "yt_dlp",
+                                    "-x",
+                                    "--audio-format", "mp3",
+                                    "--audio-quality", "0",
+                                    "--no-warnings",
+                                    "--quiet",
+                                    "-f", "bestaudio/best",
+                                    "-o", str(output_path),
+                                    video_url
+                                ]
+                                
+                                result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+                                
+                                if result.returncode == 0 and output_path.exists():
+                                    file_size = output_path.stat().st_size
+                                    
+                                    if file_size > 100 * 1024:
+                                        self.log(f"  ✓ YouTube-Download erfolgreich (vollständiges Hörbuch, {best_result['duration'] // 60} min)", "INFO")
+                                        return True, "YouTube"
+                                    else:
+                                        output_path.unlink(missing_ok=True)
+                        
+                        # Wenn keine vollständiges Hörbuch gefunden, versuche nächste Suchanfrage
+                        continue
+                    
+                    # Normale Suche für einzelne Tracks
                     search_url = f"ytsearch1:{search_query}"  # Nur erstes Ergebnis
                     
                     cmd = [
