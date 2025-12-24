@@ -522,9 +522,7 @@ class DeezerDownloader:
                         
                         if result_metadata.returncode == 0 and result_metadata.stdout:
                             import json
-                            lines = result_metadata.stdout.strip().split('\n')
-                            
-                            self.log(f"  [DEBUG] Gefunden: {len([l for l in lines if l.strip()])} YouTube-Ergebnisse", "DEBUG")
+                            lines = [l for l in result_metadata.stdout.strip().split('\n') if l.strip()]
                             
                             for line in lines:
                                 if not line.strip():
@@ -532,27 +530,32 @@ class DeezerDownloader:
                                 
                                 try:
                                     video_info = json.loads(line)
-                                    duration = video_info.get('duration', 0)
+                                    duration = video_info.get('duration', 0) or video_info.get('duration_string', '0:00')
+                                    # Konvertiere duration_string zu Sekunden falls nötig
+                                    if isinstance(duration, str):
+                                        parts = duration.split(':')
+                                        if len(parts) == 2:
+                                            duration = int(parts[0]) * 60 + int(parts[1])
+                                        elif len(parts) == 3:
+                                            duration = int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
+                                        else:
+                                            duration = 0
+                                    
                                     video_id = video_info.get('id', '')
                                     title = video_info.get('title', '')
                                     title_lower = title.lower()
                                     
-                                    self.log(f"  [DEBUG] Prüfe: {title[:60]}... (Dauer: {duration // 60} min)", "DEBUG")
-                                    
                                     # Prüfe ob es ein vollständiges Hörbuch ist
                                     # Mindestdauer: 30 Minuten (vermeidet Demo-Tracks)
                                     if duration < 1800:
-                                        self.log(f"  [DEBUG]   → Zu kurz ({duration // 60} min < 30 min), überspringe", "DEBUG")
                                         continue
                                     
                                     # Vermeide Demo/Trailer/Preview
                                     if any(word in title_lower for word in ['demo', 'trailer', 'preview', 'vorschau', 'sample']):
-                                        self.log(f"  [DEBUG]   → Demo/Trailer erkannt, überspringe", "DEBUG")
                                         continue
                                     
                                     # Vermeide einzelne Kapitel (wenn "Kapitel XX" im Titel)
                                     if re.search(r'\bkapitel\s*\d+', title_lower):
-                                        self.log(f"  [DEBUG]   → Einzelnes Kapitel erkannt, überspringe", "DEBUG")
                                         continue
                                     
                                     # Wenn länger als bisher gefundenes Video, speichere es
@@ -563,13 +566,10 @@ class DeezerDownloader:
                                             'duration': duration,
                                             'title': title
                                         }
-                                        self.log(f"  [DEBUG]   → Neues bestes Ergebnis: {title[:60]}... ({duration // 60} min)", "DEBUG")
                                 
-                                except json.JSONDecodeError as e:
-                                    self.log(f"  [DEBUG] JSON-Fehler: {e}", "DEBUG")
+                                except json.JSONDecodeError:
                                     continue
-                                except Exception as e:
-                                    self.log(f"  [DEBUG] Fehler beim Verarbeiten: {e}", "DEBUG")
+                                except Exception:
                                     continue
                             
                             # Wenn wir ein gutes Ergebnis gefunden haben, lade es herunter
