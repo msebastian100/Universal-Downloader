@@ -1558,21 +1558,47 @@ class StreamAutomation:
                                 if new_state['ended']:
                                     print("✓ Track beendet (am Ende erkannt)")
                                     track_ended = True
-                                    # Stoppe Track automatisch
-                                    self.driver.execute_script("""
-                                        const audio = document.querySelector('audio');
-                                        if (audio) audio.pause();
-                                    """)
+                                    # Stoppe Track automatisch - MEHRFACH
+                                    for pause_attempt in range(3):
+                                        self.driver.execute_script("""
+                                            var audio = document.querySelector('audio');
+                                            if (audio) {
+                                                audio.pause();
+                                                audio.currentTime = 0;
+                                            }
+                                            if (window.DZ && window.DZ.player) {
+                                                try {
+                                                    window.DZ.player.pause();
+                                                    if (window.DZ.player.setAutoplay) {
+                                                        window.DZ.player.setAutoplay(false);
+                                                    }
+                                                } catch(e) {}
+                                            }
+                                        """)
+                                        time.sleep(0.1)
                                     break
                                 elif new_state['currentTime'] < 1.0:
                                     # Track wurde wiederholt - ein Durchlauf ist beendet
                                     print("✓ Track-Durchlauf beendet (Wiederholung erkannt)")
                                     track_ended = True
-                                    # Stoppe Track automatisch
-                                    self.driver.execute_script("""
-                                        const audio = document.querySelector('audio');
-                                        if (audio) audio.pause();
-                                    """)
+                                    # Stoppe Track automatisch - MEHRFACH
+                                    for pause_attempt in range(3):
+                                        self.driver.execute_script("""
+                                            var audio = document.querySelector('audio');
+                                            if (audio) {
+                                                audio.pause();
+                                                audio.currentTime = 0;
+                                            }
+                                            if (window.DZ && window.DZ.player) {
+                                                try {
+                                                    window.DZ.player.pause();
+                                                    if (window.DZ.player.setAutoplay) {
+                                                        window.DZ.player.setAutoplay(false);
+                                                    }
+                                                } catch(e) {}
+                                            }
+                                        """)
+                                        time.sleep(0.1)
                                     break
                             
                             # Prüfe ob Position sich nicht ändert (Track hängt)
@@ -1581,11 +1607,24 @@ class StreamAutomation:
                                 if position_unchanged_count > 10:  # 5 Sekunden keine Bewegung
                                     print("⚠️ Track scheint zu hängen, stoppe Aufnahme")
                                     track_ended = True
-                                    # Stoppe Track automatisch
-                                    self.driver.execute_script("""
-                                        const audio = document.querySelector('audio');
-                                        if (audio) audio.pause();
-                                    """)
+                                    # Stoppe Track automatisch - MEHRFACH
+                                    for pause_attempt in range(3):
+                                        self.driver.execute_script("""
+                                            var audio = document.querySelector('audio');
+                                            if (audio) {
+                                                audio.pause();
+                                                audio.currentTime = 0;
+                                            }
+                                            if (window.DZ && window.DZ.player) {
+                                                try {
+                                                    window.DZ.player.pause();
+                                                    if (window.DZ.player.setAutoplay) {
+                                                        window.DZ.player.setAutoplay(false);
+                                                    }
+                                                } catch(e) {}
+                                            }
+                                        """)
+                                        time.sleep(0.1)
                                     break
                             else:
                                 position_unchanged_count = 0
@@ -1608,11 +1647,24 @@ class StreamAutomation:
                                 if audio_ended:
                                     print("✓ Track beendet (Play-Button)")
                                     track_ended = True
-                                    # Stoppe Track automatisch
-                                    self.driver.execute_script("""
-                                        const audio = document.querySelector('audio');
-                                        if (audio) audio.pause();
-                                    """)
+                                    # Stoppe Track automatisch - MEHRFACH
+                                    for pause_attempt in range(3):
+                                        self.driver.execute_script("""
+                                            var audio = document.querySelector('audio');
+                                            if (audio) {
+                                                audio.pause();
+                                                audio.currentTime = 0;
+                                            }
+                                            if (window.DZ && window.DZ.player) {
+                                                try {
+                                                    window.DZ.player.pause();
+                                                    if (window.DZ.player.setAutoplay) {
+                                                        window.DZ.player.setAutoplay(false);
+                                                    }
+                                                } catch(e) {}
+                                            }
+                                        """)
+                                        time.sleep(0.1)
                                     break
                         except:
                             pass
