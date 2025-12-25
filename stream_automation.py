@@ -1048,25 +1048,25 @@ class StreamAutomation:
                             const duration = audio.duration;
                             
                             // Prüfe ob Track beendet ist
-                            if (audio.ended) {
+                            if (audio.ended) {{
                                 window._trackEndDetected = true;
                                 return true;
-                            }
+                            }}
                             
                             // Prüfe ob wir am Ende sind (auch bei Wiederholung)
-                            if (duration > 0 && currentTime >= duration - 0.5) {
+                            if (duration > 0 && currentTime >= duration - 0.5) {{
                                 // Track ist am Ende - warte kurz ob er wiederholt wird
-                                setTimeout(function() {
-                                    if (audio.currentTime < 0.5) {
+                                setTimeout(function() {{
+                                    if (audio.currentTime < 0.5) {{
                                         // Track wurde wiederholt - ein Durchlauf ist beendet
                                         window._trackEndDetected = true;
-                                    } else if (audio.ended) {
+                                    }} else if (audio.ended) {{
                                         // Track ist wirklich beendet
                                         window._trackEndDetected = true;
-                                    }
-                                }, 500);
+                                    }}
+                                }}, 500);
                                 return true;
-                            }
+                            }}
                         }
                         
                         // Methode 2: Prüfe Deezer-spezifische Erkennung
