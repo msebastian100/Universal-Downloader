@@ -996,13 +996,25 @@ class StreamAutomation:
             else:
                 # Warte auf Track-Ende (verbesserte Erkennung, auch bei Wiederholung)
                 print("⏳ Warte auf Track-Ende...")
-                max_wait = 600  # Maximal 10 Minuten
+                
+                # Berechne maximale Wartezeit basierend auf erwarteter Dauer
+                if hasattr(self, 'current_track_info') and self.current_track_info.get('duration'):
+                    expected_duration = self.current_track_info['duration']
+                    # Wartezeit = erwartete Dauer + 30 Sekunden Puffer (bei aktueller Geschwindigkeit)
+                    max_wait = (expected_duration / self.playback_speed) + 30
+                    print(f"⏱️  Erwartete Aufnahmedauer: {expected_duration / self.playback_speed:.1f}s (bei {self.playback_speed}x)")
+                    print(f"⏱️  Maximale Wartezeit: {max_wait:.1f}s (mit 30s Puffer)")
+                else:
+                    max_wait = 600  # Maximal 10 Minuten (Fallback)
+                    print(f"⏱️  Maximale Wartezeit: {max_wait}s (Fallback, da Dauer unbekannt)")
+                
                 waited = 0
                 track_ended = False
                 last_position = 0
                 position_unchanged_count = 0
                 last_track_title = None
                 last_url = self.driver.current_url
+                last_recording_check = 0  # Für Aufnahme-Status-Prüfung
                 
                 # Speichere initialen Track-Titel (falls verfügbar)
                 try:
