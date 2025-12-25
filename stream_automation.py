@@ -1127,6 +1127,19 @@ class StreamAutomation:
                                 if (window.DZ && window.DZ.player) {
                                     try {
                                         window.DZ.player.pause();
+                                        // Verhindere Auto-Play
+                                        if (window.DZ.player.setAutoplay) {
+                                            window.DZ.player.setAutoplay(false);
+                                        }
+                                    } catch(e) {}
+                                }
+                                
+                                // Verhindere auch über Event-Listener
+                                if (window.DZ && window.DZ.Events) {
+                                    try {
+                                        window.DZ.Events.subscribe('player:trackEnd', function() {
+                                            window.DZ.player.pause();
+                                        });
                                     } catch(e) {}
                                 }
                             """)
@@ -1164,6 +1177,19 @@ class StreamAutomation:
                                 if (window.DZ && window.DZ.player) {
                                     try {
                                         window.DZ.player.pause();
+                                        // Verhindere Auto-Play
+                                        if (window.DZ.player.setAutoplay) {
+                                            window.DZ.player.setAutoplay(false);
+                                        }
+                                    } catch(e) {}
+                                }
+                                
+                                // Verhindere auch über Event-Listener
+                                if (window.DZ && window.DZ.Events) {
+                                    try {
+                                        window.DZ.Events.subscribe('player:trackEnd', function() {
+                                            window.DZ.player.pause();
+                                        });
                                     } catch(e) {}
                                 }
                             """)
