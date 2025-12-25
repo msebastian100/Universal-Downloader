@@ -1043,7 +1043,7 @@ class StreamAutomation:
                     window._trackEndCheck = function() {{
                         // Methode 1: Prüfe Audio-Element
                         const audio = document.querySelector('audio');
-                        if (audio) {
+                        if (audio) {{
                             const currentTime = audio.currentTime;
                             const duration = audio.duration;
                             
@@ -1079,56 +1079,56 @@ class StreamAutomation:
                         );
                         
                         let pauseButtonVisible = false;
-                        for (const btn of pauseButtons) {
-                            if (btn.offsetParent !== null) {
+                        for (const btn of pauseButtons) {{
+                            if (btn.offsetParent !== null) {{
                                 pauseButtonVisible = true;
                                 break;
-                            }
-                        }
+                            }}
+                        }}
                         
                         // Prüfe ob Play-Button sichtbar ist (und nicht Pause-Button)
                         const playButton = document.querySelector('button[data-testid="play-button"]');
-                        if (playButton && playButton.offsetParent !== null) {
+                        if (playButton && playButton.offsetParent !== null) {{
                             const ariaLabel = (playButton.getAttribute('aria-label') || '').toLowerCase();
                             const isPauseButton = ariaLabel.includes('pause') || ariaLabel.includes('pausieren');
                             
                             // Wenn Play-Button sichtbar ist UND es kein Pause-Button ist UND kein Pause-Button sichtbar ist
-                            if (!isPauseButton && !pauseButtonVisible) {
+                            if (!isPauseButton && !pauseButtonVisible) {{
                                 // Track ist beendet (Play-Button ist wieder da, Pause-Button weg)
                                 window._trackEndDetected = true;
                                 return true;
-                            }
-                        }
+                            }}
+                        }}
                         
                         // Methode 3: Prüfe ob Track-Titel sich geändert hat (neuer Track gestartet)
-                        try {
+                        try {{
                             const trackTitle = document.querySelector('h1, .track-title, [data-testid="track-title"], .track-name');
-                            if (trackTitle) {
+                            if (trackTitle) {{
                                 const currentTitle = trackTitle.textContent.trim();
                                 if (window._lastTrackTitle && window._lastTrackTitle !== '' && 
-                                    currentTitle !== '' && currentTitle !== window._lastTrackTitle) {
+                                    currentTitle !== '' && currentTitle !== window._lastTrackTitle) {{
                                     // Track-Titel hat sich geändert - neuer Track gestartet
                                     window._trackEndDetected = true;
                                     return true;
-                                }
+                                }}
                                 window._lastTrackTitle = currentTitle;
-                            }
-                        } catch (e) {}
+                            }}
+                        }} catch (e) {{}}
                         
                         // Methode 4: Prüfe ob erwartete Dauer erreicht wurde
-                        if (expectedDuration && audio) {
+                        if (expectedDuration && audio) {{
                             const currentTime = audio.currentTime;
                             const duration = audio.duration;
                             
                             // Wenn wir nahe an der erwarteten Dauer sind
-                            if (duration > 0 && currentTime >= expectedDuration - 1.0) {
+                            if (duration > 0 && currentTime >= expectedDuration - 1.0) {{
                                 window._trackEndDetected = true;
                                 return true;
-                            }
-                        }
+                            }}
+                        }}
                         
                         return false;
-                    };
+                    }};
                     
                     // Starte kontinuierliche Prüfung
                     const checkInterval = setInterval(function() {
