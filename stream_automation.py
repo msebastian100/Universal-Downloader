@@ -344,7 +344,7 @@ class StreamAutomation:
                                 
                                 # Prüfe ob es funktioniert hat (mehrere Versuche mit längeren Wartezeiten)
                                 is_playing = False
-                                for check_attempt in range(10):  # 10 Versuche über 5 Sekunden
+                                for check_attempt in range(20):  # 20 Versuche über 10 Sekunden (mehr Zeit für Track-Start)
                                     time.sleep(0.5)  # Warte 0.5 Sekunden zwischen Prüfungen
                                     
                                     audio_state = self.driver.execute_script("""
@@ -448,7 +448,7 @@ class StreamAutomation:
                                     """)
                                     
                                     # Debug-Ausgabe bei jedem Versuch (immer, nicht nur bei geraden Zahlen)
-                                    print(f"  [DEBUG Track-Start Prüfung {check_attempt + 1}/10] "
+                                    print(f"  [DEBUG Track-Start Prüfung {check_attempt + 1}/20] "
                                           f"paused={audio_state.get('paused', True)}, "
                                           f"currentTime={audio_state.get('currentTime', 0):.2f}s, "
                                           f"readyState={audio_state.get('readyState', 0)}, "
@@ -458,13 +458,24 @@ class StreamAutomation:
                                           f"playButtonVisible={audio_state.get('playButtonVisible', False)}, "
                                           f"isPauseButton={audio_state.get('isPauseButton', False)}")
                                     
+                                    # ZUSÄTZLICH: Prüfe ob Pause-Button sichtbar wird (stärkstes Signal dass Track spielt)
+                                    if audio_state.get('pauseButtonVisible', False):
+                                        print(f"  [DEBUG Track-Start] Pause-Button wurde sichtbar - Track spielt definitiv!")
+                                        is_playing = True
+                                        break
+                                    
                                     # Sehr lockere Bedingungen: Track spielt wenn:
-                                    # 1. Deezer-spezifische Erkennung sagt es spielt
-                                    # 2. ODER Audio-Element nicht pausiert
-                                    if audio_state.get('deezerPlaying', False):
+                                    # 1. Pause-Button sichtbar (stärkstes Signal)
+                                    if audio_state.get('pauseButtonVisible', False):
+                                        is_playing = True
+                                        print(f"✓ Track spielt jetzt (Pause-Button sichtbar - stärkstes Signal)")
+                                        break
+                                    # 2. Deezer-spezifische Erkennung sagt es spielt
+                                    elif audio_state.get('deezerPlaying', False):
                                         is_playing = True
                                         print(f"✓ Track spielt jetzt (Deezer-Erkennung: Pause-Button sichtbar)")
                                         break
+                                    # 3. Audio-Element nicht pausiert
                                     elif not audio_state.get('paused', True):
                                         # Track ist nicht pausiert - das ist das wichtigste Kriterium
                                         if audio_state.get('currentTime', 0) > 0:
@@ -999,11 +1010,11 @@ class StreamAutomation:
                 """)
                 
                 while waited < max_wait and not track_ended:
-                    time.sleep(0.2)  # Prüfe alle 0.2 Sekunden für schnellere Reaktion
-                    waited += 0.2
+                    time.sleep(0.1)  # Prüfe alle 0.1 Sekunden für schnellere Reaktion (doppelt so schnell)
+                    waited += 0.1
                     
-                    # Debug: Zeige Fortschritt alle 5 Sekunden
-                    if int(waited) % 5 == 0 and waited > 0:
+                    # Debug: Zeige Fortschritt alle 2 Sekunden
+                    if int(waited * 10) % 20 == 0 and waited > 0:
                         print(f"  [DEBUG Track-Ende] Wartezeit: {waited:.1f}s / {max_wait}s")
                     
                     try:
@@ -1074,21 +1085,21 @@ class StreamAutomation:
                             };
                         """)
                         
-                        # Debug: Zeige Deezer-Status alle 2 Sekunden
-                        if int(waited * 5) % 10 == 0:
+                        # Debug: Zeige Deezer-Status alle 1 Sekunde (häufiger)
+                        if int(waited * 10) % 10 == 0:
                             print(f"  [DEBUG Track-Ende] Deezer-Status: "
                                   f"trackEnded={deezer_state.get('trackEnded', False)}, "
                                   f"pauseButtonVisible={deezer_state.get('pauseButtonVisible', False)}, "
                                   f"playButtonVisible={deezer_state.get('playButtonVisible', False)}, "
                                   f"isPauseButton={deezer_state.get('isPauseButton', False)}")
                         
-                        # Prüfe auch ob Pause-Button verschwunden ist (Track beendet)
-                        if not deezer_state.get('pauseButtonVisible', True) and deezer_state.get('playButtonVisible', False):
-                            # Pause-Button weg, Play-Button sichtbar = Track beendet
+                        # Prüfe auch ob Pause-Button verschwunden ist (Track beendet) - PRIORITÄT 1
+                        if not deezer_state.get('pauseButtonVisible', True):
+                            # Pause-Button weg = Track beendet (auch wenn Play-Button noch nicht sichtbar ist)
                             print(f"  [DEBUG Track-Ende] Pause-Button verschwunden erkannt!")
                             print(f"  [DEBUG Track-Ende] pauseButtonVisible: {deezer_state.get('pauseButtonVisible', False)}")
                             print(f"  [DEBUG Track-Ende] playButtonVisible: {deezer_state.get('playButtonVisible', False)}")
-                            print("✓ Track beendet (Deezer-Erkennung: Pause-Button weg, Play-Button sichtbar)")
+                            print("✓ Track beendet (Deezer-Erkennung: Pause-Button weg)")
                             # Stoppe Track sofort (verhindert automatischen Wechsel zum nächsten Track)
                             self.driver.execute_script("""
                                 // Pausiere Audio falls vorhanden
