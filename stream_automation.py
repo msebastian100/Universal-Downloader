@@ -339,52 +339,108 @@ class StreamAutomation:
             
             # Warte auf Play-Button und klicke ihn (mehrere Versuche)
             play_clicked = False
-            for attempt in range(10):  # Maximal 10 Versuche (mehr Versuche für bessere Zuverlässigkeit)
-                try:
-                    # Versuche verschiedene Selektoren (spezifisch für Track-Seite)
-                    # WICHTIG: Vermeide Playlist-Erstellung-Button (+)
-                    play_selectors = [
-                        "button[data-testid='play-button']",
-                        "button[aria-label*='Play'][aria-label*='Track']",
-                        "button[aria-label*='Wiedergabe'][aria-label*='Track']",
-                        ".control-play:not([aria-label*='Playlist'])",
-                        "button.play-button:not([aria-label*='Playlist'])",
-                        "[data-testid='play']:not([aria-label*='Playlist'])",
-                        "button[title*='Play'][title*='Track']",
-                        # Spezifische Deezer-Track-Seite Selektoren
-                        ".track-actions button[data-testid='play-button']",
-                        ".track-header button[data-testid='play-button']",
-                        "button.button-play",
-                        # Vermeide explizit Playlist-Buttons
-                        "button:not([aria-label*='Playlist']):not([aria-label*='Hinzufügen']):not([aria-label*='Add'])[data-testid='play-button']"
-                    ]
+            
+            # WICHTIG: Warte zuerst auf Seitenladung
+            time.sleep(2)
+            
+            # Versuche zuerst direkt über Deezer Player API
+            try:
+                self.driver.execute_script("""
+                    if (window.DZ && window.DZ.player) {
+                        window.DZ.player.play();
+                        return true;
+                    }
+                    return false;
+                """)
+                time.sleep(1)
+                # Prüfe ob es funktioniert hat
+                deezer_playing = self.driver.execute_script("""
+                    var pauseButtons = document.querySelectorAll('button[data-testid="pause-button"]');
+                    return pauseButtons.length > 0 && pauseButtons[0].offsetParent !== null;
+                """)
+                if deezer_playing:
+                    print("✓ Track gestartet über Deezer Player API")
+                    play_clicked = True
+            except:
+                pass
+            
+            if not play_clicked:
+                for attempt in range(15):  # Maximal 15 Versuche (mehr Versuche für bessere Zuverlässigkeit)
+                    try:
+                        # Versuche verschiedene Selektoren (spezifisch für Track-Seite)
+                        # WICHTIG: Vermeide Playlist-Erstellung-Button (+)
+                        play_selectors = [
+                            "button[data-testid='play-button']",
+                            "button[aria-label*='Play']",
+                            "button[aria-label*='Wiedergabe']",
+                            ".control-play",
+                            "button.play-button",
+                            "[data-testid='play']",
+                            "button[title*='Play']",
+                            # Spezifische Deezer-Track-Seite Selektoren
+                            ".track-actions button",
+                            ".track-header button",
+                            "button.button-play",
+                            # Allgemeinere Selektoren
+                            "button[class*='play']",
+                            "button[class*='Play']",
+                            # Vermeide explizit Playlist-Buttons
+                            "button:not([aria-label*='Playlist']):not([aria-label*='Hinzufügen']):not([aria-label*='Add'])[data-testid='play-button']"
+                        ]
                     
-                    for selector in play_selectors:
-                        try:
-                            play_button = WebDriverWait(self.driver, 3).until(
-                                EC.element_to_be_clickable((By.CSS_SELECTOR, selector))
-                            )
-                            if play_button.is_displayed():
+                        for selector in play_selectors:
+                            try:
+                                # Versuche zuerst mit kürzerer Wartezeit
+                                play_button = WebDriverWait(self.driver, 1).until(
+                                    EC.presence_of_element_located((By.CSS_SELECTOR, selector))
+                                )
+                                
+                                # Prüfe ob Button sichtbar und klickbar ist
+                                if not play_button.is_displayed():
+                                    continue
+                                
                                 # Scroll zu Button falls nötig
-                                self.driver.execute_script("arguments[0].scrollIntoView(true);", play_button)
-                                time.sleep(0.3)
+                                self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", play_button)
+                                time.sleep(0.2)
                                 
                                 # WICHTIG: Verhindere versehentliche Klicks auf Next/Skip-Buttons
                                 # Prüfe ob Button wirklich ein Play-Button ist (nicht Next/Skip)
-                                button_aria = play_button.get_attribute("aria-label") or ""
-                                button_text = play_button.text or ""
+                                button_aria = (play_button.get_attribute("aria-label") or "").lower()
+                                button_text = (play_button.text or "").lower()
                                 button_testid = play_button.get_attribute("data-testid") or ""
                                 
                                 # Überspringe Next/Skip-Buttons
-                                if any(word in button_aria.lower() for word in ['next', 'skip', 'weiter', 'vorwärts', 'nächster', 'überspringen']):
-                                    print(f"⚠️ Überspringe Button (Next/Skip): {button_aria}")
+                                if any(word in button_aria for word in ['next', 'skip', 'weiter', 'vorwärts', 'nächster', 'überspringen']):
                                     continue
-                                if any(word in button_text.lower() for word in ['next', 'skip', 'weiter', 'vorwärts', 'nächster', 'überspringen']):
-                                    print(f"⚠️ Überspringe Button (Next/Skip): {button_text}")
+                                if any(word in button_text for word in ['next', 'skip', 'weiter', 'vorwärts', 'nächster', 'überspringen']):
                                     continue
                                 
-                                # Klicke mit JavaScript (zuverlässiger)
-                                self.driver.execute_script("arguments[0].click();", play_button)
+                                # Überspringe Playlist-Buttons
+                                if any(word in button_aria for word in ['playlist', 'hinzufügen', 'add', 'erstellen']):
+                                    continue
+                                if any(word in button_text for word in ['playlist', 'hinzufügen', 'add', 'erstellen']):
+                                    continue
+                                
+                                # Prüfe ob es wirklich ein Play-Button ist
+                                is_play_button = (
+                                    'play' in button_aria or 
+                                    'wiedergabe' in button_aria or
+                                    'play' in button_text or
+                                    button_testid == 'play-button' or
+                                    'play' in selector.lower()
+                                )
+                                
+                                if not is_play_button:
+                                    continue
+                                
+                                # Klicke mit JavaScript (zuverlässiger) - MEHRFACH
+                                try:
+                                    self.driver.execute_script("arguments[0].click();", play_button)
+                                    time.sleep(0.1)
+                                    self.driver.execute_script("arguments[0].click();", play_button)  # Doppelklick für Sicherheit
+                                except:
+                                    play_button.click()  # Fallback: normaler Klick
+                                
                                 print(f"▶️ Play-Button geklickt (Versuch {attempt + 1}, Selektor: {selector})")
                                 
                                 # Prüfe ob es funktioniert hat (mehrere Versuche mit längeren Wartezeiten)
