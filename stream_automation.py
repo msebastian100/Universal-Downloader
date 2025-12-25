@@ -339,7 +339,7 @@ class StreamAutomation:
             
             # Warte auf Play-Button und klicke ihn (mehrere Versuche)
             play_clicked = False
-            for attempt in range(5):  # Maximal 5 Versuche
+            for attempt in range(10):  # Maximal 10 Versuche (mehr Versuche für bessere Zuverlässigkeit)
                 try:
                     # Versuche verschiedene Selektoren (spezifisch für Track-Seite)
                     # WICHTIG: Vermeide Playlist-Erstellung-Button (+)
@@ -674,9 +674,53 @@ class StreamAutomation:
             
             if not play_clicked:
                 print("⚠️ Konnte Play-Button nicht automatisch klicken")
-                print("   Bitte klicken Sie manuell auf Play")
-                # Warte auf manuelles Klicken
-                max_wait_manual = 30  # 30 Sekunden
+                print("   Versuche alternative Methoden...")
+                
+                # Alternative: Versuche direkt über JavaScript
+                try:
+                    self.driver.execute_script("""
+                        // Versuche alle möglichen Play-Methoden
+                        const methods = [
+                            () => {
+                                const btn = document.querySelector('button[data-testid="play-button"]');
+                                if (btn) btn.click();
+                            },
+                            () => {
+                                const audio = document.querySelector('audio');
+                                if (audio) audio.play();
+                            },
+                            () => {
+                                // Versuche über Deezer Player API
+                                if (window.DZ && window.DZ.player) {
+                                    window.DZ.player.play();
+                                }
+                            }
+                        ];
+                        
+                        for (const method of methods) {
+                            try {
+                                method();
+                                return true;
+                            } catch(e) {}
+                        }
+                        return false;
+                    """)
+                    time.sleep(2)
+                    # Prüfe ob es funktioniert hat
+                    deezer_playing = self.driver.execute_script("""
+                        const pauseButtons = document.querySelectorAll('button[data-testid="pause-button"]');
+                        return pauseButtons.length > 0 && pauseButtons[0].offsetParent !== null;
+                    """)
+                    if deezer_playing:
+                        print("✓ Track gestartet über JavaScript-Fallback")
+                        play_clicked = True
+                except:
+                    pass
+                
+                if not play_clicked:
+                    print("   Bitte klicken Sie manuell auf Play")
+                    # Warte auf manuelles Klicken
+                    max_wait_manual = 30  # 30 Sekunden
                 waited_manual = 0
                 while waited_manual < max_wait_manual:
                     time.sleep(1)
@@ -962,11 +1006,19 @@ class StreamAutomation:
                 print(f"📝 Initiale URL: {last_url}")
                 
                 # JavaScript-Funktion für Track-Ende-Erkennung (auch bei Wiederholung und Deezer-spezifisch)
-                self.driver.execute_script("""
+                # Setze auch erwartete Dauer für JavaScript (falls bekannt)
+                expected_duration_js = ""
+                if hasattr(self, 'current_track_info') and self.current_track_info.get('duration'):
+                    expected_duration_js = f"const expectedDuration = {self.current_track_info['duration']};"
+                else:
+                    expected_duration_js = "const expectedDuration = null;"
+                
+                self.driver.execute_script(f"""
+                    {expected_duration_js}
                     window._trackEndDetected = false;
                     window._lastTrackTime = 0;
                     window._lastTrackTitle = null;
-                    window._trackEndCheck = function() {
+                    window._trackEndCheck = function() {{
                         // Methode 1: Prüfe Audio-Element
                         const audio = document.querySelector('audio');
                         if (audio) {
@@ -1040,6 +1092,18 @@ class StreamAutomation:
                                 window._lastTrackTitle = currentTitle;
                             }
                         } catch (e) {}
+                        
+                        // Methode 4: Prüfe ob erwartete Dauer erreicht wurde
+                        if (expectedDuration && audio) {
+                            const currentTime = audio.currentTime;
+                            const duration = audio.duration;
+                            
+                            // Wenn wir nahe an der erwarteten Dauer sind
+                            if (duration > 0 && currentTime >= expectedDuration - 1.0) {
+                                window._trackEndDetected = true;
+                                return true;
+                            }
+                        }
                         
                         return false;
                     };
@@ -1454,7 +1518,24 @@ class StreamAutomation:
             # Stoppe Aufnahme
             print("🛑 Stoppe Aufnahme...")
             if not self.recorder.stop_recording():
+                print("⚠️ Aufnahme-Stopp fehlgeschlagen, versuche erneut...")
+                # Versuche erneut zu stoppen
+                time.sleep(1)
+                if not self.recorder.stop_recording():
+                    print("❌ Aufnahme konnte nicht gestoppt werden")
+                    return False
+            
+            # Prüfe ob Datei erstellt wurde und nicht leer ist
+            if not self.output_path.exists():
+                print("❌ Aufnahme-Datei wurde nicht erstellt")
                 return False
+            
+            file_size = self.output_path.stat().st_size
+            if file_size < 10 * 1024:  # Mindestens 10 KB
+                print(f"⚠️ Aufnahme-Datei ist sehr klein ({file_size / 1024:.1f} KB) - möglicherweise unvollständig")
+                # Versuche trotzdem weiter
+            else:
+                print(f"✓ Aufnahme-Datei erstellt: {file_size / 1024 / 1024:.2f} MB")
             
             # Normalisiere Geschwindigkeit (zurück auf 1x)
             print(f"🔄 Normalisiere Geschwindigkeit (zurück auf 1x)...")
@@ -1464,9 +1545,19 @@ class StreamAutomation:
             # Füge Metadaten hinzu
             if track_info and self.output_path.exists():
                 print("📝 Füge Metadaten hinzu...")
-                self._add_metadata(track_info)
+                try:
+                    self._add_metadata(track_info)
+                except Exception as e:
+                    print(f"⚠️ Metadaten konnten nicht hinzugefügt werden: {e}")
+                    # Nicht kritisch, Datei ist trotzdem vorhanden
             
-            return True
+            # Finale Validierung
+            if self.output_path.exists() and self.output_path.stat().st_size > 10 * 1024:
+                print("✅ Aufnahme erfolgreich abgeschlossen!")
+                return True
+            else:
+                print("❌ Aufnahme-Datei ist unvollständig oder fehlt")
+                return False
             
         except Exception as e:
             print(f"❌ Fehler bei automatischer Aufnahme: {e}")
