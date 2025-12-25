@@ -1131,11 +1131,11 @@ class StreamAutomation:
                     }};
                     
                     // Starte kontinuierliche Prüfung
-                    const checkInterval = setInterval(function() {
-                        if (window._trackEndCheck()) {
+                    const checkInterval = setInterval(function() {{
+                        if (window._trackEndCheck()) {{
                             clearInterval(checkInterval);
-                        }
-                    }, 200); // Prüfe alle 200ms
+                        }}
+                    }}, 200); // Prüfe alle 200ms
                     
                     window._trackEndCheckInterval = checkInterval;
                 """)
