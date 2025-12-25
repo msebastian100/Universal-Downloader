@@ -351,26 +351,85 @@ class StreamAutomation:
                                             audio = audioElements[0];
                                         }
                                         
+                                        // Alternative: Prüfe Deezer-spezifische Elemente
+                                        let deezerPlaying = false;
+                                        let deezerTime = 0;
+                                        
+                                        // Prüfe auf Play-Button-Status (wenn Pause-Button sichtbar, dann spielt es)
+                                        const pauseButtons = document.querySelectorAll(
+                                            'button[data-testid="pause-button"], ' +
+                                            'button[aria-label*="Pause"], ' +
+                                            'button[aria-label*="Pausieren"], ' +
+                                            '.control-pause, ' +
+                                            'button.pause-button'
+                                        );
+                                        
+                                        for (const btn of pauseButtons) {
+                                            if (btn.offsetParent !== null) { // Sichtbar
+                                                deezerPlaying = true;
+                                                break;
+                                            }
+                                        }
+                                        
+                                        // Prüfe auf Deezer Player-Status (verschiedene Methoden)
+                                        // Methode 1: Prüfe ob Play-Button zu Pause-Button gewechselt ist
+                                        const playButton = document.querySelector('button[data-testid="play-button"]');
+                                        const isPauseButton = playButton && (
+                                            (playButton.getAttribute('aria-label') || '').toLowerCase().includes('pause') ||
+                                            (playButton.getAttribute('aria-label') || '').toLowerCase().includes('pausieren')
+                                        );
+                                        
+                                        if (isPauseButton) {
+                                            deezerPlaying = true;
+                                        }
+                                        
+                                        // Methode 2: Prüfe auf aktive Player-Klasse
+                                        const playerElements = document.querySelectorAll('.player, .player-controls, [class*="player"]');
+                                        for (const el of playerElements) {
+                                            if (el.classList.contains('playing') || 
+                                                el.classList.contains('is-playing') ||
+                                                el.getAttribute('data-state') === 'playing') {
+                                                deezerPlaying = true;
+                                                break;
+                                            }
+                                        }
+                                        
+                                        // Methode 3: Prüfe auf Web Audio API (falls verwendet)
+                                        let webAudioPlaying = false;
+                                        try {
+                                            const audioContext = window.AudioContext || window.webkitAudioContext;
+                                            if (audioContext) {
+                                                // Prüfe ob AudioContext aktiv ist
+                                                const contexts = [];
+                                                // Versuche aktive AudioContexts zu finden
+                                                // (Dies ist schwierig, da wir keinen direkten Zugriff haben)
+                                            }
+                                        } catch (e) {}
+                                        
                                         if (!audio) {
                                             return {
-                                                playing: false, 
-                                                paused: true, 
-                                                currentTime: 0, 
-                                                readyState: 0,
+                                                playing: deezerPlaying || webAudioPlaying, 
+                                                paused: !deezerPlaying, 
+                                                currentTime: deezerTime, 
+                                                readyState: deezerPlaying ? 2 : 0,
                                                 hasAudio: false,
-                                                audioCount: audioElements.length
+                                                audioCount: audioElements.length,
+                                                deezerPlaying: deezerPlaying,
+                                                pauseButtonVisible: pauseButtons.length > 0
                                             };
                                         }
                                         
                                         return {
-                                            playing: !audio.paused && (audio.readyState >= 2 || audio.currentTime > 0),
-                                            paused: audio.paused,
-                                            currentTime: audio.currentTime,
+                                            playing: !audio.paused && (audio.readyState >= 2 || audio.currentTime > 0) || deezerPlaying,
+                                            paused: audio.paused && !deezerPlaying,
+                                            currentTime: audio.currentTime || deezerTime,
                                             duration: audio.duration,
                                             readyState: audio.readyState,
                                             hasAudio: true,
                                             audioCount: audioElements.length,
-                                            src: audio.src || audio.currentSrc || 'no-src'
+                                            src: audio.src || audio.currentSrc || 'no-src',
+                                            deezerPlaying: deezerPlaying,
+                                            pauseButtonVisible: pauseButtons.length > 0
                                         };
                                     """)
                                     
@@ -379,13 +438,18 @@ class StreamAutomation:
                                         print(f"  [Prüfung {check_attempt + 1}] paused={audio_state.get('paused', True)}, "
                                               f"currentTime={audio_state.get('currentTime', 0):.2f}s, "
                                               f"readyState={audio_state.get('readyState', 0)}, "
-                                              f"hasAudio={audio_state.get('hasAudio', False)}")
+                                              f"hasAudio={audio_state.get('hasAudio', False)}, "
+                                              f"deezerPlaying={audio_state.get('deezerPlaying', False)}, "
+                                              f"pauseButtonVisible={audio_state.get('pauseButtonVisible', False)}")
                                     
                                     # Sehr lockere Bedingungen: Track spielt wenn:
-                                    # 1. Nicht pausiert UND (readyState >= 2 ODER currentTime > 0)
-                                    # 2. ODER einfach nicht pausiert (auch wenn currentTime noch 0 ist)
-                                    # 3. ODER readyState >= 1 und nicht pausiert
-                                    if not audio_state.get('paused', True):
+                                    # 1. Deezer-spezifische Erkennung sagt es spielt
+                                    # 2. ODER Audio-Element nicht pausiert
+                                    if audio_state.get('deezerPlaying', False):
+                                        is_playing = True
+                                        print(f"✓ Track spielt jetzt (Deezer-Erkennung: Pause-Button sichtbar)")
+                                        break
+                                    elif not audio_state.get('paused', True):
                                         # Track ist nicht pausiert - das ist das wichtigste Kriterium
                                         if audio_state.get('currentTime', 0) > 0:
                                             is_playing = True
@@ -563,34 +627,67 @@ class StreamAutomation:
                             audio = audioElements[0];
                         }
                         
+                        // Alternative: Prüfe Deezer-spezifische Elemente
+                        let deezerPlaying = false;
+                        
+                        // Prüfe auf Pause-Button (wenn sichtbar, dann spielt es)
+                        const pauseButtons = document.querySelectorAll(
+                            'button[data-testid="pause-button"], ' +
+                            'button[aria-label*="Pause"], ' +
+                            'button[aria-label*="Pausieren"], ' +
+                            '.control-pause, ' +
+                            'button.pause-button'
+                        );
+                        
+                        for (const btn of pauseButtons) {
+                            if (btn.offsetParent !== null) { // Sichtbar
+                                deezerPlaying = true;
+                                break;
+                            }
+                        }
+                        
+                        // Prüfe ob Play-Button zu Pause-Button gewechselt ist
+                        const playButton = document.querySelector('button[data-testid="play-button"]');
+                        const isPauseButton = playButton && (
+                            (playButton.getAttribute('aria-label') || '').toLowerCase().includes('pause') ||
+                            (playButton.getAttribute('aria-label') || '').toLowerCase().includes('pausieren')
+                        );
+                        
+                        if (isPauseButton) {
+                            deezerPlaying = true;
+                        }
+                        
                         if (!audio) {
                             return {
-                                playing: false, 
-                                paused: true, 
+                                playing: deezerPlaying, 
+                                paused: !deezerPlaying, 
                                 currentTime: 0, 
-                                readyState: 0,
+                                readyState: deezerPlaying ? 2 : 0,
                                 hasAudio: false,
-                                audioCount: audioElements.length
+                                audioCount: audioElements.length,
+                                deezerPlaying: deezerPlaying
                             };
                         }
                         
                         return {
-                            playing: !audio.paused && (audio.readyState >= 2 || audio.currentTime > 0),
-                            paused: audio.paused,
+                            playing: !audio.paused && (audio.readyState >= 2 || audio.currentTime > 0) || deezerPlaying,
+                            paused: audio.paused && !deezerPlaying,
                             currentTime: audio.currentTime,
                             duration: audio.duration,
                             readyState: audio.readyState,
                             hasAudio: true,
-                            audioCount: audioElements.length
+                            audioCount: audioElements.length,
+                            deezerPlaying: deezerPlaying
                         };
                     """)
                     
-                    # Sehr lockere Bedingungen: Track spielt wenn nicht pausiert
-                    is_playing = not audio_state.get('paused', True)
+                    # Sehr lockere Bedingungen: Track spielt wenn Deezer-Erkennung sagt es spielt ODER nicht pausiert
+                    is_playing = audio_state.get('deezerPlaying', False) or not audio_state.get('paused', True)
                     
                     if is_playing:
                         print(f"✓ Track spielt jetzt (manuell gestartet, currentTime: {audio_state.get('currentTime', 0):.2f}s, "
-                              f"readyState: {audio_state.get('readyState', 0)})")
+                              f"readyState: {audio_state.get('readyState', 0)}, "
+                              f"deezerPlaying: {audio_state.get('deezerPlaying', False)})")
                         play_clicked = True
                         break
                 else:
