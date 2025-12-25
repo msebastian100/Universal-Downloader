@@ -605,9 +605,9 @@ class StreamAutomation:
                     
                         if play_clicked:
                             break
-                        
-                        # Fallback: Direktes JavaScript-Klicken (vermeide Playlist-Buttons)
-                        if not play_clicked:
+                    
+                    # Fallback: Direktes JavaScript-Klicken (vermeide Playlist-Buttons)
+                    if not play_clicked:
                         play_button_found = self.driver.execute_script("""
                             // Versuche verschiedene Methoden, vermeide Playlist-Buttons
                             var selectors = [
