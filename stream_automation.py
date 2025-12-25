@@ -481,12 +481,27 @@ class StreamAutomation:
                 while waited_manual < max_wait_manual:
                     time.sleep(1)
                     waited_manual += 1
-                    is_playing = self.driver.execute_script("""
+                    audio_state = self.driver.execute_script("""
                         const audio = document.querySelector('audio');
-                        return audio ? (!audio.paused && audio.currentTime > 0) : false;
+                        if (!audio) return {playing: false, paused: true, currentTime: 0, readyState: 0};
+                        
+                        return {
+                            playing: !audio.paused && audio.readyState >= 2,
+                            paused: audio.paused,
+                            currentTime: audio.currentTime,
+                            duration: audio.duration,
+                            readyState: audio.readyState
+                        };
                     """)
+                    
+                    # Prüfe verschiedene Bedingungen
+                    is_playing = (audio_state['playing'] or 
+                                 (not audio_state['paused'] and audio_state['currentTime'] > 0) or
+                                 (audio_state['readyState'] >= 2 and not audio_state['paused']))
+                    
                     if is_playing:
-                        print("✓ Track spielt jetzt (manuell gestartet)")
+                        print(f"✓ Track spielt jetzt (manuell gestartet, currentTime: {audio_state['currentTime']:.1f}s)")
+                        play_clicked = True
                         break
                 else:
                     print("❌ Track wurde nicht gestartet")
