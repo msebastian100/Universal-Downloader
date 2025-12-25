@@ -242,65 +242,65 @@ class AudioRecorder:
             traceback.print_exc()
             return False
     
-        def stop_recording(self) -> bool:
-            """Stoppt die Audio-Aufnahme"""
-            if not self.is_recording:
-                return False
-            
-            try:
-                if self.recording_process:
-                    # Methode 1: Sende 'q' an ffmpeg um Aufnahme zu beenden
-                    try:
-                        if self.recording_process.stdin:
-                            self.recording_process.stdin.write(b'q\n')
-                            self.recording_process.stdin.flush()
-                    except:
-                        pass
-                    
-                    # Warte auf Beendigung (mit Timeout)
-                    try:
-                        self.recording_process.wait(timeout=5)
-                    except subprocess.TimeoutExpired:
-                        # Methode 2: Terminiere Prozess falls er nicht reagiert
-                        print("⚠️ ffmpeg reagiert nicht, terminiere Prozess...")
-                        self.recording_process.terminate()
-                        time.sleep(0.5)
-                        if self.recording_process.poll() is None:
-                            # Methode 3: Force-Kill falls Terminate nicht funktioniert
-                            self.recording_process.kill()
-                            time.sleep(0.5)
-                
-                self.is_recording = False
-                print(f"✓ Audio-Aufnahme beendet: {self.output_path}")
-                
-                # Warte kurz damit Datei geschrieben wird
-                time.sleep(0.5)
-                
-                # Prüfe ob Datei erstellt wurde
-                if self.output_path.exists():
-                    file_size = self.output_path.stat().st_size
-                    if file_size > 0:
-                        print(f"✓ Datei gespeichert: {self.output_path} ({file_size / 1024 / 1024:.2f} MB)")
-                        return True
-                    else:
-                        print("⚠️ Aufnahme-Datei ist leer")
-                        return False
-                else:
-                    print("⚠️ Aufnahme-Datei wurde nicht erstellt")
-                    return False
-                    
-            except Exception as e:
-                print(f"❌ Fehler beim Beenden der Aufnahme: {e}")
-                # Versuche Prozess zu beenden falls noch aktiv
+    def stop_recording(self) -> bool:
+        """Stoppt die Audio-Aufnahme"""
+        if not self.is_recording:
+            return False
+        
+        try:
+            if self.recording_process:
+                # Methode 1: Sende 'q' an ffmpeg um Aufnahme zu beenden
                 try:
-                    if self.recording_process and self.recording_process.poll() is None:
-                        self.recording_process.terminate()
-                        time.sleep(0.5)
-                        if self.recording_process.poll() is None:
-                            self.recording_process.kill()
+                    if self.recording_process.stdin:
+                        self.recording_process.stdin.write(b'q\n')
+                        self.recording_process.stdin.flush()
                 except:
                     pass
+                
+                # Warte auf Beendigung (mit Timeout)
+                try:
+                    self.recording_process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    # Methode 2: Terminiere Prozess falls er nicht reagiert
+                    print("⚠️ ffmpeg reagiert nicht, terminiere Prozess...")
+                    self.recording_process.terminate()
+                    time.sleep(0.5)
+                    if self.recording_process.poll() is None:
+                        # Methode 3: Force-Kill falls Terminate nicht funktioniert
+                        self.recording_process.kill()
+                        time.sleep(0.5)
+            
+            self.is_recording = False
+            print(f"✓ Audio-Aufnahme beendet: {self.output_path}")
+            
+            # Warte kurz damit Datei geschrieben wird
+            time.sleep(0.5)
+            
+            # Prüfe ob Datei erstellt wurde
+            if self.output_path.exists():
+                file_size = self.output_path.stat().st_size
+                if file_size > 0:
+                    print(f"✓ Datei gespeichert: {self.output_path} ({file_size / 1024 / 1024:.2f} MB)")
+                    return True
+                else:
+                    print("⚠️ Aufnahme-Datei ist leer")
+                    return False
+            else:
+                print("⚠️ Aufnahme-Datei wurde nicht erstellt")
                 return False
+                
+        except Exception as e:
+            print(f"❌ Fehler beim Beenden der Aufnahme: {e}")
+            # Versuche Prozess zu beenden falls noch aktiv
+            try:
+                if self.recording_process and self.recording_process.poll() is None:
+                    self.recording_process.terminate()
+                    time.sleep(0.5)
+                    if self.recording_process.poll() is None:
+                        self.recording_process.kill()
+            except:
+                pass
+            return False
     
     def _monitor_progress(self):
         """Überwacht den Fortschritt der Aufnahme"""
