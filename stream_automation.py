@@ -580,9 +580,9 @@ class StreamAutomation:
                                     if (ariaLabel.includes('play') || ariaLabel.includes('wiedergabe') || 
                                         title.includes('play') || btn.getAttribute('data-testid') === 'play-button') {
                                         btn.click();
-                                        return true;
-                                    }
-                                }
+                                return true;
+                            }}
+                        }}
                             }
                             
                             // Versuche auch über Audio-Element direkt
