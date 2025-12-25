@@ -327,16 +327,45 @@ class StreamAutomation:
                                 # Klicke mit JavaScript (zuverlässiger)
                                 self.driver.execute_script("arguments[0].click();", play_button)
                                 print(f"▶️ Play-Button geklickt (Versuch {attempt + 1}, Selektor: {selector})")
-                                time.sleep(1)
+                                time.sleep(2)  # Längere Wartezeit für Track-Start
                                 
-                                # Prüfe ob es funktioniert hat
-                                is_playing = self.driver.execute_script("""
-                                    const audio = document.querySelector('audio');
-                                    return audio ? (!audio.paused && audio.currentTime > 0) : false;
-                                """)
+                                # Prüfe ob es funktioniert hat (mehrere Versuche mit längeren Wartezeiten)
+                                is_playing = False
+                                for check_attempt in range(5):  # 5 Versuche
+                                    audio_state = self.driver.execute_script("""
+                                        const audio = document.querySelector('audio');
+                                        if (!audio) return {playing: false, paused: true, currentTime: 0, readyState: 0};
+                                        
+                                        return {
+                                            playing: !audio.paused && audio.readyState >= 2,
+                                            paused: audio.paused,
+                                            currentTime: audio.currentTime,
+                                            duration: audio.duration,
+                                            readyState: audio.readyState
+                                        };
+                                    """)
+                                    
+                                    # Prüfe verschiedene Bedingungen
+                                    if audio_state['playing']:
+                                        is_playing = True
+                                        print(f"✓ Track spielt jetzt (currentTime: {audio_state['currentTime']:.1f}s, readyState: {audio_state['readyState']})")
+                                        break
+                                    elif not audio_state['paused'] and audio_state['currentTime'] > 0:
+                                        # Track läuft, auch wenn readyState noch nicht 2 ist
+                                        is_playing = True
+                                        print(f"✓ Track spielt jetzt (currentTime: {audio_state['currentTime']:.1f}s)")
+                                        break
+                                    elif audio_state['readyState'] >= 2 and not audio_state['paused']:
+                                        # Audio ist bereit und nicht pausiert
+                                        is_playing = True
+                                        print(f"✓ Track spielt jetzt (readyState: {audio_state['readyState']})")
+                                        break
+                                    
+                                    # Warte etwas länger und prüfe erneut
+                                    if check_attempt < 4:
+                                        time.sleep(0.5)
                                 
                                 if is_playing:
-                                    print("✓ Track spielt jetzt")
                                     play_clicked = True
                                     break
                         except:
@@ -395,16 +424,43 @@ class StreamAutomation:
                         
                         if play_button_found:
                             print(f"▶️ Play-Button per JavaScript geklickt (Versuch {attempt + 1})")
-                            time.sleep(1.5)
+                            time.sleep(2)  # Längere Wartezeit für Track-Start
                             
-                            # Prüfe ob es funktioniert hat
-                            is_playing = self.driver.execute_script("""
-                                const audio = document.querySelector('audio');
-                                return audio ? (!audio.paused && audio.currentTime > 0) : false;
-                            """)
+                            # Prüfe ob es funktioniert hat (mehrere Versuche)
+                            is_playing = False
+                            for check_attempt in range(5):  # 5 Versuche
+                                audio_state = self.driver.execute_script("""
+                                    const audio = document.querySelector('audio');
+                                    if (!audio) return {playing: false, paused: true, currentTime: 0, readyState: 0};
+                                    
+                                    return {
+                                        playing: !audio.paused && audio.readyState >= 2,
+                                        paused: audio.paused,
+                                        currentTime: audio.currentTime,
+                                        duration: audio.duration,
+                                        readyState: audio.readyState
+                                    };
+                                """)
+                                
+                                # Prüfe verschiedene Bedingungen
+                                if audio_state['playing']:
+                                    is_playing = True
+                                    print(f"✓ Track spielt jetzt (JavaScript-Fallback, currentTime: {audio_state['currentTime']:.1f}s)")
+                                    break
+                                elif not audio_state['paused'] and audio_state['currentTime'] > 0:
+                                    is_playing = True
+                                    print(f"✓ Track spielt jetzt (JavaScript-Fallback, currentTime: {audio_state['currentTime']:.1f}s)")
+                                    break
+                                elif audio_state['readyState'] >= 2 and not audio_state['paused']:
+                                    is_playing = True
+                                    print(f"✓ Track spielt jetzt (JavaScript-Fallback, readyState: {audio_state['readyState']})")
+                                    break
+                                
+                                # Warte etwas länger und prüfe erneut
+                                if check_attempt < 4:
+                                    time.sleep(0.5)
                             
                             if is_playing:
-                                print("✓ Track spielt jetzt (JavaScript-Fallback)")
                                 play_clicked = True
                                 break
                     
