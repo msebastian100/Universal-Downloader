@@ -605,15 +605,9 @@ class StreamAutomation:
                     
                         if play_clicked:
                             break
-                    except Exception as e:
-                        print(f"⚠️ Fehler beim Klicken auf Play-Button (Versuch {attempt + 1}): {e}")
-                        continue
-                
-                if play_clicked:
-                    break
-                    
-                    # Fallback: Direktes JavaScript-Klicken (vermeide Playlist-Buttons)
-                    if not play_clicked:
+                        
+                        # Fallback: Direktes JavaScript-Klicken (vermeide Playlist-Buttons)
+                        if not play_clicked:
                         play_button_found = self.driver.execute_script("""
                             // Versuche verschiedene Methoden, vermeide Playlist-Buttons
                             var selectors = [
@@ -730,14 +724,16 @@ class StreamAutomation:
                             if is_playing:
                                 play_clicked = True
                                 break
-                    
-                    if not play_clicked:
-                        print(f"⚠️ Versuch {attempt + 1} fehlgeschlagen, versuche erneut...")
+                        
+                        if not play_clicked:
+                            print(f"⚠️ Versuch {attempt + 1} fehlgeschlagen, versuche erneut...")
+                            time.sleep(1)
+                    except Exception as e:
+                        print(f"⚠️ Fehler beim Klicken auf Play-Button (Versuch {attempt + 1}): {e}")
                         time.sleep(1)
                 
-                except Exception as e:
-                    print(f"⚠️ Fehler beim Klicken auf Play-Button (Versuch {attempt + 1}): {e}")
-                    time.sleep(1)
+                if play_clicked:
+                    break
             
             if not play_clicked:
                 print("⚠️ Konnte Play-Button nicht automatisch klicken")
