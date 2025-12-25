@@ -1077,6 +1077,25 @@ class StreamAutomation:
                             
                             if last_track_title and current_track_title and current_track_title != last_track_title:
                                 print(f"✓ Track beendet (Track-Titel geändert: '{last_track_title}' -> '{current_track_title}')")
+                                # Stoppe sofort (verhindert dass neuer Track weiterläuft)
+                                self.driver.execute_script("""
+                                    // Pausiere Audio falls vorhanden
+                                    const audio = document.querySelector('audio');
+                                    if (audio) audio.pause();
+                                    
+                                    // Klicke auf Pause-Button falls noch sichtbar
+                                    const pauseButtons = document.querySelectorAll(
+                                        'button[data-testid="pause-button"], ' +
+                                        'button[aria-label*="Pause"], ' +
+                                        'button[aria-label*="Pausieren"]'
+                                    );
+                                    for (const btn of pauseButtons) {
+                                        if (btn.offsetParent !== null) {
+                                            btn.click();
+                                            break;
+                                        }
+                                    }
+                                """)
                                 track_ended = True
                                 break
                         except:
