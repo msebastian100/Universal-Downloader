@@ -597,11 +597,20 @@ class StreamAutomation:
                                     if is_playing:
                                         play_clicked = True
                                         break
+                                
+                                if is_playing:
+                                    break
                             except:
                                 continue
                     
-                    if play_clicked:
-                        break
+                        if play_clicked:
+                            break
+                    except Exception as e:
+                        print(f"⚠️ Fehler beim Klicken auf Play-Button (Versuch {attempt + 1}): {e}")
+                        continue
+                
+                if play_clicked:
+                    break
                     
                     # Fallback: Direktes JavaScript-Klicken (vermeide Playlist-Buttons)
                     if not play_clicked:
