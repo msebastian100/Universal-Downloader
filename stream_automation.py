@@ -965,16 +965,26 @@ class StreamAutomation:
                 return False
             
             # Starte Browser und spiele Track ab
-            if provider.lower() == "spotify":
-                if not self.play_spotify_track(url, duration):
+            playback_success = False
+            try:
+                if provider.lower() == "spotify":
+                    playback_success = self.play_spotify_track(url, duration)
+                elif provider.lower() == "deezer":
+                    playback_success = self.play_deezer_track(url, duration)
+                else:
+                    print(f"❌ Unbekannter Provider: {provider}")
                     self.recorder.stop_recording()
                     return False
-            elif provider.lower() == "deezer":
-                if not self.play_deezer_track(url, duration):
+                
+                if not playback_success:
+                    print("⚠️ Track konnte nicht abgespielt werden, stoppe Aufnahme...")
                     self.recorder.stop_recording()
                     return False
-            else:
-                print(f"❌ Unbekannter Provider: {provider}")
+                    
+            except Exception as e:
+                print(f"❌ Fehler beim Abspielen: {e}")
+                import traceback
+                traceback.print_exc()
                 self.recorder.stop_recording()
                 return False
             
@@ -1124,7 +1134,15 @@ class StreamAutomation:
                     
                     # Debug: Zeige Fortschritt alle 2 Sekunden
                     if int(waited * 10) % 20 == 0 and waited > 0:
-                        print(f"  [DEBUG Track-Ende] Wartezeit: {waited:.1f}s / {max_wait}s")
+                        print(f"  [DEBUG Track-Ende] Wartezeit: {waited:.1f}s / {max_wait:.1f}s")
+                    
+                    # Prüfe ob Aufnahme noch läuft (alle 10 Sekunden)
+                    if waited - last_recording_check >= 10:
+                        last_recording_check = waited
+                        if self.recorder and not self.recorder.is_active():
+                            print("⚠️ Aufnahme-Prozess läuft nicht mehr!")
+                            track_ended = True
+                            break
                     
                     # Prüfe ob richtiger Track noch spielt (Titel-Vergleich)
                     if hasattr(self, 'current_track_info') and self.current_track_info.get('title'):
@@ -1515,6 +1533,19 @@ class StreamAutomation:
                 if not track_ended and waited >= max_wait:
                     print("⚠️ Maximale Wartezeit erreicht, stoppe Aufnahme")
             
+            # Prüfe ob Browser noch reagiert
+            try:
+                self.driver.current_url  # Einfacher Test ob Browser noch reagiert
+            except Exception as e:
+                print(f"⚠️ Browser reagiert nicht mehr: {e}")
+                # Versuche Browser neu zu starten falls nötig
+                try:
+                    self.cleanup()
+                    if not self.setup_browser():
+                        print("❌ Konnte Browser nicht neu starten")
+                except:
+                    pass
+            
             # Stoppe Aufnahme
             print("🛑 Stoppe Aufnahme...")
             if not self.recorder.stop_recording():
@@ -1523,6 +1554,15 @@ class StreamAutomation:
                 time.sleep(1)
                 if not self.recorder.stop_recording():
                     print("❌ Aufnahme konnte nicht gestoppt werden")
+                    # Versuche ffmpeg-Prozess direkt zu beenden
+                    try:
+                        if self.recorder.recording_process:
+                            self.recorder.recording_process.terminate()
+                            time.sleep(0.5)
+                            if self.recorder.recording_process.poll() is None:
+                                self.recorder.recording_process.kill()
+                    except:
+                        pass
                     return False
             
             # Prüfe ob Datei erstellt wurde und nicht leer ist
