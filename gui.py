@@ -1467,7 +1467,8 @@ class DeezerDownloaderGUI:
             self.music_log(f"❌ Fehler: {e}")
             import traceback
             self.music_log(traceback.format_exc())
-            self.root.after(0, lambda: messagebox.showerror("Fehler", f"Fehler bei Audio-Aufnahme:\n{e}"))
+            error_msg = str(e)  # Erfasse Fehlermeldung vor Lambda
+            self.root.after(0, lambda msg=error_msg: messagebox.showerror("Fehler", f"Fehler bei Audio-Aufnahme:\n{msg}"))
         finally:
             self.root.after(0, lambda: self.music_download_button.config(state=tk.NORMAL))
             self.root.after(0, lambda: self.music_record_button.config(state=tk.NORMAL))

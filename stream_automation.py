@@ -1029,14 +1029,13 @@ class StreamAutomation:
                 
                 # JavaScript-Funktion für Track-Ende-Erkennung (auch bei Wiederholung und Deezer-spezifisch)
                 # Setze auch erwartete Dauer für JavaScript (falls bekannt)
-                expected_duration_js = ""
+                expected_duration = None
                 if hasattr(self, 'current_track_info') and self.current_track_info.get('duration'):
-                    expected_duration_js = f"const expectedDuration = {self.current_track_info['duration']};"
-                else:
-                    expected_duration_js = "const expectedDuration = null;"
+                    expected_duration = self.current_track_info['duration']
                 
-                self.driver.execute_script(f"""
-                    {expected_duration_js}
+                # Verwende normale String-Formatierung statt f-string für JavaScript-Code
+                js_code = """
+                    window._expectedDuration = """ + (str(expected_duration) if expected_duration else "null") + """;
                     window._trackEndDetected = false;
                     window._lastTrackTime = 0;
                     window._lastTrackTitle = null;
@@ -1116,12 +1115,12 @@ class StreamAutomation:
                         }} catch (e) {{}}
                         
                         // Methode 4: Prüfe ob erwartete Dauer erreicht wurde
-                        if (expectedDuration && audio) {{
+                        if (window._expectedDuration && audio) {{
                             const currentTime = audio.currentTime;
                             const duration = audio.duration;
                             
                             // Wenn wir nahe an der erwarteten Dauer sind
-                            if (duration > 0 && currentTime >= expectedDuration - 1.0) {{
+                            if (duration > 0 && currentTime >= window._expectedDuration - 1.0) {{
                                 window._trackEndDetected = true;
                                 return true;
                             }}
@@ -1138,7 +1137,9 @@ class StreamAutomation:
                     }}, 200); // Prüfe alle 200ms
                     
                     window._trackEndCheckInterval = checkInterval;
-                """)
+                """
+                
+                self.driver.execute_script(js_code)
                 
                 while waited < max_wait and not track_ended:
                     time.sleep(0.1)  # Prüfe alle 0.1 Sekunden für schnellere Reaktion (doppelt so schnell)
