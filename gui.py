@@ -1462,7 +1462,8 @@ class DeezerDownloaderGUI:
                 
         except ImportError as e:
             self.music_log(f"❌ Fehler: {e}")
-            self.root.after(0, lambda: messagebox.showerror("Fehler", f"Automatisierung nicht verfügbar:\n{e}"))
+            error_msg = str(e)  # Erfasse Fehlermeldung vor Lambda
+            self.root.after(0, lambda msg=error_msg: messagebox.showerror("Fehler", f"Automatisierung nicht verfügbar:\n{msg}"))
         except Exception as e:
             self.music_log(f"❌ Fehler: {e}")
             import traceback
