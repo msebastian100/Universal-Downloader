@@ -875,39 +875,96 @@ class StreamAutomation:
                 track_ended = False
                 last_position = 0
                 position_unchanged_count = 0
+                last_track_title = None
                 
-                # JavaScript-Funktion für Track-Ende-Erkennung (auch bei Wiederholung)
+                # Speichere initialen Track-Titel (falls verfügbar)
+                try:
+                    track_title_elem = self.driver.find_element(By.CSS_SELECTOR, 
+                        "h1, .track-title, [data-testid='track-title'], .track-name")
+                    last_track_title = track_title_elem.text.strip()
+                    print(f"📝 Initialer Track-Titel: {last_track_title}")
+                except:
+                    pass
+                
+                # JavaScript-Funktion für Track-Ende-Erkennung (auch bei Wiederholung und Deezer-spezifisch)
                 self.driver.execute_script("""
                     window._trackEndDetected = false;
                     window._lastTrackTime = 0;
+                    window._lastTrackTitle = null;
                     window._trackEndCheck = function() {
+                        // Methode 1: Prüfe Audio-Element
                         const audio = document.querySelector('audio');
-                        if (!audio) return false;
-                        
-                        const currentTime = audio.currentTime;
-                        const duration = audio.duration;
-                        
-                        // Prüfe ob Track beendet ist
-                        if (audio.ended) {
-                            window._trackEndDetected = true;
-                            return true;
+                        if (audio) {
+                            const currentTime = audio.currentTime;
+                            const duration = audio.duration;
+                            
+                            // Prüfe ob Track beendet ist
+                            if (audio.ended) {
+                                window._trackEndDetected = true;
+                                return true;
+                            }
+                            
+                            // Prüfe ob wir am Ende sind (auch bei Wiederholung)
+                            if (duration > 0 && currentTime >= duration - 0.5) {
+                                // Track ist am Ende - warte kurz ob er wiederholt wird
+                                setTimeout(function() {
+                                    if (audio.currentTime < 0.5) {
+                                        // Track wurde wiederholt - ein Durchlauf ist beendet
+                                        window._trackEndDetected = true;
+                                    } else if (audio.ended) {
+                                        // Track ist wirklich beendet
+                                        window._trackEndDetected = true;
+                                    }
+                                }, 500);
+                                return true;
+                            }
                         }
                         
-                        // Prüfe ob wir am Ende sind (auch bei Wiederholung)
-                        // Wenn currentTime nahe bei duration ist und dann zurück springt, ist ein Durchlauf beendet
-                        if (duration > 0 && currentTime >= duration - 0.5) {
-                            // Track ist am Ende - warte kurz ob er wiederholt wird
-                            setTimeout(function() {
-                                if (audio.currentTime < 0.5) {
-                                    // Track wurde wiederholt - ein Durchlauf ist beendet
+                        // Methode 2: Prüfe Deezer-spezifische Erkennung
+                        // Wenn Play-Button wieder sichtbar wird (Pause-Button verschwindet), ist Track beendet
+                        const pauseButtons = document.querySelectorAll(
+                            'button[data-testid="pause-button"], ' +
+                            'button[aria-label*="Pause"], ' +
+                            'button[aria-label*="Pausieren"], ' +
+                            '.control-pause'
+                        );
+                        
+                        let pauseButtonVisible = false;
+                        for (const btn of pauseButtons) {
+                            if (btn.offsetParent !== null) {
+                                pauseButtonVisible = true;
+                                break;
+                            }
+                        }
+                        
+                        // Prüfe ob Play-Button sichtbar ist (und nicht Pause-Button)
+                        const playButton = document.querySelector('button[data-testid="play-button"]');
+                        if (playButton && playButton.offsetParent !== null) {
+                            const ariaLabel = (playButton.getAttribute('aria-label') || '').toLowerCase();
+                            const isPauseButton = ariaLabel.includes('pause') || ariaLabel.includes('pausieren');
+                            
+                            // Wenn Play-Button sichtbar ist UND es kein Pause-Button ist UND kein Pause-Button sichtbar ist
+                            if (!isPauseButton && !pauseButtonVisible) {
+                                // Track ist beendet (Play-Button ist wieder da, Pause-Button weg)
+                                window._trackEndDetected = true;
+                                return true;
+                            }
+                        }
+                        
+                        // Methode 3: Prüfe ob Track-Titel sich geändert hat (neuer Track gestartet)
+                        try {
+                            const trackTitle = document.querySelector('h1, .track-title, [data-testid="track-title"], .track-name');
+                            if (trackTitle) {
+                                const currentTitle = trackTitle.textContent.trim();
+                                if (window._lastTrackTitle && window._lastTrackTitle !== '' && 
+                                    currentTitle !== '' && currentTitle !== window._lastTrackTitle) {
+                                    // Track-Titel hat sich geändert - neuer Track gestartet
                                     window._trackEndDetected = true;
-                                } else if (audio.ended) {
-                                    // Track ist wirklich beendet
-                                    window._trackEndDetected = true;
+                                    return true;
                                 }
-                            }, 500);
-                            return true;
-                        }
+                                window._lastTrackTitle = currentTitle;
+                            }
+                        } catch (e) {}
                         
                         return false;
                     };
