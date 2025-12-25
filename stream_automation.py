@@ -890,6 +890,7 @@ class StreamAutomation:
                 last_position = 0
                 position_unchanged_count = 0
                 last_track_title = None
+                last_url = self.driver.current_url
                 
                 # Speichere initialen Track-Titel (falls verfügbar)
                 try:
@@ -899,6 +900,8 @@ class StreamAutomation:
                     print(f"📝 Initialer Track-Titel: {last_track_title}")
                 except:
                     pass
+                
+                print(f"📝 Initiale URL: {last_url}")
                 
                 # JavaScript-Funktion für Track-Ende-Erkennung (auch bei Wiederholung und Deezer-spezifisch)
                 self.driver.execute_script("""
@@ -994,8 +997,8 @@ class StreamAutomation:
                 """)
                 
                 while waited < max_wait and not track_ended:
-                    time.sleep(0.5)  # Prüfe alle 0.5 Sekunden für schnellere Reaktion
-                    waited += 0.5
+                    time.sleep(0.2)  # Prüfe alle 0.2 Sekunden für schnellere Reaktion
+                    waited += 0.2
                     
                     try:
                         # Methode 1: Prüfe JavaScript-Flag (inkl. Deezer-Erkennung)
@@ -1081,7 +1084,10 @@ class StreamAutomation:
                                 self.driver.execute_script("""
                                     // Pausiere Audio falls vorhanden
                                     const audio = document.querySelector('audio');
-                                    if (audio) audio.pause();
+                                    if (audio) {
+                                        audio.pause();
+                                        audio.currentTime = 0; // Zurück zum Anfang
+                                    }
                                     
                                     // Klicke auf Pause-Button falls noch sichtbar
                                     const pauseButtons = document.querySelectorAll(
@@ -1095,11 +1101,32 @@ class StreamAutomation:
                                             break;
                                         }
                                     }
+                                    
+                                    // Verhindere automatischen Wechsel zum nächsten Track
+                                    if (window.DZ && window.DZ.player) {
+                                        try {
+                                            window.DZ.player.pause();
+                                        } catch(e) {}
+                                    }
                                 """)
                                 track_ended = True
                                 break
                         except:
                             pass
+                        
+                        # Methode 3.5: Prüfe ob wir nahe am Ende sind (proaktives Stoppen)
+                        if audio_state.get('duration', 0) > 0:
+                            current_time = audio_state.get('currentTime', 0)
+                            duration = audio_state.get('duration', 0)
+                            
+                            # Wenn wir in den letzten 2 Sekunden sind, prüfe häufiger
+                            if duration > 0 and current_time >= duration - 2.0:
+                                # Prüfe ob Pause-Button noch sichtbar ist
+                                if not deezer_state.get('pauseButtonVisible', False):
+                                    # Pause-Button weg = Track beendet
+                                    print(f"✓ Track beendet (nahe am Ende, Pause-Button weg: {current_time:.1f}s / {duration:.1f}s)")
+                                    track_ended = True
+                                    break
                         
                         # Methode 4: Prüfe Audio-Element direkt
                         audio_state = self.driver.execute_script("""
