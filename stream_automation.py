@@ -731,9 +731,9 @@ class StreamAutomation:
                     except Exception as e:
                         print(f"⚠️ Fehler beim Klicken auf Play-Button (Versuch {attempt + 1}): {e}")
                         time.sleep(1)
-                
-                if play_clicked:
-                    break
+                    
+                    if play_clicked:
+                        break
             
             if not play_clicked:
                 print("⚠️ Konnte Play-Button nicht automatisch klicken")
