@@ -1062,6 +1062,45 @@ class StreamAutomation:
                     if int(waited * 10) % 20 == 0 and waited > 0:
                         print(f"  [DEBUG Track-Ende] Wartezeit: {waited:.1f}s / {max_wait}s")
                     
+                    # Prüfe ob richtiger Track noch spielt (Titel-Vergleich)
+                    if hasattr(self, 'current_track_info') and self.current_track_info.get('title'):
+                        try:
+                            current_title_elem = self.driver.find_element(By.CSS_SELECTOR,
+                                "h1, .track-title, [data-testid='track-title'], .track-name")
+                            current_title = current_title_elem.text.strip()
+                            expected_title = self.current_track_info['title']
+                            
+                            if current_title != expected_title:
+                                print(f"  [DEBUG Track-Ende] ⚠️ Track hat sich geändert!")
+                                print(f"  [DEBUG Track-Ende] Erwartet: '{expected_title}'")
+                                print(f"  [DEBUG Track-Ende] Aktuell: '{current_title}'")
+                                print(f"✓ Track beendet (Track hat sich geändert - falscher Track erkannt)")
+                                track_ended = True
+                                break
+                        except:
+                            pass
+                    
+                    # Prüfe ob Dauer erreicht wurde (falls bekannt)
+                    if hasattr(self, 'current_track_info') and self.current_track_info.get('duration'):
+                        try:
+                            audio_state = self.driver.execute_script("""
+                                const audio = document.querySelector('audio');
+                                if (!audio) return {currentTime: 0, duration: 0};
+                                return {currentTime: audio.currentTime, duration: audio.duration};
+                            """)
+                            
+                            expected_duration = self.current_track_info['duration']
+                            current_time = audio_state.get('currentTime', 0)
+                            
+                            # Wenn wir über der erwarteten Dauer sind (mit Toleranz)
+                            if current_time >= expected_duration - 1.0:
+                                print(f"  [DEBUG Track-Ende] Erwartete Dauer erreicht: {current_time:.1f}s / {expected_duration}s")
+                                print(f"✓ Track beendet (Erwartete Dauer erreicht)")
+                                track_ended = True
+                                break
+                        except:
+                            pass
+                    
                     try:
                         # Methode 0: Prüfe URL-Änderung (neuer Track = URL hat sich geändert)
                         current_url = self.driver.current_url
