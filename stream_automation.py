@@ -1343,48 +1343,61 @@ class StreamAutomation:
                             print(f"  [DEBUG Track-Ende] playButtonVisible: {deezer_state.get('playButtonVisible', False)}")
                             print("✓ Track beendet (Deezer-Erkennung: Pause-Button weg)")
                             # Stoppe Track sofort (verhindert automatischen Wechsel zum nächsten Track)
-                            self.driver.execute_script("""
-                                // Pausiere Audio falls vorhanden
-                                const audio = document.querySelector('audio');
-                                if (audio) {
-                                    audio.pause();
-                                    audio.currentTime = 0; // Zurück zum Anfang
-                                }
-                                
-                                // Klicke auf Pause-Button falls noch sichtbar
-                                const pauseButtons = document.querySelectorAll(
-                                    'button[data-testid="pause-button"], ' +
-                                    'button[aria-label*="Pause"], ' +
-                                    'button[aria-label*="Pausieren"]'
-                                );
-                                for (const btn of pauseButtons) {
-                                    if (btn.offsetParent !== null) {
-                                        btn.click();
-                                        break;
+                            # MEHRFACHE PAUSIERUNG für maximale Sicherheit
+                            for pause_attempt in range(3):  # 3 Versuche
+                                self.driver.execute_script("""
+                                    // 1. Pausiere Audio-Element direkt
+                                    var audio = document.querySelector('audio');
+                                    if (audio) {
+                                        audio.pause();
+                                        audio.currentTime = 0; // Zurück zum Anfang
                                     }
-                                }
-                                
-                                // Verhindere automatischen Wechsel zum nächsten Track
-                                // Deaktiviere Auto-Play falls möglich
-                                if (window.DZ && window.DZ.player) {
-                                    try {
-                                        window.DZ.player.pause();
-                                        // Verhindere Auto-Play
-                                        if (window.DZ.player.setAutoplay) {
-                                            window.DZ.player.setAutoplay(false);
+                                    
+                                    // 2. Klicke auf Pause-Button falls noch sichtbar
+                                    var pauseButtons = document.querySelectorAll(
+                                        'button[data-testid="pause-button"], ' +
+                                        'button[aria-label*="Pause"], ' +
+                                        'button[aria-label*="Pausieren"], ' +
+                                        '.control-pause'
+                                    );
+                                    for (var i = 0; i < pauseButtons.length; i++) {
+                                        var btn = pauseButtons[i];
+                                        if (btn.offsetParent !== null) {
+                                            btn.click();
+                                            break;
                                         }
-                                    } catch(e) {}
-                                }
-                                
-                                // Verhindere auch über Event-Listener
-                                if (window.DZ && window.DZ.Events) {
-                                    try {
-                                        window.DZ.Events.subscribe('player:trackEnd', function() {
+                                    }
+                                    
+                                    // 3. Verhindere automatischen Wechsel zum nächsten Track über Deezer API
+                                    if (window.DZ && window.DZ.player) {
+                                        try {
                                             window.DZ.player.pause();
-                                        });
-                                    } catch(e) {}
-                                }
-                            """)
+                                            if (window.DZ.player.setAutoplay) {
+                                                window.DZ.player.setAutoplay(false);
+                                            }
+                                            if (window.DZ.player.stop) {
+                                                window.DZ.player.stop();
+                                            }
+                                        } catch(e) {}
+                                    }
+                                    
+                                    // 4. Verhindere auch über Event-Listener
+                                    if (window.DZ && window.DZ.Events) {
+                                        try {
+                                            window.DZ.Events.subscribe('player:trackEnd', function() {
+                                                if (window.DZ && window.DZ.player) {
+                                                    window.DZ.player.pause();
+                                                }
+                                            });
+                                            window.DZ.Events.subscribe('player:trackListChanged', function() {
+                                                if (window.DZ && window.DZ.player) {
+                                                    window.DZ.player.pause();
+                                                }
+                                            });
+                                        } catch(e) {}
+                                    }
+                                """)
+                                time.sleep(0.2)  # Kurze Pause zwischen Versuchen
                             track_ended = True
                             break
                         
@@ -1393,48 +1406,54 @@ class StreamAutomation:
                             print(f"  [DEBUG Track-Ende] Deezer-State: {deezer_state}")
                             print("✓ Track beendet (Deezer-Erkennung: Play-Button wieder sichtbar, Pause-Button weg)")
                             # Stoppe Track sofort (verhindert automatischen Wechsel zum nächsten Track)
-                            self.driver.execute_script("""
-                                // Pausiere Audio falls vorhanden
-                                const audio = document.querySelector('audio');
-                                if (audio) {
-                                    audio.pause();
-                                    audio.currentTime = 0; // Zurück zum Anfang
-                                }
-                                
-                                // Klicke auf Pause-Button falls noch sichtbar
-                                const pauseButtons = document.querySelectorAll(
-                                    'button[data-testid="pause-button"], ' +
-                                    'button[aria-label*="Pause"], ' +
-                                    'button[aria-label*="Pausieren"]'
-                                );
-                                for (const btn of pauseButtons) {
-                                    if (btn.offsetParent !== null) {
-                                        btn.click();
-                                        break;
+                            # MEHRFACHE PAUSIERUNG für maximale Sicherheit
+                            for pause_attempt in range(3):  # 3 Versuche
+                                self.driver.execute_script("""
+                                    var audio = document.querySelector('audio');
+                                    if (audio) {
+                                        audio.pause();
+                                        audio.currentTime = 0;
                                     }
-                                }
-                                
-                                // Verhindere automatischen Wechsel zum nächsten Track
-                                // Deaktiviere Auto-Play falls möglich
-                                if (window.DZ && window.DZ.player) {
-                                    try {
-                                        window.DZ.player.pause();
-                                        // Verhindere Auto-Play
-                                        if (window.DZ.player.setAutoplay) {
-                                            window.DZ.player.setAutoplay(false);
+                                    var pauseButtons = document.querySelectorAll(
+                                        'button[data-testid="pause-button"], ' +
+                                        'button[aria-label*="Pause"], ' +
+                                        'button[aria-label*="Pausieren"], ' +
+                                        '.control-pause'
+                                    );
+                                    for (var i = 0; i < pauseButtons.length; i++) {
+                                        var btn = pauseButtons[i];
+                                        if (btn.offsetParent !== null) {
+                                            btn.click();
+                                            break;
                                         }
-                                    } catch(e) {}
-                                }
-                                
-                                // Verhindere auch über Event-Listener
-                                if (window.DZ && window.DZ.Events) {
-                                    try {
-                                        window.DZ.Events.subscribe('player:trackEnd', function() {
+                                    }
+                                    if (window.DZ && window.DZ.player) {
+                                        try {
                                             window.DZ.player.pause();
-                                        });
-                                    } catch(e) {}
-                                }
-                            """)
+                                            if (window.DZ.player.setAutoplay) {
+                                                window.DZ.player.setAutoplay(false);
+                                            }
+                                            if (window.DZ.player.stop) {
+                                                window.DZ.player.stop();
+                                            }
+                                        } catch(e) {}
+                                    }
+                                    if (window.DZ && window.DZ.Events) {
+                                        try {
+                                            window.DZ.Events.subscribe('player:trackEnd', function() {
+                                                if (window.DZ && window.DZ.player) {
+                                                    window.DZ.player.pause();
+                                                }
+                                            });
+                                            window.DZ.Events.subscribe('player:trackListChanged', function() {
+                                                if (window.DZ && window.DZ.player) {
+                                                    window.DZ.player.pause();
+                                                }
+                                            });
+                                        } catch(e) {}
+                                    }
+                                """)
+                                time.sleep(0.2)
                             track_ended = True
                             break
                         
@@ -1450,34 +1469,40 @@ class StreamAutomation:
                                 print(f"  [DEBUG Track-Ende] Neuer Titel: '{current_track_title}'")
                                 print(f"✓ Track beendet (Track-Titel geändert: '{last_track_title}' -> '{current_track_title}')")
                                 # Stoppe sofort (verhindert dass neuer Track weiterläuft)
-                                self.driver.execute_script("""
-                                    // Pausiere Audio falls vorhanden
-                                    const audio = document.querySelector('audio');
-                                    if (audio) {
-                                        audio.pause();
-                                        audio.currentTime = 0; // Zurück zum Anfang
-                                    }
-                                    
-                                    // Klicke auf Pause-Button falls noch sichtbar
-                                    const pauseButtons = document.querySelectorAll(
-                                        'button[data-testid="pause-button"], ' +
-                                        'button[aria-label*="Pause"], ' +
-                                        'button[aria-label*="Pausieren"]'
-                                    );
-                                    for (const btn of pauseButtons) {
-                                        if (btn.offsetParent !== null) {
-                                            btn.click();
-                                            break;
+                                # MEHRFACHE PAUSIERUNG für maximale Sicherheit
+                                for pause_attempt in range(3):  # 3 Versuche
+                                    self.driver.execute_script("""
+                                        var audio = document.querySelector('audio');
+                                        if (audio) {
+                                            audio.pause();
+                                            audio.currentTime = 0;
                                         }
-                                    }
-                                    
-                                    // Verhindere automatischen Wechsel zum nächsten Track
-                                    if (window.DZ && window.DZ.player) {
-                                        try {
-                                            window.DZ.player.pause();
-                                        } catch(e) {}
-                                    }
-                                """)
+                                        var pauseButtons = document.querySelectorAll(
+                                            'button[data-testid="pause-button"], ' +
+                                            'button[aria-label*="Pause"], ' +
+                                            'button[aria-label*="Pausieren"], ' +
+                                            '.control-pause'
+                                        );
+                                        for (var i = 0; i < pauseButtons.length; i++) {
+                                            var btn = pauseButtons[i];
+                                            if (btn.offsetParent !== null) {
+                                                btn.click();
+                                                break;
+                                            }
+                                        }
+                                        if (window.DZ && window.DZ.player) {
+                                            try {
+                                                window.DZ.player.pause();
+                                                if (window.DZ.player.setAutoplay) {
+                                                    window.DZ.player.setAutoplay(false);
+                                                }
+                                                if (window.DZ.player.stop) {
+                                                    window.DZ.player.stop();
+                                                }
+                                            } catch(e) {}
+                                        }
+                                    """)
+                                    time.sleep(0.2)
                                 track_ended = True
                                 break
                         except:
