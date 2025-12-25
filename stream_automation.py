@@ -447,14 +447,16 @@ class StreamAutomation:
                                         };
                                     """)
                                     
-                                    # Debug-Ausgabe bei jedem Versuch
-                                    if check_attempt == 0 or check_attempt % 2 == 0:
-                                        print(f"  [Prüfung {check_attempt + 1}] paused={audio_state.get('paused', True)}, "
-                                              f"currentTime={audio_state.get('currentTime', 0):.2f}s, "
-                                              f"readyState={audio_state.get('readyState', 0)}, "
-                                              f"hasAudio={audio_state.get('hasAudio', False)}, "
-                                              f"deezerPlaying={audio_state.get('deezerPlaying', False)}, "
-                                              f"pauseButtonVisible={audio_state.get('pauseButtonVisible', False)}")
+                                    # Debug-Ausgabe bei jedem Versuch (immer, nicht nur bei geraden Zahlen)
+                                    print(f"  [DEBUG Track-Start Prüfung {check_attempt + 1}/10] "
+                                          f"paused={audio_state.get('paused', True)}, "
+                                          f"currentTime={audio_state.get('currentTime', 0):.2f}s, "
+                                          f"readyState={audio_state.get('readyState', 0)}, "
+                                          f"hasAudio={audio_state.get('hasAudio', False)}, "
+                                          f"deezerPlaying={audio_state.get('deezerPlaying', False)}, "
+                                          f"pauseButtonVisible={audio_state.get('pauseButtonVisible', False)}, "
+                                          f"playButtonVisible={audio_state.get('playButtonVisible', False)}, "
+                                          f"isPauseButton={audio_state.get('isPauseButton', False)}")
                                     
                                     # Sehr lockere Bedingungen: Track spielt wenn:
                                     # 1. Deezer-spezifische Erkennung sagt es spielt
@@ -1000,21 +1002,37 @@ class StreamAutomation:
                     time.sleep(0.2)  # Prüfe alle 0.2 Sekunden für schnellere Reaktion
                     waited += 0.2
                     
+                    # Debug: Zeige Fortschritt alle 5 Sekunden
+                    if int(waited) % 5 == 0 and waited > 0:
+                        print(f"  [DEBUG Track-Ende] Wartezeit: {waited:.1f}s / {max_wait}s")
+                    
                     try:
                         # Methode 0: Prüfe URL-Änderung (neuer Track = URL hat sich geändert)
                         current_url = self.driver.current_url
                         if current_url != last_url and 'track' in current_url:
                             # URL hat sich geändert - neuer Track geladen
+                            print(f"  [DEBUG Track-Ende] URL geändert erkannt!")
+                            print(f"  [DEBUG Track-Ende] Alte URL: {last_url}")
+                            print(f"  [DEBUG Track-Ende] Neue URL: {current_url}")
                             print(f"✓ Track beendet (URL geändert: '{last_url}' -> '{current_url}')")
                             track_ended = True
                             break
+                        else:
+                            # Debug: Zeige URL-Status alle 2 Sekunden
+                            if int(waited * 5) % 10 == 0:
+                                print(f"  [DEBUG Track-Ende] URL unverändert: {current_url[:80]}...")
                         
                         # Methode 1: Prüfe JavaScript-Flag (inkl. Deezer-Erkennung)
                         track_end_detected = self.driver.execute_script("return window._trackEndDetected || false;")
                         if track_end_detected:
+                            print(f"  [DEBUG Track-Ende] JavaScript-Flag erkannt: {track_end_detected}")
                             print("✓ Track beendet (JavaScript-Erkennung)")
                             track_ended = True
                             break
+                        else:
+                            # Debug: Zeige Status alle 2 Sekunden
+                            if int(waited * 5) % 10 == 0:
+                                print(f"  [DEBUG Track-Ende] JavaScript-Flag: {track_end_detected}")
                         
                         # Methode 2: Prüfe Deezer-spezifische Erkennung (Play-Button wieder sichtbar, Pause-Button weg)
                         deezer_state = self.driver.execute_script("""
@@ -1056,9 +1074,20 @@ class StreamAutomation:
                             };
                         """)
                         
+                        # Debug: Zeige Deezer-Status alle 2 Sekunden
+                        if int(waited * 5) % 10 == 0:
+                            print(f"  [DEBUG Track-Ende] Deezer-Status: "
+                                  f"trackEnded={deezer_state.get('trackEnded', False)}, "
+                                  f"pauseButtonVisible={deezer_state.get('pauseButtonVisible', False)}, "
+                                  f"playButtonVisible={deezer_state.get('playButtonVisible', False)}, "
+                                  f"isPauseButton={deezer_state.get('isPauseButton', False)}")
+                        
                         # Prüfe auch ob Pause-Button verschwunden ist (Track beendet)
                         if not deezer_state.get('pauseButtonVisible', True) and deezer_state.get('playButtonVisible', False):
                             # Pause-Button weg, Play-Button sichtbar = Track beendet
+                            print(f"  [DEBUG Track-Ende] Pause-Button verschwunden erkannt!")
+                            print(f"  [DEBUG Track-Ende] pauseButtonVisible: {deezer_state.get('pauseButtonVisible', False)}")
+                            print(f"  [DEBUG Track-Ende] playButtonVisible: {deezer_state.get('playButtonVisible', False)}")
                             print("✓ Track beendet (Deezer-Erkennung: Pause-Button weg, Play-Button sichtbar)")
                             # Stoppe Track sofort (verhindert automatischen Wechsel zum nächsten Track)
                             self.driver.execute_script("""
@@ -1094,6 +1123,8 @@ class StreamAutomation:
                             break
                         
                         if deezer_state.get('trackEnded', False):
+                            print(f"  [DEBUG Track-Ende] trackEnded=True erkannt!")
+                            print(f"  [DEBUG Track-Ende] Deezer-State: {deezer_state}")
                             print("✓ Track beendet (Deezer-Erkennung: Play-Button wieder sichtbar, Pause-Button weg)")
                             # Stoppe Track sofort (verhindert automatischen Wechsel zum nächsten Track)
                             self.driver.execute_script("""
@@ -1135,6 +1166,9 @@ class StreamAutomation:
                             current_track_title = track_title_elem.text.strip()
                             
                             if last_track_title and current_track_title and current_track_title != last_track_title:
+                                print(f"  [DEBUG Track-Ende] Track-Titel geändert erkannt!")
+                                print(f"  [DEBUG Track-Ende] Alter Titel: '{last_track_title}'")
+                                print(f"  [DEBUG Track-Ende] Neuer Titel: '{current_track_title}'")
                                 print(f"✓ Track beendet (Track-Titel geändert: '{last_track_title}' -> '{current_track_title}')")
                                 # Stoppe sofort (verhindert dass neuer Track weiterläuft)
                                 self.driver.execute_script("""

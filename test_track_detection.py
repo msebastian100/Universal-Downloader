@@ -50,6 +50,13 @@ def test_track_detection(url: str):
     
     automation.progress_callback = progress_callback
     
+    # Aktiviere Debug-Modus
+    print("🐛 Debug-Modus aktiviert")
+    print("   - Detaillierte Logs werden angezeigt")
+    print("   - Track-Start-Erkennung wird geloggt")
+    print("   - Track-Ende-Erkennung wird geloggt")
+    print()
+    
     print("✅ StreamAutomation initialisiert")
     print()
     
