@@ -551,7 +551,7 @@ class StreamAutomation:
                     if not play_clicked:
                         play_button_found = self.driver.execute_script("""
                             // Versuche verschiedene Methoden, vermeide Playlist-Buttons
-                            const selectors = [
+                            var selectors = [
                                 'button[data-testid="play-button"]',
                                 'button[aria-label*="Play"]',
                                 'button[aria-label*="Wiedergabe"]',
@@ -559,34 +559,36 @@ class StreamAutomation:
                                 'button.play-button'
                             ];
                             
-                            for (const selector of selectors) {
-                                const buttons = document.querySelectorAll(selector);
-                                for (const btn of buttons) {
+                            for (var i = 0; i < selectors.length; i++) {
+                                var selector = selectors[i];
+                                var buttons = document.querySelectorAll(selector);
+                                for (var j = 0; j < buttons.length; j++) {
+                                    var btn = buttons[j];
                                     if (!btn.offsetParent) continue; // Nicht sichtbar
                                     
-                                    const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
-                                    const title = (btn.getAttribute('title') || '').toLowerCase();
-                                    const text = (btn.textContent || '').toLowerCase();
+                                    var ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
+                                    var title = (btn.getAttribute('title') || '').toLowerCase();
+                                    var text = (btn.textContent || '').toLowerCase();
                                     
                                     // Überspringe Playlist-Buttons
-                                    if (ariaLabel.includes('playlist') || ariaLabel.includes('hinzufügen') || 
-                                        ariaLabel.includes('add') || ariaLabel.includes('erstellen') ||
-                                        title.includes('playlist') || title.includes('hinzufügen') ||
-                                        text.includes('playlist') || text.includes('hinzufügen')) {
+                                    if (ariaLabel.indexOf('playlist') !== -1 || ariaLabel.indexOf('hinzufügen') !== -1 || 
+                                        ariaLabel.indexOf('add') !== -1 || ariaLabel.indexOf('erstellen') !== -1 ||
+                                        title.indexOf('playlist') !== -1 || title.indexOf('hinzufügen') !== -1 ||
+                                        text.indexOf('playlist') !== -1 || text.indexOf('hinzufügen') !== -1) {
                                         continue;
                                     }
                                     
                                     // Prüfe ob es ein Play-Button ist
-                                    if (ariaLabel.includes('play') || ariaLabel.includes('wiedergabe') || 
-                                        title.includes('play') || btn.getAttribute('data-testid') === 'play-button') {
+                                    if (ariaLabel.indexOf('play') !== -1 || ariaLabel.indexOf('wiedergabe') !== -1 || 
+                                        title.indexOf('play') !== -1 || btn.getAttribute('data-testid') === 'play-button') {
                                         btn.click();
-                                return true;
-                            }}
-                        }}
+                                        return true;
+                                    }
+                                }
                             }
                             
                             // Versuche auch über Audio-Element direkt
-                            const audio = document.querySelector('audio');
+                            var audio = document.querySelector('audio');
                             if (audio && audio.paused) {
                                 audio.play();
                                 return true;
