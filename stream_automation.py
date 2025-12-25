@@ -1295,16 +1295,17 @@ class StreamAutomation:
                         
                         # Methode 2: Prüfe Deezer-spezifische Erkennung (Play-Button wieder sichtbar, Pause-Button weg)
                         deezer_state = self.driver.execute_script("""
-                            // Prüfe auf Pause-Button
-                            const pauseButtons = document.querySelectorAll(
+                            // ES5-kompatibler Code
+                            var pauseButtons = document.querySelectorAll(
                                 'button[data-testid="pause-button"], ' +
                                 'button[aria-label*="Pause"], ' +
                                 'button[aria-label*="Pausieren"], ' +
                                 '.control-pause'
                             );
                             
-                            let pauseButtonVisible = false;
-                            for (const btn of pauseButtons) {
+                            var pauseButtonVisible = false;
+                            for (var i = 0; i < pauseButtons.length; i++) {
+                                var btn = pauseButtons[i];
                                 if (btn.offsetParent !== null) {
                                     pauseButtonVisible = true;
                                     break;
@@ -1312,18 +1313,23 @@ class StreamAutomation:
                             }
                             
                             // Prüfe Play-Button
-                            const playButton = document.querySelector('button[data-testid="play-button"]');
-                            let playButtonVisible = false;
-                            let isPauseButton = false;
+                            var playButton = document.querySelector('button[data-testid="play-button"]');
+                            var playButtonVisible = false;
+                            var isPauseButton = false;
                             
                             if (playButton && playButton.offsetParent !== null) {
                                 playButtonVisible = true;
-                                const ariaLabel = (playButton.getAttribute('aria-label') || '').toLowerCase();
-                                isPauseButton = ariaLabel.includes('pause') || ariaLabel.includes('pausieren');
+                                var ariaLabel = (playButton.getAttribute('aria-label') || '').toLowerCase();
+                                isPauseButton = ariaLabel.indexOf('pause') !== -1 || ariaLabel.indexOf('pausieren') !== -1;
                             }
                             
-                            // Track ist beendet wenn: Play-Button sichtbar UND kein Pause-Button UND Play-Button ist kein Pause-Button
-                            const trackEnded = playButtonVisible && !pauseButtonVisible && !isPauseButton;
+                            // PRIORITÄT: Pause-Button weg = Track beendet (auch ohne Play-Button)
+                            var trackEnded = !pauseButtonVisible;
+                            
+                            // ZUSÄTZLICH: Play-Button sichtbar UND kein Pause-Button UND Play-Button ist kein Pause-Button
+                            if (playButtonVisible && !pauseButtonVisible && !isPauseButton) {
+                                trackEnded = true;
+                            }
                             
                             return {
                                 trackEnded: trackEnded,
