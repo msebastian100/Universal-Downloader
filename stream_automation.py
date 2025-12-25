@@ -1001,6 +1001,14 @@ class StreamAutomation:
                     waited += 0.2
                     
                     try:
+                        # Methode 0: Prüfe URL-Änderung (neuer Track = URL hat sich geändert)
+                        current_url = self.driver.current_url
+                        if current_url != last_url and 'track' in current_url:
+                            # URL hat sich geändert - neuer Track geladen
+                            print(f"✓ Track beendet (URL geändert: '{last_url}' -> '{current_url}')")
+                            track_ended = True
+                            break
+                        
                         # Methode 1: Prüfe JavaScript-Flag (inkl. Deezer-Erkennung)
                         track_end_detected = self.driver.execute_script("return window._trackEndDetected || false;")
                         if track_end_detected:
@@ -1048,13 +1056,18 @@ class StreamAutomation:
                             };
                         """)
                         
-                        if deezer_state.get('trackEnded', False):
-                            print("✓ Track beendet (Deezer-Erkennung: Play-Button wieder sichtbar, Pause-Button weg)")
+                        # Prüfe auch ob Pause-Button verschwunden ist (Track beendet)
+                        if not deezer_state.get('pauseButtonVisible', True) and deezer_state.get('playButtonVisible', False):
+                            # Pause-Button weg, Play-Button sichtbar = Track beendet
+                            print("✓ Track beendet (Deezer-Erkennung: Pause-Button weg, Play-Button sichtbar)")
                             # Stoppe Track sofort (verhindert automatischen Wechsel zum nächsten Track)
                             self.driver.execute_script("""
                                 // Pausiere Audio falls vorhanden
                                 const audio = document.querySelector('audio');
-                                if (audio) audio.pause();
+                                if (audio) {
+                                    audio.pause();
+                                    audio.currentTime = 0; // Zurück zum Anfang
+                                }
                                 
                                 // Klicke auf Pause-Button falls noch sichtbar
                                 const pauseButtons = document.querySelectorAll(
@@ -1067,6 +1080,49 @@ class StreamAutomation:
                                         btn.click();
                                         break;
                                     }
+                                }
+                                
+                                // Verhindere automatischen Wechsel zum nächsten Track
+                                // Deaktiviere Auto-Play falls möglich
+                                if (window.DZ && window.DZ.player) {
+                                    try {
+                                        window.DZ.player.pause();
+                                    } catch(e) {}
+                                }
+                            """)
+                            track_ended = True
+                            break
+                        
+                        if deezer_state.get('trackEnded', False):
+                            print("✓ Track beendet (Deezer-Erkennung: Play-Button wieder sichtbar, Pause-Button weg)")
+                            # Stoppe Track sofort (verhindert automatischen Wechsel zum nächsten Track)
+                            self.driver.execute_script("""
+                                // Pausiere Audio falls vorhanden
+                                const audio = document.querySelector('audio');
+                                if (audio) {
+                                    audio.pause();
+                                    audio.currentTime = 0; // Zurück zum Anfang
+                                }
+                                
+                                // Klicke auf Pause-Button falls noch sichtbar
+                                const pauseButtons = document.querySelectorAll(
+                                    'button[data-testid="pause-button"], ' +
+                                    'button[aria-label*="Pause"], ' +
+                                    'button[aria-label*="Pausieren"]'
+                                );
+                                for (const btn of pauseButtons) {
+                                    if (btn.offsetParent !== null) {
+                                        btn.click();
+                                        break;
+                                    }
+                                }
+                                
+                                // Verhindere automatischen Wechsel zum nächsten Track
+                                // Deaktiviere Auto-Play falls möglich
+                                if (window.DZ && window.DZ.player) {
+                                    try {
+                                        window.DZ.player.pause();
+                                    } catch(e) {}
                                 }
                             """)
                             track_ended = True
