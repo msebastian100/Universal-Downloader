@@ -594,11 +594,11 @@ class StreamAutomation:
                                             print(f"✓ Track spielt jetzt (nicht pausiert nach {check_attempt * 0.5:.1f}s)")
                                             break
                                 
-                                if is_playing:
-                                    play_clicked = True
-                                    break
-                        except:
-                            continue
+                                    if is_playing:
+                                        play_clicked = True
+                                        break
+                            except:
+                                continue
                     
                     if play_clicked:
                         break
