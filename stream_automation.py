@@ -1067,7 +1067,7 @@ class StreamAutomation:
                                 }}, 500);
                                 return true;
                             }}
-                        }
+                        }}
                         
                         // Methode 2: Prüfe Deezer-spezifische Erkennung
                         // Wenn Play-Button wieder sichtbar wird (Pause-Button verschwindet), ist Track beendet
