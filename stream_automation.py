@@ -984,14 +984,72 @@ class StreamAutomation:
                     waited += 0.5
                     
                     try:
-                        # Methode 1: Prüfe JavaScript-Flag
+                        # Methode 1: Prüfe JavaScript-Flag (inkl. Deezer-Erkennung)
                         track_end_detected = self.driver.execute_script("return window._trackEndDetected || false;")
                         if track_end_detected:
                             print("✓ Track beendet (JavaScript-Erkennung)")
                             track_ended = True
                             break
                         
-                        # Methode 2: Prüfe Audio-Element direkt
+                        # Methode 2: Prüfe Deezer-spezifische Erkennung (Play-Button wieder sichtbar, Pause-Button weg)
+                        deezer_state = self.driver.execute_script("""
+                            // Prüfe auf Pause-Button
+                            const pauseButtons = document.querySelectorAll(
+                                'button[data-testid="pause-button"], ' +
+                                'button[aria-label*="Pause"], ' +
+                                'button[aria-label*="Pausieren"], ' +
+                                '.control-pause'
+                            );
+                            
+                            let pauseButtonVisible = false;
+                            for (const btn of pauseButtons) {
+                                if (btn.offsetParent !== null) {
+                                    pauseButtonVisible = true;
+                                    break;
+                                }
+                            }
+                            
+                            // Prüfe Play-Button
+                            const playButton = document.querySelector('button[data-testid="play-button"]');
+                            let playButtonVisible = false;
+                            let isPauseButton = false;
+                            
+                            if (playButton && playButton.offsetParent !== null) {
+                                playButtonVisible = true;
+                                const ariaLabel = (playButton.getAttribute('aria-label') || '').toLowerCase();
+                                isPauseButton = ariaLabel.includes('pause') || ariaLabel.includes('pausieren');
+                            }
+                            
+                            // Track ist beendet wenn: Play-Button sichtbar UND kein Pause-Button UND Play-Button ist kein Pause-Button
+                            const trackEnded = playButtonVisible && !pauseButtonVisible && !isPauseButton;
+                            
+                            return {
+                                trackEnded: trackEnded,
+                                pauseButtonVisible: pauseButtonVisible,
+                                playButtonVisible: playButtonVisible,
+                                isPauseButton: isPauseButton
+                            };
+                        """)
+                        
+                        if deezer_state.get('trackEnded', False):
+                            print("✓ Track beendet (Deezer-Erkennung: Play-Button wieder sichtbar, Pause-Button weg)")
+                            track_ended = True
+                            break
+                        
+                        # Methode 3: Prüfe ob Track-Titel sich geändert hat (neuer Track gestartet)
+                        try:
+                            track_title_elem = self.driver.find_element(By.CSS_SELECTOR, 
+                                "h1, .track-title, [data-testid='track-title'], .track-name")
+                            current_track_title = track_title_elem.text.strip()
+                            
+                            if last_track_title and current_track_title and current_track_title != last_track_title:
+                                print(f"✓ Track beendet (Track-Titel geändert: '{last_track_title}' -> '{current_track_title}')")
+                                track_ended = True
+                                break
+                        except:
+                            pass
+                        
+                        # Methode 4: Prüfe Audio-Element direkt
                         audio_state = self.driver.execute_script("""
                             const audio = document.querySelector('audio');
                             if (!audio) return {ended: false, currentTime: 0, duration: 0, paused: true};
