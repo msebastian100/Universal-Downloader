@@ -279,6 +279,51 @@ class StreamAutomation:
             self.driver.get(url)
             time.sleep(3)  # Warte auf Seitenladung
             
+            # Hole Track-Info VOR dem Start (Titel, Künstler, Dauer)
+            track_info = {}
+            try:
+                # Titel
+                try:
+                    title_elem = self.driver.find_element(By.CSS_SELECTOR, 
+                        "h1, .track-title, [data-testid='track-title'], .track-name")
+                    track_info['title'] = title_elem.text.strip()
+                    print(f"📝 Track-Titel erkannt: {track_info['title']}")
+                except:
+                    pass
+                
+                # Künstler
+                try:
+                    artist_elem = self.driver.find_element(By.CSS_SELECTOR,
+                        ".track-artist, [data-testid='track-artist'], .artist-name, a[href*='/artist/']")
+                    track_info['artist'] = artist_elem.text.strip()
+                    print(f"👤 Künstler erkannt: {track_info['artist']}")
+                except:
+                    pass
+                
+                # Dauer
+                try:
+                    duration_elem = self.driver.find_element(By.CSS_SELECTOR,
+                        ".track-duration, [data-testid='duration'], .duration")
+                    duration_text = duration_elem.text.strip()
+                    # Parse Dauer (Format: "MM:SS" oder "HH:MM:SS")
+                    parts = duration_text.split(':')
+                    if len(parts) == 2:
+                        track_info['duration'] = int(parts[0]) * 60 + int(parts[1])
+                    elif len(parts) == 3:
+                        track_info['duration'] = int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
+                    else:
+                        track_info['duration'] = None
+                    print(f"⏱️  Dauer erkannt: {duration_text} ({track_info.get('duration', 'unbekannt')} Sekunden)")
+                except:
+                    pass
+                
+                # Speichere für späteren Vergleich
+                self.current_track_info = track_info
+                
+            except Exception as e:
+                print(f"⚠️ Konnte Track-Info nicht vollständig abrufen: {e}")
+                self.current_track_info = {}
+            
             # Prüfe ob Anmeldung erfolgreich war (falls ARL-Token verwendet wurde)
             if self.arl_token:
                 try:
