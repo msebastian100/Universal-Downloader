@@ -324,6 +324,20 @@ class StreamAutomation:
                                 self.driver.execute_script("arguments[0].scrollIntoView(true);", play_button)
                                 time.sleep(0.3)
                                 
+                                # WICHTIG: Verhindere versehentliche Klicks auf Next/Skip-Buttons
+                                # Prüfe ob Button wirklich ein Play-Button ist (nicht Next/Skip)
+                                button_aria = play_button.get_attribute("aria-label") or ""
+                                button_text = play_button.text or ""
+                                button_testid = play_button.get_attribute("data-testid") or ""
+                                
+                                # Überspringe Next/Skip-Buttons
+                                if any(word in button_aria.lower() for word in ['next', 'skip', 'weiter', 'vorwärts', 'nächster', 'überspringen']):
+                                    print(f"⚠️ Überspringe Button (Next/Skip): {button_aria}")
+                                    continue
+                                if any(word in button_text.lower() for word in ['next', 'skip', 'weiter', 'vorwärts', 'nächster', 'überspringen']):
+                                    print(f"⚠️ Überspringe Button (Next/Skip): {button_text}")
+                                    continue
+                                
                                 # Klicke mit JavaScript (zuverlässiger)
                                 self.driver.execute_script("arguments[0].click();", play_button)
                                 print(f"▶️ Play-Button geklickt (Versuch {attempt + 1}, Selektor: {selector})")
@@ -1033,6 +1047,25 @@ class StreamAutomation:
                         
                         if deezer_state.get('trackEnded', False):
                             print("✓ Track beendet (Deezer-Erkennung: Play-Button wieder sichtbar, Pause-Button weg)")
+                            # Stoppe Track sofort (verhindert automatischen Wechsel zum nächsten Track)
+                            self.driver.execute_script("""
+                                // Pausiere Audio falls vorhanden
+                                const audio = document.querySelector('audio');
+                                if (audio) audio.pause();
+                                
+                                // Klicke auf Pause-Button falls noch sichtbar
+                                const pauseButtons = document.querySelectorAll(
+                                    'button[data-testid="pause-button"], ' +
+                                    'button[aria-label*="Pause"], ' +
+                                    'button[aria-label*="Pausieren"]'
+                                );
+                                for (const btn of pauseButtons) {
+                                    if (btn.offsetParent !== null) {
+                                        btn.click();
+                                        break;
+                                    }
+                                }
+                            """)
                             track_ended = True
                             break
                         
