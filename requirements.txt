@@ -2,7 +2,8 @@ requests>=2.31.0
 mutagen>=1.47.0
 Pillow>=10.0.0
 deezer-python>=1.4.0
-yt-dlp>=2023.10.7
+# Mind. 2026 für zuverlässigen ZDF/ARD/ORF-Support (apt liefert oft 2024.x)
+yt-dlp>=2026
 beautifulsoup4>=4.12.0
 selenium>=4.15.0
 webdriver-manager>=4.0.0
@@ -10,3 +11,10 @@ webdriver-manager>=4.0.0
 # Neuere Versionen (0.9.0+) erfordern Python <3.13
 audible>=0.8.0,<0.9.0
 browser-cookie3>=0.19.1
+# Bibliotheken für Dokument-Parsing (URL-Liste aus verschiedenen Formaten)
+python-docx>=1.1.0
+odfpy>=1.4.1
+striprtf>=0.0.26
+# Optional für alte .doc-Dateien (Word 97-2003):
+# textract>=1.6.5  # Benötigt systemabhängige Abhängigkeiten (antiword, etc.)
+# docx2txt>=0.8  # Alternative für .doc

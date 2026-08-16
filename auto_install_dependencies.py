@@ -29,6 +29,40 @@ def get_app_dir():
         return Path(__file__).parent
 
 
+def _deps_marker_path():
+    """Pfad der Marker-Datei (Abhängigkeiten wurden erfolgreich installiert)."""
+    return get_app_dir() / ".deps_ok"
+
+
+def deps_marker_valid():
+    """
+    Prüft ob die letzte Abhängigkeits-Installation noch gültig ist.
+    Gültig = Marker existiert und requirements.txt wurde nicht geändert.
+    """
+    if is_frozen():
+        return True  # Bei gebündelter App keine pip-Installation
+    marker = _deps_marker_path()
+    if not marker.exists():
+        return False
+    req_file = get_app_dir() / "requirements.txt"
+    if not req_file.exists():
+        return True
+    try:
+        return marker.stat().st_mtime >= req_file.stat().st_mtime
+    except OSError:
+        return False
+
+
+def set_deps_marker():
+    """Setzt die Marker-Datei nach erfolgreicher Abhängigkeits-Installation."""
+    if is_frozen():
+        return
+    try:
+        _deps_marker_path().touch()
+    except OSError:
+        pass
+
+
 def check_ytdlp():
     """Prüft ob yt-dlp verfügbar ist (als Python-Modul)"""
     try:
@@ -59,12 +93,16 @@ def get_latest_ytdlp_version():
         return None
 
 
+# Mindestversion für ZDF/ARD/ORF (apt/System liefert oft 2024.x)
+YTDLP_MIN_VERSION = "2026"
+
+
 def update_ytdlp():
-    """Aktualisiert yt-dlp auf die neueste Version"""
+    """Aktualisiert yt-dlp auf mindestens Version 2026 (für ZDF/ARD/ORF)."""
     try:
-        print("[INFO] Aktualisiere yt-dlp auf die neueste Version...")
+        print("[INFO] Aktualisiere yt-dlp auf mindestens Version 2026...")
         subprocess.run(
-            [sys.executable, '-m', 'pip', 'install', '--upgrade', 'yt-dlp'],
+            [sys.executable, '-m', 'pip', 'install', '--upgrade', f'yt-dlp>={YTDLP_MIN_VERSION}'],
             check=True,
             capture_output=True,
             timeout=180
@@ -145,11 +183,11 @@ def check_and_update_ytdlp():
 
 
 def install_ytdlp():
-    """Installiert yt-dlp über pip"""
+    """Installiert yt-dlp >= 2026 über pip (für ZDF/ARD/ORF)."""
     try:
-        print("[INFO] Installiere yt-dlp...")
+        print("[INFO] Installiere yt-dlp (mind. Version 2026)...")
         subprocess.run(
-            [sys.executable, '-m', 'pip', 'install', 'yt-dlp'],
+            [sys.executable, '-m', 'pip', 'install', f'yt-dlp>={YTDLP_MIN_VERSION}'],
             check=True,
             capture_output=True,
             timeout=120
@@ -163,6 +201,27 @@ def install_ytdlp():
 
 def check_ffmpeg():
     """Prüft ob ffmpeg verfügbar ist"""
+    # macOS / Apple Silicon: bevorzugtes ffmpeg (arm64 vor Rosetta)
+    if sys.platform == "darwin":
+        try:
+            from mac_platform import ensure_macos_native_path, find_ffmpeg
+            ensure_macos_native_path()
+            ff = find_ffmpeg()
+            if ff:
+                result = subprocess.run(
+                    [ff, '-version'],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                if result.returncode == 0:
+                    version_line = (result.stdout or "").split('\n')[0]
+                    ff_dir = str(Path(ff).parent)
+                    if ff_dir not in os.environ.get('PATH', ''):
+                        os.environ['PATH'] = ff_dir + os.pathsep + os.environ.get('PATH', '')
+                    return True, version_line
+        except Exception:
+            pass
     # Prüfe zuerst ob ffmpeg im PATH ist
     try:
         result = subprocess.run(
@@ -203,30 +262,111 @@ def check_ffmpeg():
     return False, None
 
 
+def download_ffmpeg_windows_to(target_dir, progress_callback=None):
+    """
+    Lädt ffmpeg für Windows herunter und entpackt nach target_dir.
+    Ergebnis: target_dir/bin/ffmpeg.exe, ffprobe.exe usw.
+    Wird für Installer-Build (build_installer.py) und normale Installation genutzt.
+    Returns: True bei Erfolg, False bei Fehler.
+    """
+    target_dir = Path(target_dir)
+    ffmpeg_exe = target_dir / "bin" / "ffmpeg.exe"
+    if ffmpeg_exe.exists():
+        return True
+
+    def log(msg):
+        if progress_callback:
+            try:
+                progress_callback(msg)
+            except Exception:
+                pass
+        print(msg)
+
+    try:
+        log("[INFO] Lade ffmpeg für Windows herunter...")
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+        ffmpeg_urls = [
+            {"name": "BtbN Builds (GitHub)", "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"},
+            {"name": "Essentia Builds", "url": "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"},
+            {"name": "BtbN Builds (Alternative)", "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl-shared.zip"},
+        ]
+        zip_path = target_dir / "ffmpeg.zip"
+        download_success = False
+        for url_info in ffmpeg_urls:
+            try:
+                log(f"[INFO] Versuche Download von {url_info['name']}...")
+                try:
+                    import requests
+                    response = requests.get(url_info["url"], stream=True, timeout=300)
+                    response.raise_for_status()
+                    total = int(response.headers.get("content-length", 0))
+                    downloaded = 0
+                    with open(zip_path, "wb") as f:
+                        for chunk in response.iter_content(chunk_size=32768):
+                            if chunk:
+                                f.write(chunk)
+                                downloaded += len(chunk)
+                                if total and downloaded % (2 * 1024 * 1024) == 0 and downloaded > 0:
+                                    pct = min(100, (downloaded * 100) // total)
+                                    log(f"[INFO] Download: {pct}%")
+                except ImportError:
+                    urllib.request.urlretrieve(url_info["url"], zip_path)
+                download_success = True
+                break
+            except Exception as e:
+                log(f"[WARNING] Download fehlgeschlagen: {e}")
+                if zip_path.exists():
+                    zip_path.unlink(missing_ok=True)
+
+        if not download_success:
+            return False
+
+        log("[INFO] Entpacke ffmpeg...")
+        with zipfile.ZipFile(zip_path, "r") as z:
+            z.extractall(target_dir)
+        zip_path.unlink(missing_ok=True)
+
+        target_bin = target_dir / "bin"
+        target_bin.mkdir(exist_ok=True)
+        ffmpeg_found = False
+        for root, dirs, files in os.walk(target_dir):
+            if "ffmpeg.exe" in files:
+                bin_dir = Path(root)
+                for f in files:
+                    if f.endswith((".exe", ".dll")):
+                        src = bin_dir / f
+                        if src != target_bin / f:
+                            shutil.copy2(src, target_bin / f)
+                ffmpeg_found = True
+                break
+        if not ffmpeg_found:
+            return False
+        return (target_dir / "bin" / "ffmpeg.exe").exists()
+    except Exception as e:
+        log(f"[ERROR] ffmpeg-Download/Entpacken: {e}")
+        return False
+
+
 def install_ffmpeg_windows(progress_callback=None):
     """Installiert ffmpeg auf Windows"""
     app_dir = get_app_dir()
     ffmpeg_dir = app_dir / "ffmpeg"
     ffmpeg_exe = ffmpeg_dir / "bin" / "ffmpeg.exe"
-    
-    # Prüfe ob bereits installiert
+
     if ffmpeg_exe.exists():
-        # Füge zum PATH hinzu für diese Session
-        os.environ['PATH'] = str(ffmpeg_dir / "bin") + os.pathsep + os.environ.get('PATH', '')
+        os.environ["PATH"] = str(ffmpeg_dir / "bin") + os.pathsep + os.environ.get("PATH", "")
         if progress_callback:
             progress_callback("[OK] ffmpeg bereits vorhanden")
         return True, "bereits vorhanden"
-    
+
     try:
         if progress_callback:
             progress_callback("[INFO] Lade ffmpeg für Windows herunter...")
         print("[INFO] Lade ffmpeg für Windows herunter...")
-        
-        # Erstelle ffmpeg Verzeichnis
+
         ffmpeg_dir.mkdir(exist_ok=True)
-        
-        # Alternative Download-URLs (versuche mehrere Quellen für bessere Geschwindigkeit)
-        # Priorität: BtbN (oft schneller) > Essentia > gyan.dev
+
         ffmpeg_urls = [
             {
                 "name": "BtbN Builds (GitHub)",
@@ -241,7 +381,7 @@ def install_ffmpeg_windows(progress_callback=None):
                 "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl-shared.zip"
             }
         ]
-        
+
         zip_path = ffmpeg_dir / "ffmpeg.zip"
         download_success = False
         used_url = None

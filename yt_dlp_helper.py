@@ -16,6 +16,16 @@ def is_frozen():
     return getattr(sys, 'frozen', False) or hasattr(sys, '_MEIPASS')
 
 
+def _running_from_app_venv():
+    """True wenn die App aus einer eigenen venv läuft (z. B. nach .deb-Install: /usr/share/universal-downloader/venv)."""
+    exe = getattr(sys, 'executable', '') or ''
+    norm = os.path.normpath(exe)
+    # venv: .../venv/bin/python3  oder  .../universal-downloader/venv/...
+    if 'venv' in norm and ('universal-downloader' in norm or os.path.basename(os.path.dirname(norm)) == 'bin'):
+        return True
+    return False
+
+
 def get_ytdlp_command():
     """
     Gibt den richtigen yt-dlp Befehl zurück
@@ -25,54 +35,69 @@ def get_ytdlp_command():
         Oder None wenn yt_dlp direkt als Modul verwendet werden sollte
     """
     if is_frozen():
-        # In einer .exe: Versuche Python zu finden, das mit der .exe gebaut wurde
-        # Oder verwende yt_dlp direkt als Modul (wird in run_ytdlp_direct behandelt)
-        # Für subprocess: Versuche Python aus dem System zu finden
+        # Windows: 1) yt-dlp.exe neben der App, 2) gebündeltes Python (python/python.exe) aus Installer
+        if platform.system() == 'Windows':
+            exe_dir = os.path.dirname(sys.executable)
+            ytdlp_exe = os.path.join(exe_dir, 'yt-dlp.exe')
+            if os.path.isfile(ytdlp_exe):
+                return [ytdlp_exe]
+            python_embed = os.path.join(exe_dir, 'python', 'python.exe')
+            if os.path.isfile(python_embed):
+                return [python_embed, '-u', '-m', 'yt_dlp']
+        # Sonst: System-Python mit yt_dlp-Modul suchen (für Fortschritt/Abbruch per Subprocess)
         python_exe = _find_python_executable()
         if python_exe:
             return [python_exe, '-m', 'yt_dlp']
-        else:
-            # Fallback: Verwende yt_dlp direkt (wird in run_ytdlp_direct behandelt)
-            return None
+        # Fallback: eingebettetes yt_dlp-Modul (run_ytdlp_direct)
+        return None
     else:
-        # Normale Python-Umgebung: Versuche System-Befehl
-        # Prüfe ob yt-dlp im PATH ist
+        # Nach .deb-Install: App läuft mit venv (dort yt-dlp>=2026). System-yt-dlp (2024) nicht verwenden.
+        if _running_from_app_venv():
+            return [sys.executable, '-u', '-m', 'yt_dlp']
+        # Normale Umgebung: System-yt-dlp wenn im PATH, sonst Python-Modul
         if _check_ytdlp_system():
             return ['yt-dlp']
-        else:
-            # Fallback: Verwende Python-Modul
-            return [sys.executable, '-m', 'yt_dlp']
+        return [sys.executable, '-u', '-m', 'yt_dlp']
 
 
 def _find_python_executable():
-    """Versucht Python-Executable zu finden (für .exe Builds)"""
-    # In einer .exe: Versuche Python aus verschiedenen Orten
-    possible_paths = [
+    """Versucht Python-Executable zu finden (für .exe/.app Builds)"""
+    possible_paths = []
+    if platform.system() == 'Darwin':
+        # macOS (.app): System-Python oder Homebrew, damit Subprocess-Fortschritt funktioniert
+        possible_paths.extend([
+            '/usr/bin/python3',
+            '/opt/homebrew/bin/python3',
+            '/usr/local/bin/python3',
+        ])
+    possible_paths.extend([
         os.path.join(os.path.dirname(sys.executable), 'python.exe'),
         'python.exe',
         'python3.exe',
         'python',
         'python3'
-    ]
-    
+    ])
+    # PATH-Prüfung (z. B. venv unter macOS)
+    try:
+        import shutil
+        for name in ('python3', 'python'):
+            p = shutil.which(name)
+            if p and p not in possible_paths:
+                possible_paths.insert(0, p)
+    except Exception:
+        pass
+
+    _kwargs = dict(capture_output=True, timeout=2, check=True)
+    if platform.system() == 'Windows':
+        _kwargs['creationflags'] = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
     for path in possible_paths:
         try:
             # Prüfe ob Python verfügbar ist
-            result = subprocess.run(
-                [path, '--version'],
-                capture_output=True,
-                timeout=2,
-                check=True
-            )
+            result = subprocess.run([path, '--version'], **_kwargs)
             # Prüfe ob yt_dlp verfügbar ist
-            result2 = subprocess.run(
-                [path, '-m', 'yt_dlp', '--version'],
-                capture_output=True,
-                timeout=2,
-                check=True
-            )
+            result2 = subprocess.run([path, '-m', 'yt_dlp', '--version'], **_kwargs)
             return path
-        except:
+        except Exception:
             continue
     
     return None
@@ -105,45 +130,42 @@ def run_ytdlp(args, **kwargs):
     # Prüfe ob Popen gewünscht ist (für Prozessüberwachung)
     use_popen = kwargs.pop('use_popen', False)
     
-    # Verstecke Konsolen-Fenster auf Windows
+    # Verstecke Konsolen-Fenster auf Windows (keine aufblitzenden CMD-Fenster)
     creation_flags = 0
     if platform.system() == 'Windows':
-        # CREATE_NO_WINDOW = 0x08000000 - verhindert Konsolen-Fenster
-        creation_flags = subprocess.CREATE_NO_WINDOW
+        creation_flags = getattr(subprocess, 'CREATE_NO_WINDOW', 0x08000000)
     
-    # In .exe Builds: Versuche zuerst subprocess, falls Python verfügbar
+    # In .exe Builds: Synchrone Aufrufe (get_video_info, get_series_episodes) immer mit eingebetteter API.
+    # Für Download (Popen): gebündeltes yt-dlp.exe oder System-Python nutzen, sonst eingebettete API.
     if is_frozen():
-        # Versuche Python zu finden für subprocess
-        python_exe = _find_python_executable()
-        if python_exe and use_popen:
-            # Verwende subprocess.Popen für Prozessüberwachung
-            import subprocess as sp
-            kwargs_with_flags = kwargs.copy()
-            if creation_flags:
-                kwargs_with_flags['creationflags'] = creation_flags
-            return sp.Popen([python_exe, '-m', 'yt_dlp'] + args, **kwargs_with_flags)
-        elif python_exe and not use_popen:
-            # Verwende subprocess.run
-            import subprocess as sp
-            kwargs_with_flags = kwargs.copy()
-            if creation_flags:
-                kwargs_with_flags['creationflags'] = creation_flags
-            return sp.run([python_exe, '-m', 'yt_dlp'] + args, **kwargs_with_flags)
-        else:
-            # Fallback: Direkte API (kein Prozessüberwachung möglich)
+        if not use_popen:
             return run_ytdlp_direct(args, **kwargs)
+        cmd = get_ytdlp_command()
+        if cmd is not None:
+            # Gebündeltes yt-dlp.exe oder gefundenes Python mit yt_dlp
+            import subprocess as sp
+            kwargs_with_flags = kwargs.copy()
+            if creation_flags:
+                kwargs_with_flags['creationflags'] = creation_flags
+            if platform.system() != 'Windows':
+                kwargs_with_flags['start_new_session'] = True
+            return sp.Popen(cmd + args, **kwargs_with_flags)
+        return run_ytdlp_direct(args, **kwargs)
     
     # Normale Python-Umgebung: Verwende subprocess
     cmd = get_ytdlp_command()
     if cmd is None:
-        # Fallback: Versuche System-Befehl
-        cmd = ['yt-dlp'] if _check_ytdlp_system() else [sys.executable, '-m', 'yt_dlp']
+        # Fallback: Versuche System-Befehl; -u = unbuffered für sofortige Ausgabe
+        cmd = ['yt-dlp'] if _check_ytdlp_system() else [sys.executable, '-u', '-m', 'yt_dlp']
     
     if use_popen:
         import subprocess as sp
         kwargs_with_flags = kwargs.copy()
         if creation_flags:
             kwargs_with_flags['creationflags'] = creation_flags
+        # Unix: Eigene Prozessgruppe, damit "Download abbrechen" nur yt-dlp beendet, nicht die ganze App
+        if platform.system() != 'Windows':
+            kwargs_with_flags['start_new_session'] = True
         return sp.Popen(cmd + args, **kwargs_with_flags)
     else:
         import subprocess as sp
@@ -212,7 +234,10 @@ def run_ytdlp_direct(args, **kwargs):
         # Fallback: Versuche subprocess mit Python
         python_exe = _find_python_executable()
         if python_exe:
-            return subprocess.run([python_exe, '-m', 'yt_dlp'] + args, **kwargs)
+            _kw = kwargs.copy()
+            if platform.system() == 'Windows':
+                _kw['creationflags'] = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
+            return subprocess.run([python_exe, '-m', 'yt_dlp'] + args, **_kw)
         else:
             raise RuntimeError("yt-dlp nicht verfügbar und Python nicht gefunden")
 

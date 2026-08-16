@@ -66,6 +66,12 @@ log_and_echo ""
 
 # Erkenne Betriebssystem
 OS="$(uname -s)"
+if [ "$OS" = "Linux" ]; then
+    log_and_echo "Hinweis (Linux): Führen Sie das Skript mit sudo oder als root aus,"
+    log_and_echo "  damit Systempakete (Python, ffmpeg, etc.) installiert werden können:"
+    log_and_echo "  sudo ./install.sh"
+    log_and_echo ""
+fi
 ARCH="$(uname -m)"
 log_debug "Betriebssystem erkannt: OS=$OS, ARCH=$ARCH"
 
@@ -293,6 +299,8 @@ log_debug "Python-Version: $PYTHON_VERSION"
 # Prüfe Python-Version (mindestens 3.8)
 PYTHON_MAJOR=$(python3 -c "import sys; print(sys.version_info.major)")
 PYTHON_MINOR=$(python3 -c "import sys; print(sys.version_info.minor)")
+PYTHON_MAJOR_VERSION="$PYTHON_MAJOR"
+PYTHON_MINOR_VERSION="$PYTHON_MINOR"
 if [ "$PYTHON_MAJOR" -lt 3 ] || ([ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -lt 8 ]); then
     log_and_echo "❌ Python 3.8 oder höher ist erforderlich (gefunden: $PYTHON_VERSION)"
     log_and_echo "  Bitte aktualisieren Sie Python3"
@@ -695,16 +703,21 @@ else
 fi
 
 # Aktiviere venv (nur wenn erfolgreich erstellt)
+# WICHTIG: Unter Linux (z. B. Mint/Ubuntu) immer venv/bin/pip explizit verwenden,
+# damit nicht versehentlich System-pip (externally-managed-environment) genutzt wird (besonders bei root/sudo).
 if [ -d "venv" ] && [ -f "venv/bin/activate" ]; then
     log_and_echo "Aktiviere virtuelle Umgebung..."
     log_debug "Aktiviere venv: source $SCRIPT_DIR/venv/bin/activate"
     source venv/bin/activate
-    log_debug "venv aktiviert, Python: $(which python3)"
+    # Expliziten Pfad zur venv-pip verwenden (vermeidet PEP 668 Fehler unter Linux bei root/sudo)
+    VENV_PIP="$SCRIPT_DIR/venv/bin/pip"
+    VENV_PYTHON="$SCRIPT_DIR/venv/bin/python3"
+    log_debug "venv aktiviert, verwende: $VENV_PIP"
     
     # Installiere Abhängigkeiten
     log_and_echo "Installiere Python-Abhängigkeiten..."
-    log_debug "Upgrade pip..."
-    PIP_UPGRADE_OUTPUT=$(pip install --upgrade pip 2>&1)
+    log_debug "Upgrade pip (über venv)..."
+    PIP_UPGRADE_OUTPUT=$("$VENV_PIP" install --upgrade pip 2>&1)
     PIP_UPGRADE_EXIT=$?
     echo "$PIP_UPGRADE_OUTPUT" | tee -a "$LOG_FILE"
     log_debug "pip upgrade Exit-Code: $PIP_UPGRADE_EXIT"
@@ -728,7 +741,7 @@ if [ -d "venv" ] && [ -f "venv/bin/activate" ]; then
         log_and_echo "================================================"
         log_and_echo ""
         
-        PIP_INSTALL_OUTPUT=$(pip install -r requirements.txt 2>&1)
+        PIP_INSTALL_OUTPUT=$("$VENV_PIP" install -r requirements.txt 2>&1)
         PIP_INSTALL_EXIT=$?
         echo "$PIP_INSTALL_OUTPUT" | tee -a "$LOG_FILE"
         log_debug "pip install Exit-Code: $PIP_INSTALL_EXIT"
@@ -740,7 +753,7 @@ if [ -d "venv" ] && [ -f "venv/bin/activate" ]; then
             log_and_echo "  Fehler-Ausgabe:"
             echo "$PIP_INSTALL_OUTPUT" | grep -i "error\|fehl\|failed" | head -20 | tee -a "$LOG_FILE" || echo "$PIP_INSTALL_OUTPUT" | tail -20 | tee -a "$LOG_FILE"
             log_and_echo "  Siehe Log-Datei für Details: $LOG_FILE"
-            log_and_echo "  Versuchen Sie manuell: pip install -r requirements.txt"
+            log_and_echo "  Versuchen Sie manuell: venv/bin/pip install -r requirements.txt"
         fi
     else
         log_and_echo "⚠ Warnung: requirements.txt nicht gefunden!"
@@ -751,16 +764,36 @@ else
     log_and_echo "  Bitte erstellen Sie die venv manuell und installieren Sie dann die Abhängigkeiten"
 fi
 
+# Für spätere Prüfungen: venv-Python verwenden wenn venv existiert (wichtig unter Linux bei root/sudo)
+if [ -d "venv" ] && [ -f "venv/bin/python3" ]; then
+    PYTHON_FOR_CHECK="$SCRIPT_DIR/venv/bin/python3"
+    PIP_FOR_CHECK="$SCRIPT_DIR/venv/bin/pip"
+else
+    PYTHON_FOR_CHECK="python3"
+    PIP_FOR_CHECK="pip"
+fi
+
 log_and_echo ""
 log_and_echo "Prüfe System-Abhängigkeiten..."
 log_and_echo ""
 
-# Prüfe yt-dlp (als Python-Modul, da es über pip installiert wird)
-log_and_echo "Prüfe yt-dlp..."
-log_debug "Prüfe yt-dlp Verfügbarkeit..."
-if python3 -c "import yt_dlp; print(yt_dlp.version.__version__)" 2>/dev/null; then
-    YTDLP_VERSION=$(python3 -c "import yt_dlp; print(yt_dlp.version.__version__)" 2>/dev/null)
-    log_and_echo "✓ yt-dlp installiert (Python-Modul): $YTDLP_VERSION"
+# Prüfe yt-dlp (Mindestversion 2026 für ZDF/ARD/ORF; als Python-Modul über pip)
+YTDLP_MIN_VERSION="2026"
+log_and_echo "Prüfe yt-dlp (Mindestversion $YTDLP_MIN_VERSION)..."
+log_debug "Prüfe yt-dlp Verfügbarkeit (mit $PYTHON_FOR_CHECK)..."
+if "$PYTHON_FOR_CHECK" -c "import yt_dlp; print(yt_dlp.version.__version__)" 2>/dev/null; then
+    YTDLP_VERSION=$("$PYTHON_FOR_CHECK" -c "import yt_dlp; print(yt_dlp.version.__version__)" 2>/dev/null)
+    if [ "$(printf '%s\n' "$YTDLP_MIN_VERSION" "$YTDLP_VERSION" | sort -V | head -n1)" != "$YTDLP_MIN_VERSION" ]; then
+        log_and_echo "  yt-dlp $YTDLP_VERSION gefunden, Upgrade auf >= $YTDLP_MIN_VERSION..."
+        if "$PIP_FOR_CHECK" install --upgrade "yt-dlp>=$YTDLP_MIN_VERSION" 2>&1 | tee -a "$LOG_FILE"; then
+            YTDLP_VERSION=$("$PYTHON_FOR_CHECK" -c "import yt_dlp; print(yt_dlp.version.__version__)" 2>/dev/null)
+            log_and_echo "✓ yt-dlp aktualisiert: $YTDLP_VERSION"
+        else
+            log_and_echo "✓ yt-dlp (Python-Modul): $YTDLP_VERSION (Upgrade auf $YTDLP_MIN_VERSION fehlgeschlagen)"
+        fi
+    else
+        log_and_echo "✓ yt-dlp installiert (Python-Modul): $YTDLP_VERSION"
+    fi
     log_debug "yt-dlp Version: $YTDLP_VERSION"
 elif command -v yt-dlp &> /dev/null; then
     YTDLP_VERSION=$(yt-dlp --version 2>/dev/null || echo "unbekannt")
@@ -768,11 +801,11 @@ elif command -v yt-dlp &> /dev/null; then
     log_debug "yt-dlp als System-Befehl gefunden"
 else
     log_and_echo "⚠ yt-dlp nicht gefunden"
-    log_and_echo "  Versuche Installation über pip..."
-    log_debug "Installiere yt-dlp über pip..."
-    if pip install --upgrade yt-dlp 2>&1 | tee -a "$LOG_FILE"; then
-        if python3 -c "import yt_dlp" 2>/dev/null; then
-            YTDLP_VERSION=$(python3 -c "import yt_dlp; print(yt_dlp.version.__version__)" 2>/dev/null)
+    log_and_echo "  Versuche Installation über venv-pip (>= $YTDLP_MIN_VERSION)..."
+    log_debug "Installiere yt-dlp >= $YTDLP_MIN_VERSION über $PIP_FOR_CHECK..."
+    if "$PIP_FOR_CHECK" install --upgrade "yt-dlp>=$YTDLP_MIN_VERSION" 2>&1 | tee -a "$LOG_FILE"; then
+        if "$PYTHON_FOR_CHECK" -c "import yt_dlp" 2>/dev/null; then
+            YTDLP_VERSION=$("$PYTHON_FOR_CHECK" -c "import yt_dlp; print(yt_dlp.version.__version__)" 2>/dev/null)
             log_and_echo "✓ yt-dlp erfolgreich installiert: $YTDLP_VERSION"
         else
             log_and_echo "❌ yt-dlp Installation fehlgeschlagen"
@@ -869,7 +902,7 @@ log_and_echo ""
 # Prüfe alle Abhängigkeiten und zeige Status
 ALL_OK=true
 
-# Prüfe requirements.txt Pakete
+# Prüfe requirements.txt Pakete (mit venv-Python falls venv existiert)
 log_and_echo "Python-Pakete aus requirements.txt:"
 for package in requests mutagen Pillow deezer-python yt-dlp beautifulsoup4 selenium audible browser-cookie3; do
     if [ "$package" = "Pillow" ]; then
@@ -886,7 +919,7 @@ for package in requests mutagen Pillow deezer-python yt-dlp beautifulsoup4 selen
         import_name=$(echo "$package" | sed 's/-/_/g')
     fi
     
-    if python3 -c "import $import_name" 2>/dev/null; then
+    if "$PYTHON_FOR_CHECK" -c "import $import_name" 2>/dev/null; then
         log_and_echo "  ✓ $package"
         log_debug "Paket $package ($import_name) ist installiert"
     else
@@ -986,7 +1019,7 @@ fi
 
 # Prüfe yt-dlp (als Python-Modul oder System-Befehl)
 log_debug "Prüfe yt-dlp..."
-if python3 -c "import yt_dlp" 2>/dev/null || command -v yt-dlp &> /dev/null; then
+if "$PYTHON_FOR_CHECK" -c "import yt_dlp" 2>/dev/null || command -v yt-dlp &> /dev/null; then
     log_and_echo "  ✓ yt-dlp"
     log_debug "yt-dlp gefunden"
 else
@@ -1001,6 +1034,17 @@ if [ "$ALL_OK" = true ]; then
     log_and_echo "✓ Alle Abhängigkeiten sind installiert!"
     log_and_echo "=========================================="
     log_and_echo ""
+    
+    # Unter Linux: Wenn mit sudo/root ausgeführt, venv und logs dem aufrufenden Benutzer zurückgeben
+    if [ "$OS" = "Linux" ] && [ "$EUID" -eq 0 ] && [ -n "${SUDO_USER:-}" ]; then
+        log_and_echo "Setze Besitzer von venv und logs auf $SUDO_USER (damit Sie ohne root starten können)..."
+        if chown -R "$SUDO_USER:$SUDO_USER" venv logs 2>/dev/null; then
+            log_and_echo "✓ Besitzer gesetzt."
+        else
+            log_and_echo "⚠ Konnte Besitzer nicht setzen. Starten Sie die App ggf. mit: sudo -u $SUDO_USER ./start_launcher.sh"
+        fi
+        log_and_echo ""
+    fi
     
     # Erstelle Startmenü-Verknüpfung
     log_and_echo "Erstelle Startmenü-Verknüpfung..."
@@ -1065,6 +1109,13 @@ else
 fi
 log_and_echo ""
 
-# Pause am Ende, damit Terminal offen bleibt
-log_and_echo "Drücken Sie eine beliebige Taste zum Beenden..."
-read -n 1 -s
+# Pause am Ende nur bei interaktivem Terminal (sonst sofort beenden, Exit 0 bei Erfolg)
+if [ -t 0 ] 2>/dev/null; then
+    log_and_echo "Drücken Sie eine beliebige Taste zum Beenden..."
+    read -n 1 -s
+fi
+if [ "$ALL_OK" = true ]; then
+    exit 0
+else
+    exit 1
+fi

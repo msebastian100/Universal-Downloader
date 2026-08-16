@@ -8,14 +8,22 @@ venv/
 env/
 ENV/
 .venv
+.venv_build_mac
 
 # Build-Artefakte
 build/
 dist/
 *.exe
 *.deb
+*.zip
 deb_build/
+apt-repo/
+.deps_ok
 # UniversalDownloader.spec sollte im Repo sein (nicht ignorieren)
+
+# GPG-Schlüssel (niemals committen)
+.gnupg/
+.gnupg.zip
 
 # IDE
 .vscode/
@@ -33,6 +41,7 @@ Logs/
 .deezer_config.json
 .audible_config.json
 settings.json
+.ftp-credentials
 
 # OS
 .DS_Store

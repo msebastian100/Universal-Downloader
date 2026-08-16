@@ -174,24 +174,43 @@ def get_app_base_path():
     Returns:
         Path: Pfad zum Basis-Verzeichnis der Anwendung
     """
-    downloads_folder = get_downloads_folder()
-    app_path = downloads_folder / "Universal Downloader"
-    
-    # Versuche Ordner zu erstellen
-    try:
-        app_path.mkdir(parents=True, exist_ok=True)
-    except (PermissionError, OSError):
-        # Fallback: Verwende AppData oder ähnliches
-        if sys.platform == "win32":
+    if sys.platform == "win32":
+        downloads_folder = get_downloads_folder()
+        app_path = downloads_folder / "Universal Downloader"
+        try:
+            app_path.mkdir(parents=True, exist_ok=True)
+        except (PermissionError, OSError):
             appdata = os.getenv('APPDATA', Path.home() / "AppData" / "Roaming")
             app_path = Path(appdata) / "Universal Downloader"
-        elif sys.platform == "darwin":
-            app_path = Path.home() / "Library" / "Application Support" / "Universal Downloader"
-        else:
-            app_path = Path.home() / ".universal-downloader"
-        app_path.mkdir(parents=True, exist_ok=True)
+            app_path.mkdir(parents=True, exist_ok=True)
+        return app_path
     
-    return app_path
+    if sys.platform == "darwin":
+        downloads_folder = get_downloads_folder()
+        app_path = downloads_folder / "Universal Downloader"
+        try:
+            app_path.mkdir(parents=True, exist_ok=True)
+        except (PermissionError, OSError):
+            app_path = Path.home() / "Library" / "Application Support" / "Universal Downloader"
+            app_path.mkdir(parents=True, exist_ok=True)
+        return app_path
+    
+    # Linux: zuerst explizit ~/Downloads/Universal Downloader anlegen (auch bei Start über System-Verknüpfung)
+    standard_path = Path.home() / "Downloads" / "Universal Downloader"
+    try:
+        standard_path.mkdir(parents=True, exist_ok=True)
+        return standard_path
+    except (PermissionError, OSError):
+        pass
+    try:
+        downloads_folder = get_downloads_folder()
+        app_path = downloads_folder / "Universal Downloader"
+        app_path.mkdir(parents=True, exist_ok=True)
+        return app_path
+    except (PermissionError, OSError):
+        app_path = Path.home() / ".universal-downloader"
+        app_path.mkdir(parents=True, exist_ok=True)
+        return app_path
 
 
 if __name__ == "__main__":

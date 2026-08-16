@@ -85,6 +85,52 @@ Das Installationsskript (`install.sh`):
 - Installiert fehlende System-Pakete (z.B. `python3-tk` auf Linux)
 - Erstellt Desktop-Verknüpfungen
 
+**Linux Mint / Ubuntu / Debian – Installation über APT-Repository (empfohlen):**
+
+Über das offizielle Repository erhalten Sie Installation und Updates wie bei anderen Systempaketen (inkl. Anzeige in der Aktualisierungsverwaltung).
+
+**1. Öffentlichen Schlüssel importieren (einmalig):**
+```bash
+curl -sS https://ppa.plertanix.de/apt/repo-key.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/universal-downloader.gpg
+```
+*Bei SSL-Fehler oder „Keine gültigen OpenPGP-Daten“:* Erst prüfen, was ankommt: `wget -O- https://ppa.plertanix.de/apt/repo-key.asc | head -5`. Wenn dort kein PGP-ASCII-Text steht, liefert der Server unter deinem Netz keine gültige Schlüsseldatei. Dann **Alternative ohne Schlüssel** (siehe unten) nutzen.
+
+**2. Repository hinzufügen und installieren:**
+```bash
+echo "deb [signed-by=/etc/apt/trusted.gpg.d/universal-downloader.gpg] https://ppa.plertanix.de/apt/ ./" | sudo tee /etc/apt/sources.list.d/universal-downloader.list
+sudo apt update
+sudo apt install universal-downloader
+```
+
+**Alternative ohne Schlüsselverifikation** (nur wenn der Schlüssel-Import bei dir fehlschlägt, z. B. wegen SSL-Problemen): Repository ohne Signaturprüfung eintragen. Nur für vertrauenswürdige Quellen geeignet.
+```bash
+echo "deb [trusted=yes] https://ppa.plertanix.de/apt/ ./" | sudo tee /etc/apt/sources.list.d/universal-downloader.list
+sudo apt update
+sudo apt install universal-downloader
+```
+
+**3. Updates:**
+```bash
+sudo apt update
+sudo apt install --only-upgrade universal-downloader
+```
+Oder über die **Aktualisierungsverwaltung** (Linux Mint) bzw. `sudo apt upgrade` – neue Versionen erscheinen automatisch, wenn sie im Repository veröffentlicht werden.
+
+**Deinstallation:** `sudo apt remove universal-downloader`  
+**Repository entfernen:** `sudo rm /etc/apt/sources.list.d/universal-downloader.list` und ggf. `sudo rm /etc/apt/trusted.gpg.d/universal-downloader.gpg`
+
+---
+
+**Linux Mint / Ubuntu / Debian – manuelles .deb-Paket (ohne Repository):**
+```bash
+./build_linux.sh
+# Empfohlen: Abhängigkeiten werden automatisch installiert (kein apt-get install -f nötig)
+sudo apt install ./deb_build/universal-downloader_*.deb
+```
+Alternativ: `sudo dpkg -i deb_build/universal-downloader_*.deb` und danach bei Bedarf `sudo apt-get install -f`.
+
+Nach der Installation erscheint **Universal Downloader** im Anwendungsmenü. Das Paket legt eine eigene virtuelle Umgebung unter `/usr/share/universal-downloader/venv` an (kein System-Python, PEP 668-konform).
+
 **Hinweis für Windows:** Die Launcher (`start_launcher.vbs` und `start_launcher.bat`) führen automatisch alle Installationsschritte durch, auch auf einem "cleanen PC" ohne vorinstalliertes Python. Einfach die Datei doppelklicken!
 
 ### Manuelle Installation
@@ -322,6 +368,10 @@ Wenn Sie ein Familien-Abo haben:
 Falls Sie eine ausführbare Datei erstellen möchten, siehe [BUILD.md](BUILD.md) für detaillierte Anleitungen.
 
 **Hinweis:** Für normale Nutzung ist keine EXE-Erstellung erforderlich. Verwenden Sie einfach `python3 start.py`.
+
+## 🏪 Veröffentlichung im Microsoft Store
+
+Die App wird als **MSIX**-Paket eingereicht (kein eigenes Code-Signing-Zertifikat nötig – Microsoft signiert kostenlos). Anleitung: Installer bauen → MSIX Packaging Tool (einmal UI, danach optional **build_msix.ps1** für neue Versionen) → Partner Center. Details in **[docs/PUBLISH_MICROSOFT_STORE.md](docs/PUBLISH_MICROSOFT_STORE.md)**.
 
 ## 📜 Lizenz
 

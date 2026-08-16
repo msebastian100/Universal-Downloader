@@ -2,11 +2,14 @@
 # -*- coding: utf-8 -*-
 """
 Versionsinformationen für Universal Downloader
+
+Release: immer gemeinsam pflegen:
+  __version__, __version_info__, __build_date__ (YYYY-MM-DD = Tag des Releases)
 """
 
-__version__ = "2.1.1"
-__version_info__ = (2, 1, 1)
-__build_date__ = "2025-01-20"
+__version__ = "2.1.13"
+__version_info__ = (2, 1, 13)
+__build_date__ = "2026-03-21"
 
 # GitHub Repository URL (für Links und Updates)
 GITHUB_REPO_URL = "https://github.com/msebastian100/Universal-Downloader"

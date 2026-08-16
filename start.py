@@ -45,6 +45,16 @@ if sys.platform == "win32":
     except Exception:
         pass
 
+
+def _safe_print(text: str) -> None:
+    """Gibt Text auf der Konsole aus; vermeidet UnicodeEncodeError unter Windows (cp1252)."""
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        # Fallback: nur ASCII/ersetzte Zeichen (z. B. unter Windows-Konsole)
+        print(text.encode("ascii", errors="replace").decode("ascii"))
+
+
 def check_ffmpeg():
     """Prüft ob ffmpeg verfügbar ist"""
     import subprocess
@@ -128,6 +138,46 @@ def install_ffmpeg_if_missing():
     return False
 
 if __name__ == "__main__":
+    # macOS: Sofort Single-Instance-Lock (vor allen anderen Imports), reduziert Doppelstart
+    _lock_handle = None
+    if sys.platform == "darwin":
+        try:
+            from mac_platform import ensure_macos_native_path
+            ensure_macos_native_path()
+        except Exception:
+            # Fallback: Homebrew-arm64 voranstellen
+            _hb = "/opt/homebrew/bin"
+            if os.path.isdir(_hb):
+                os.environ["PATH"] = _hb + os.pathsep + os.environ.get("PATH", "")
+        try:
+            import fcntl
+            _lock_file = Path.home() / ".universal_downloader.lock"
+            _f = open(_lock_file, "w")
+            try:
+                fcntl.flock(_f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                _f.write(str(os.getpid()))
+                _f.flush()
+                _lock_handle = _f  # Halten, damit Lock bestehen bleibt
+            except (IOError, OSError):
+                _f.close()
+                try:
+                    with open(_lock_file, "r") as _rf:
+                        _old_pid = int(_rf.read().strip())
+                    os.kill(_old_pid, 0)
+                except (ProcessLookupError, ValueError, OSError):
+                    pass
+                try:
+                    import subprocess
+                    subprocess.run(
+                        ["osascript", "-e", 'tell application "Universal Downloader" to activate'],
+                        capture_output=True, timeout=2
+                    )
+                except Exception:
+                    pass
+                os._exit(0)
+        except Exception:
+            pass
+
     import tempfile
     from datetime import datetime
     
@@ -143,9 +193,9 @@ if __name__ == "__main__":
         except ImportError:
             fcntl = None
     
-    # Single-Instance-Mechanismus: Verhindere mehrere gleichzeitige Instanzen
-    lock_file = Path(tempfile.gettempdir()) / "universal_downloader.lock"
-    lock_file_handle = None
+    # Single-Instance: Fester Pfad im Benutzerverzeichnis (unter macOS/Programme sonst oft zweite Instanz)
+    lock_file = Path.home() / ".universal_downloader.lock"
+    lock_file_handle = _lock_handle  # Unter macOS bereits geholt
     
     def acquire_lock():
         """Erwirbt eine Lock-Datei, um sicherzustellen, dass nur eine Instanz läuft"""
@@ -222,13 +272,18 @@ if __name__ == "__main__":
         except Exception:
             pass
     
-    # Prüfe ob bereits eine Instanz läuft
-    if not acquire_lock():
+    # Prüfe ob bereits eine Instanz läuft (unter macOS ggf. schon oben geholt)
+    if lock_file_handle is None and not acquire_lock():
         # Prüfe ob die andere Instanz noch läuft
         try:
             if lock_file.exists():
-                with open(lock_file, 'r') as f:
-                    old_pid = int(f.read().strip())
+                try:
+                    with open(lock_file, 'r') as f:
+                        old_pid = int(f.read().strip())
+                except (PermissionError, OSError):
+                    # Unter Windows: Datei von anderer Instanz gesperrt → andere Instanz läuft
+                    print("[INFO] Eine andere Instanz läuft bereits.")
+                    sys.exit(0)
                 # Prüfe ob Prozess noch läuft
                 if sys.platform == "win32":
                     import subprocess
@@ -243,13 +298,23 @@ if __name__ == "__main__":
                     except:
                         pass
                 else:
-                    # Unix: Prüfe mit kill -0
+                    # Unix/macOS: Prüfe mit kill -0
                     try:
                         os.kill(old_pid, 0)  # Signal 0 prüft nur ob Prozess existiert
                         # Prozess läuft noch - beende diese Instanz
                         print(f"[INFO] Eine andere Instanz läuft bereits (PID: {old_pid})")
                         print("[INFO] Diese Instanz wird beendet...")
-                        sys.exit(0)
+                        if sys.platform == "darwin":
+                            # macOS: Laufende Instanz in den Vordergrund holen, damit nur ein Fenster sichtbar ist
+                            try:
+                                import subprocess
+                                subprocess.run(
+                                    ["osascript", "-e", 'tell application "Universal Downloader" to activate'],
+                                    capture_output=True, timeout=2
+                                )
+                            except Exception:
+                                pass
+                        os._exit(0)  # Sofort beenden, keine atexit-Handler
                     except ProcessLookupError:
                         # Prozess existiert nicht mehr - lösche alte Lock-Datei
                         lock_file.unlink(missing_ok=True)
@@ -257,9 +322,16 @@ if __name__ == "__main__":
                         if not acquire_lock():
                             print("[WARNING] Konnte Lock nicht erwerben - beende...")
                             sys.exit(0)
+        except (PermissionError, OSError):
+            # Unter Windows: Lock-Datei oft von anderer Instanz gehalten – nicht löschen, nur beenden
+            print("[INFO] Eine andere Instanz läuft vermutlich bereits.")
+            sys.exit(0)
         except Exception:
-            # Bei Fehler: Lösche alte Lock-Datei und versuche erneut
-            lock_file.unlink(missing_ok=True)
+            # Bei anderem Fehler: Lock-Datei löschen nur wenn möglich (unter Windows oft noch in Benutzung)
+            try:
+                lock_file.unlink(missing_ok=True)
+            except (PermissionError, OSError):
+                pass
             if not acquire_lock():
                 print("[WARNING] Konnte Lock nicht erwerben - beende...")
                 sys.exit(0)
@@ -406,17 +478,17 @@ if __name__ == "__main__":
         main()
     except ImportError as e:
         debug_log(f"Fehler beim Importieren der Module: {e}", "ERROR")
-        print(f"✗ Fehler beim Importieren der Module: {e}")
-        print("\nBitte installieren Sie die Abhängigkeiten:")
-        print("  pip install -r requirements.txt")
-        print("\nFür detaillierte Prüfung:")
-        print("  python check_dependencies.py")
+        _safe_print(f"Fehler beim Importieren der Module: {e}")
+        _safe_print("\nBitte installieren Sie die Abhängigkeiten:")
+        _safe_print("  pip install -r requirements.txt")
+        _safe_print("\nFuer detaillierte Pruefung:")
+        _safe_print("  python check_dependencies.py")
         sys.exit(1)
     except Exception as e:
         debug_log(f"Fehler beim Starten der Anwendung: {e}", "ERROR")
         import traceback
         debug_log(f"Traceback: {traceback.format_exc()}", "ERROR")
-        print(f"✗ Fehler beim Starten der Anwendung: {e}")
+        _safe_print(f"Fehler beim Starten der Anwendung: {e}")
         traceback.print_exc()
         sys.exit(1)
 

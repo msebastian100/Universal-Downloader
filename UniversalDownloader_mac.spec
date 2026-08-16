@@ -1,16 +1,26 @@
 # -*- mode: python ; coding: utf-8 -*-
-# PyInstaller Spec-Datei für Universal Downloader
+# PyInstaller Spec für macOS: erzeugt .app-Bundle (für .dmg)
+# Auf Apple Silicon: natives arm64 (UNIVERSAL_DOWNLOADER_TARGET_ARCH oder platform.machine())
 
 import os
+import platform
+
+try:
+    from version import __version__ as _APP_VERSION
+except Exception:
+    _APP_VERSION = "0.0.0"
+
+_target_arch = os.environ.get("UNIVERSAL_DOWNLOADER_TARGET_ARCH") or platform.machine()
+if _target_arch not in ("arm64", "x86_64"):
+    _target_arch = None
 
 block_cipher = None
 
-# Icon-Daten hinzufügen falls vorhanden
 datas_list = []
-if os.path.exists('icon.ico'):
-    datas_list.append(('icon.ico', '.'))
-elif os.path.exists('icon.png'):
+if os.path.exists('icon.png'):
     datas_list.append(('icon.png', '.'))
+if os.path.exists('icon.icns'):
+    datas_list.append(('icon.icns', '.'))
 
 a = Analysis(
     ['start.py'],
@@ -26,12 +36,14 @@ a = Analysis(
         'yt_dlp_helper',
         'auto_install_dependencies',
         'path_helper',
+        'mac_platform',
+        'series_watch',
         'requests',
         'urllib3',
         'certifi',
         'charset_normalizer',
         'idna',
-        'bs4',  # Import-Name (Paket heißt beautifulsoup4)
+        'bs4',
         'beautifulsoup4',
         'selenium',
         'webdriver_manager',
@@ -43,8 +55,6 @@ a = Analysis(
         'video_downloader',
         'audible_integration',
         'changelog',
-        'updater',
-        # Wie UniversalDownloader_mac.spec: oft erst per lazy import (Methode/Dialog)
         'audiobook_providers',
         'audiobook_search',
         'stream_automation',
@@ -53,7 +63,6 @@ a = Analysis(
         'update_from_github',
         'create_shortcut',
         'setup_audio_recording',
-        # URL-Liste aus Dateien (gui.py, optional dynamisch)
         'docx',
         'striprtf',
         'odf.opendocument',
@@ -75,22 +84,46 @@ pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
     [],
-    name='UniversalDownloader',
+    exclude_binaries=True,
+    name='Universal Downloader',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=False,  # Kein Konsolen-Fenster
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
-    target_arch=None,
+    target_arch=_target_arch,
     codesign_identity=None,
     entitlements_file=None,
-    icon='icon.ico' if os.path.exists('icon.ico') else ('icon.png' if os.path.exists('icon.png') else None),
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    name='Universal Downloader',
+)
+
+# macOS .app Bundle (für .dmg)
+app = BUNDLE(
+    coll,
+    name='Universal Downloader.app',
+    icon='icon.icns' if os.path.exists('icon.icns') else None,
+    bundle_identifier='de.universaldownloader.app',
+    info_plist={
+        'CFBundleName': 'Universal Downloader',
+        'CFBundleDisplayName': 'Universal Downloader',
+        'CFBundleVersion': _APP_VERSION,
+        'NSHighResolutionCapable': True,
+        'LSMultipleInstancesProhibited': True,
+        'LSRequiresNativeExecution': True if _target_arch == 'arm64' else False,
+    },
 )
