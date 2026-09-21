@@ -530,74 +530,86 @@ class VideoDownloader:
             
             # Extrahiere Metadaten aus JSON im HTML
             info = {}
-            
-            # Suche nach JSON-Daten im HTML (<script type="application/json">)
-            json_match = re.search(r'<script[^>]*type=["\']application/json["\'][^>]*>(.*?)</script>', html, re.IGNORECASE | re.DOTALL)
-            if json_match:
+
+            def find_value(obj, keys):
+                """Erste Treffer-Tiefe zuerst; Keys in angegebener Priorität."""
+                if isinstance(obj, dict):
+                    for key in keys:
+                        if key in obj and obj[key] not in (None, ''):
+                            return obj[key]
+                    for value in obj.values():
+                        if isinstance(value, (dict, list)):
+                            result = find_value(value, keys)
+                            if result not in (None, ''):
+                                return result
+                elif isinstance(obj, list):
+                    for item in obj:
+                        result = find_value(item, keys)
+                        if result not in (None, ''):
+                            return result
+                return None
+
+            def find_media_urls(obj):
+                urls = []
+                if isinstance(obj, dict):
+                    for key, value in obj.items():
+                        if 'url' in key.lower() and isinstance(value, str) and ('http' in value or value.endswith(('.mp3', '.m4a', '.mp4'))):
+                            if value not in urls:
+                                urls.append(value)
+                        elif isinstance(value, (dict, list)):
+                            urls.extend(find_media_urls(value))
+                elif isinstance(obj, list):
+                    for item in obj:
+                        urls.extend(find_media_urls(item))
+                return urls
+
+            # Alle JSON-Skripte durchsuchen (Next.js legt publishDate oft nicht im ersten Script)
+            for json_match in re.finditer(
+                r'<script[^>]*type=["\']application/json["\'][^>]*>(.*?)</script>',
+                html, re.IGNORECASE | re.DOTALL
+            ):
                 try:
                     json_data = json.loads(json_match.group(1))
-                    # Rekursive Suche nach relevanten Daten
-                    def find_value(obj, keys):
-                        if isinstance(obj, dict):
-                            for key, value in obj.items():
-                                if key in keys:
-                                    return value
-                                if isinstance(value, (dict, list)):
-                                    result = find_value(value, keys)
-                                    if result:
-                                        return result
-                        elif isinstance(obj, list):
-                            for item in obj:
-                                result = find_value(item, keys)
-                                if result:
-                                    return result
-                        return None
-                    
-                    # Suche nach Titel
+                except json.JSONDecodeError:
+                    continue
+
+                if 'title' not in info:
                     title = find_value(json_data, ['title', 'headline', 'name'])
-                    if title:
-                        info['title'] = title
-                    
-                    # Suche nach Beschreibung
+                    if title and isinstance(title, str) and len(title.strip()) > 1:
+                        info['title'] = title.strip()
+
+                if 'description' not in info:
                     description = find_value(json_data, ['description', 'summary', 'teaser'])
-                    if description:
+                    if description and isinstance(description, str):
                         info['description'] = description
-                    
-                    # Suche nach Thumbnail
+
+                if not info.get('broadcast_date'):
+                    pub = find_value(json_data, [
+                        'publicationStartDateAndTime', 'publishDate', 'publicationDate',
+                        'publicationStartDate', 'firstPublicationDate', 'broadcastedOn',
+                        'broadcastDate', 'datePublished', 'uploadDate',
+                    ])
+                    date_iso = self._normalize_broadcast_date(pub) if pub else ''
+                    if date_iso:
+                        info['broadcast_date'] = date_iso
+                        info['upload_date'] = date_iso.replace('-', '')
+
+                if 'thumbnail' not in info:
                     thumbnail = find_value(json_data, ['image', 'thumbnail', 'poster', 'cover'])
                     if thumbnail and isinstance(thumbnail, str):
                         info['thumbnail'] = thumbnail
                     elif isinstance(thumbnail, dict):
                         info['thumbnail'] = thumbnail.get('url') or thumbnail.get('src')
-                    
-                    # Suche nach Media-URLs
-                    media_urls = []
-                    def find_media_urls(obj):
-                        urls = []
-                        if isinstance(obj, dict):
-                            for key, value in obj.items():
-                                if 'url' in key.lower() and isinstance(value, str) and ('http' in value or value.endswith(('.mp3', '.m4a', '.mp4'))):
-                                    if value not in urls:
-                                        urls.append(value)
-                                elif isinstance(value, (dict, list)):
-                                    urls.extend(find_media_urls(value))
-                        elif isinstance(obj, list):
-                            for item in obj:
-                                urls.extend(find_media_urls(item))
-                        return urls
-                    
+
+                if 'url' not in info:
                     media_urls = find_media_urls(json_data)
                     if media_urls:
-                        # Filtere nach Audio-Formaten (für Musik-Tab)
                         audio_urls = [u for u in media_urls if u.endswith(('.mp3', '.m4a'))]
                         if audio_urls:
-                            info['url'] = audio_urls[0]  # Verwende erste Audio-URL
+                            info['url'] = audio_urls[0]
                             info['format'] = 'audio'
                         else:
-                            info['url'] = media_urls[0]  # Fallback: erste URL
-                    
-                except json.JSONDecodeError:
-                    pass
+                            info['url'] = media_urls[0]
             
             # Fallback: Suche nach Media-URLs direkt im HTML (Regex)
             if 'url' not in info:
@@ -622,6 +634,32 @@ class VideoDownloader:
                         info['title'] = f'ARD Sounds Episode {urn_match.group(1)[:8]}'
                     else:
                         info['title'] = 'ARD Sounds Episode'
+            
+            # Erscheinungsdatum wie auf der Sounds-Seite (bevorzugt gegenüber UTC)
+            if not info.get('broadcast_date'):
+                erschein = re.search(
+                    r'Erscheinungsdatum</span>\s*</div>\s*<div[^>]*>\s*<span[^>]*>\s*(\d{1,2}\.\d{1,2}\.20\d{2})\s*</span>',
+                    html, re.IGNORECASE
+                )
+                if not erschein:
+                    erschein = re.search(
+                        r'Erscheinungsdatum.{0,120}?(\d{1,2}\.\d{1,2}\.20\d{2})',
+                        html, re.IGNORECASE | re.DOTALL
+                    )
+                if erschein:
+                    date_iso = self._normalize_broadcast_date(erschein.group(1))
+                    if date_iso:
+                        info['broadcast_date'] = date_iso
+                        info['upload_date'] = date_iso.replace('-', '')
+
+            # Fallback: Datum aus <time datetime="…">
+            if not info.get('broadcast_date'):
+                time_m = re.search(r'<time[^>]+datetime=["\']([^"\']+)["\']', html, re.IGNORECASE)
+                if time_m:
+                    date_iso = self._normalize_broadcast_date(time_m.group(1))
+                    if date_iso:
+                        info['broadcast_date'] = date_iso
+                        info['upload_date'] = date_iso.replace('-', '')
             
             # Setze Standardwerte
             info['id'] = url
@@ -887,20 +925,20 @@ class VideoDownloader:
         
         return url
     
-    def _parse_ardsounds_listing_episode_meta(self, html_content: str, urn_short: str) -> Tuple[Optional[str], int]:
+    def _parse_ardsounds_listing_episode_meta(self, html_content: str, urn_short: str) -> Tuple[Optional[str], int, str]:
         """
-        Extrahiert Titel und Dauer (Sekunden) aus der ARD-Sounds-Sendungsliste (SSR-HTML).
+        Extrahiert Titel, Dauer (Sekunden) und Sendedatum aus der ARD-Sounds-Sendungsliste (SSR-HTML).
         Auf der Seite steht typischerweise zuerst der Link, danach <h3> mit dem Folgentitel,
-        danach die Spieldauer als „45<!-- --> Min.“ in einem <span>.
+        danach die Spieldauer als „45<!-- --> Min.“ in einem <span>, oft mit Datum.
         """
         import html as html_module
         if not html_content or not urn_short:
-            return None, 0
+            return None, 0, ''
         try:
             needle = f'urn:ard:episode:{urn_short}'
             pos = html_content.find(needle)
             if pos < 0:
-                return None, 0
+                return None, 0, ''
             # Fenster ab erstem Vorkommen der Episoden-URN (ein Listeneintrag)
             chunk = html_content[pos : pos + 9000]
             title = None
@@ -920,9 +958,21 @@ class VideoDownloader:
             # Dauer: „45<!-- --> Min.“ oder „116 Min.“
             dur_m = re.search(r'(\d+)(?:<!--\s*-->)?\s*Min\.', chunk, re.IGNORECASE)
             seconds = int(dur_m.group(1)) * 60 if dur_m else 0
-            return title, seconds
+            date_iso = ''
+            time_m = re.search(r'<time[^>]+datetime=["\']([^"\']+)["\']', chunk, re.IGNORECASE)
+            if time_m:
+                date_iso = self._normalize_broadcast_date(time_m.group(1))
+            if not date_iso:
+                de_m = re.search(r'\b(\d{1,2})\.(\d{1,2})\.(20\d{2})\b', chunk)
+                if de_m:
+                    date_iso = self._normalize_broadcast_date(de_m.group(0))
+            if not date_iso:
+                iso_m = re.search(r'\b(20\d{2}-\d{2}-\d{2})(?:T|\b)', chunk)
+                if iso_m:
+                    date_iso = self._normalize_broadcast_date(iso_m.group(1))
+            return title, seconds, date_iso
         except Exception:
-            return None, 0
+            return None, 0, ''
     
     def _fetch_ardsounds_show_episodes_via_api(self, series_url: str) -> Optional[Dict]:
         """
@@ -976,9 +1026,23 @@ class VideoDownloader:
                 all_nodes.extend(nodes)
                 if total and len(all_nodes) >= total:
                     break
-                if len(nodes) < limit:
+                # Weiter paginieren, auch wenn die Seite weniger als limit liefert
+                # (API kann z. B. 40er-Seiten liefern, numberOfElements aber 200+)
+                if not nodes:
                     break
                 offset += len(nodes)
+                if total and offset >= total:
+                    break
+                # Sicherheitsnetz gegen Endlosschleifen
+                if offset > 5000 or len(all_nodes) > 5000:
+                    break
+                if len(nodes) < limit and (not total or len(all_nodes) >= total):
+                    break
+                if len(nodes) < limit and total and len(all_nodes) < total:
+                    # Manche Antworten sind kürzer als limit – trotzdem weiter bis total
+                    continue
+                if len(nodes) < limit:
+                    break
         except Exception as e:
             self.log(f"ARD programsets API: {e}", "WARNING")
             return None
@@ -989,44 +1053,135 @@ class VideoDownloader:
         if series_title:
             self._series_name_for_fallback = series_title
         
-        episodes: List[Dict] = []
-        for i, n in enumerate(all_nodes, 1):
+        # Rohdaten sammeln, dann chronologisch nummerieren (älteste Folge = E01)
+        # Nach Website-Umbau: assetId oft urn:ard:section:… (nicht nur urn:ard:episode:…)
+        raw: List[Dict] = []
+        for n in all_nodes:
             if not isinstance(n, dict):
                 continue
-            asset = (n.get('assetId') or '').strip()
-            if 'urn:ard:episode:' not in asset.lower():
+            asset = (n.get('assetId') or n.get('publicationId') or '').strip()
+            share = (n.get('sharingUrl') or '').strip()
+            ep_url = ''
+            if share and '/episode/' in share.lower():
+                ep_url = share.rstrip('/')
+                if not ep_url.startswith('http'):
+                    ep_url = f"https://www.ardsounds.de{ep_url if ep_url.startswith('/') else '/' + ep_url}"
+            elif asset and (
+                'urn:ard:episode:' in asset.lower()
+                or 'urn:ard:section:' in asset.lower()
+                or 'urn:ard:publication:' in asset.lower()
+                or 'urn:ard:extra:' in asset.lower()
+            ):
+                # section/publication/extra ebenfalls als Episode-URL nutzbar
+                urn = asset
+                if 'urn:ard:publication:' in urn.lower():
+                    urn = 'urn:ard:section:' + urn.split(':')[-1]
+                ep_url = f"https://www.ardsounds.de/episode/{urn}"
+            if not ep_url:
                 continue
-            ep_url = f"https://www.ardsounds.de/episode/{asset}"
+            # Canonical ohne trailing slash
+            ep_url = ep_url.rstrip('/')
             try:
                 dur = int(n.get('duration') or 0)
             except (TypeError, ValueError):
                 dur = 0
-            title = (n.get('title') or '').strip() or f'Folge {i}'
+            title = (n.get('title') or '').strip() or 'Folge'
             thumb = None
             img = n.get('image')
             if isinstance(img, dict):
                 thumb = img.get('url') or img.get('url1X1')
-            episodes.append({
+            date_iso = self._broadcast_date_from_info(n)
+            season_num = 1
+            episode_hint = None
+            part_of = None  # z. B. 1 bei „(1/5)“
+            # Staffel/Folge aus Titel, falls vorhanden (z. B. S02/E07, Staffel 3)
+            m_se = re.search(r'\(S(\d+)\s*/\s*E(\d+)\)', title, re.IGNORECASE)
+            if not m_se:
+                m_se = re.search(r'\bS(\d+)\s*E(\d+)\b', title, re.IGNORECASE)
+            if m_se:
+                try:
+                    season_num = int(m_se.group(1))
+                    episode_hint = int(m_se.group(2))
+                except ValueError:
+                    pass
+            else:
+                m_st = re.search(r'\bStaffel\s*(\d+)\b', title, re.IGNORECASE)
+                if m_st:
+                    try:
+                        season_num = int(m_st.group(1))
+                    except ValueError:
+                        pass
+            # Mini-Serien: „Wo warst du? (1/5)“ – nur Sortierung bei gleichem Sendedatum
+            # (Episodennummer wird danach fortlaufend vergeben)
+            m_part = re.search(r'\((\d+)\s*/\s*(\d+)\)', title)
+            if m_part:
+                try:
+                    part_of = int(m_part.group(1))
+                except ValueError:
+                    part_of = None
+            raw.append({
                 'title': title,
                 'url': ep_url,
-                'episode_number': i,
-                'season_number': 1,
+                'season_number': season_num,
+                'episode_hint': episode_hint,
                 'series': series_title or getattr(self, '_series_name_for_fallback', None) or 'Unbekannte Serie',
                 'duration': dur,
                 'duration_string': self._format_duration(dur) if dur else '0:00',
                 'thumbnail': thumb,
-                'id': asset,
+                'id': asset or share or ep_url,
+                'broadcast_date': date_iso,
+                'upload_date': date_iso.replace('-', '') if date_iso else '',
+                '_sort_date': date_iso or '',
+                '_sort_part': part_of if part_of is not None else 10_000,
             })
         
-        if not episodes:
+        if not raw:
             return None
         
-        self.log(f"✓ {len(episodes)} Folgen über ARD programsets API (offset/limit, Gesamt laut API: {total or len(episodes)})")
+        # Duplikate nach URL entfernen (API kann section+episode mischen)
+        seen_urls = set()
+        deduped: List[Dict] = []
+        for ep in raw:
+            u = (ep.get('url') or '').lower()
+            if u in seen_urls:
+                continue
+            seen_urls.add(u)
+            deduped.append(ep)
+        raw = deduped
+        
+        # Chronologisch; bei gleichem Datum nach (n/m) bzw. Titel
+        raw.sort(key=lambda e: (
+            e.get('_sort_date') or '9999',
+            e.get('_sort_part') if e.get('_sort_part') is not None else 10_000,
+            e.get('title') or '',
+        ))
+        
+        seasons: Dict[int, List[Dict]] = {}
+        counters: Dict[int, int] = {}
+        for ep in raw:
+            sn = int(ep.get('season_number') or 1)
+            counters[sn] = counters.get(sn, 0) + 1
+            # Fortlaufend nach Sortierung; SxxExx aus Titel hat Vorrang
+            ep_num = ep.get('episode_hint') if ep.get('episode_hint') is not None else counters[sn]
+            item = {k: v for k, v in ep.items() if not k.startswith('_') and k != 'episode_hint'}
+            item['episode_number'] = ep_num
+            item['season_number'] = sn
+            seasons.setdefault(sn, []).append(item)
+        
+        for sn in seasons:
+            seasons[sn].sort(key=lambda x: x.get('episode_number') or 0)
+        sorted_seasons = dict(sorted(seasons.items()))
+        total_eps = sum(len(v) for v in sorted_seasons.values())
+        
+        self.log(
+            f"✓ {total_eps} Folgen über ARD programsets API "
+            f"({len(sorted_seasons)} Staffel-Gruppe(n), Gesamt laut API: {total or total_eps})"
+        )
         sn = series_title or getattr(self, '_series_name_for_fallback', None) or 'Unbekannte Serie'
         return {
             'series_name': sn,
-            'seasons': {1: episodes},
-            'total_episodes': len(episodes),
+            'seasons': sorted_seasons,
+            'total_episodes': total_eps,
         }
     
     def is_series_or_season(self, url: str) -> bool:
@@ -1279,6 +1434,41 @@ class VideoDownloader:
             
             # Speichere die ursprüngliche URL für Fallback-Parsing
             original_series_url = original_url
+
+            # ARD Sounds / Audiothek-Sendung: API zuerst (yt-dlp liefert oft nur einen Bruchteil der Folgen)
+            url_l = (url or '').lower()
+            orig_l = (original_url or '').lower()
+            if (
+                ('ardsounds.de' in url_l or 'ardaudiothek.de' in url_l or 'ardsounds.de' in orig_l or 'ardaudiothek.de' in orig_l)
+                and ('/sendung/' in url_l or '/sendung/' in orig_l or 'urn:ard:show:' in url_l or 'urn:ard:show:' in orig_l)
+                and '/episode/' not in url_l and 'urn:ard:episode:' not in url_l
+            ):
+                api_url = original_url if 'urn:ard:show:' in orig_l else url
+                # Show-URN ggf. aus der Seite holen, wenn sie in der URL fehlt
+                if 'urn:ard:show:' not in (api_url or '').lower():
+                    try:
+                        import ssl
+                        import urllib.request
+                        _ctx = ssl.create_default_context()
+                        _ctx.check_hostname = False
+                        _ctx.verify_mode = ssl.CERT_NONE
+                        _req = urllib.request.Request(
+                            api_url,
+                            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'},
+                        )
+                        with urllib.request.urlopen(_req, timeout=30, context=_ctx) as _resp:
+                            _html = _resp.read().decode('utf-8', errors='replace')
+                        _m = re.search(r'urn:ard:show:[^/\s"\'<>]+', _html, re.IGNORECASE)
+                        if _m:
+                            api_url = f"https://www.ardsounds.de/sendung/{_m.group(0)}"
+                            self.log(f"ARD Sounds: Show-URN aus Seite: {_m.group(0)}")
+                    except Exception as e:
+                        self.log(f"ARD Sounds: Konnte Show-URN nicht aus Seite lesen: {e}", "WARNING")
+                self.log(f"ARD Sounds/Audiothek: lade Folgenliste bevorzugt über API…")
+                api_series = self._fetch_ardsounds_show_episodes_via_api(api_url)
+                if api_series and api_series.get('seasons') and api_series.get('total_episodes', 0) > 0:
+                    return api_series
+                self.log("ARD API ohne Ergebnis – Fallback yt-dlp/HTML…", "WARNING")
             
             # Prüfe ob es eine YouTube-URL ist
             is_youtube = 'youtube.com' in url.lower() or 'youtu.be' in url.lower()
@@ -1669,10 +1859,10 @@ class VideoDownloader:
                                     ep_urn_match = re.search(r'urn:ard:episode:[^/\s"\'<>]+', ep_url, re.IGNORECASE)
                                     ep_urn = ep_urn_match.group(0) if ep_urn_match else None
                                     urn_short = ep_urn.split(':')[-1] if ep_urn else ''
-                                    parsed_title, dur_seconds = (
+                                    parsed_title, dur_seconds, parsed_date = (
                                         self._parse_ardsounds_listing_episode_meta(html_content, urn_short)
                                         if urn_short
-                                        else (None, 0)
+                                        else (None, 0, '')
                                     )
                                     title = parsed_title if parsed_title else f'Folge {i}'
                                     duration_str = (
@@ -1694,6 +1884,8 @@ class VideoDownloader:
                                         'duration_string': duration_str,
                                         'thumbnail': None,
                                         'id': ep_urn,
+                                        'broadcast_date': parsed_date or '',
+                                        'upload_date': (parsed_date or '').replace('-', ''),
                                     })
                                 
                                 if episodes:
@@ -1893,6 +2085,10 @@ class VideoDownloader:
                                     'thumbnail': info.get('thumbnail'),
                                     'id': info.get('id'),
                                 }
+                                date_iso = self._broadcast_date_from_info(info)
+                                if date_iso:
+                                    episode_info['broadcast_date'] = date_iso
+                                    episode_info['upload_date'] = date_iso.replace('-', '')
                                 
                                 # Für YouTube: Füge Playlist-Index hinzu
                                 if is_youtube:
@@ -2091,6 +2287,153 @@ class VideoDownloader:
             filename = filename[:200]
         
         return filename
+
+    @staticmethod
+    def _is_audiothek_or_sounds_url(url: str) -> bool:
+        u = (url or '').lower()
+        return 'ardaudiothek.de' in u or 'ardsounds.de' in u
+
+    def _normalize_broadcast_date(self, value) -> str:
+        """
+        Normalisiert Sende-/Veröffentlichungsdatum zu YYYY-MM-DD (Kalendertag Europe/Berlin).
+        Wichtig: yt-dlp-upload_date/timestamp sind oft UTC und liegen einen Tag vor dem
+        auf ARD Sounds angezeigten Erscheinungsdatum.
+        """
+        if value is None or value == '':
+            return ''
+        try:
+            from zoneinfo import ZoneInfo
+            berlin = ZoneInfo('Europe/Berlin')
+        except Exception:
+            berlin = None
+
+        if isinstance(value, datetime):
+            try:
+                if value.tzinfo is not None and berlin is not None:
+                    return value.astimezone(berlin).strftime('%Y-%m-%d')
+                return value.strftime('%Y-%m-%d')
+            except Exception:
+                return value.strftime('%Y-%m-%d')
+
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            try:
+                ts = float(value)
+                if ts > 1e12:
+                    ts /= 1000.0
+                if ts > 1e9:
+                    if berlin is not None:
+                        return datetime.fromtimestamp(ts, tz=berlin).strftime('%Y-%m-%d')
+                    return datetime.utcfromtimestamp(ts).strftime('%Y-%m-%d')
+            except (OSError, OverflowError, ValueError):
+                return ''
+            return ''
+
+        s = str(value).strip()
+        if not s:
+            return ''
+
+        # Deutsches Datum TT.MM.JJJJ (wie auf ARD Sounds „Erscheinungsdatum“)
+        m = re.fullmatch(r'(\d{1,2})\.(\d{1,2})\.(20\d{2})', s)
+        if m:
+            day, month, year = int(m.group(1)), int(m.group(2)), int(m.group(3))
+            if 1 <= month <= 12 and 1 <= day <= 31:
+                return f'{year:04d}-{month:02d}-{day:02d}'
+
+        # ISO mit Zeitzone → Kalendertag in Europe/Berlin
+        if 'T' in s or s.endswith('Z') or re.search(r'[+-]\d{2}:\d{2}$', s):
+            try:
+                iso = s.replace('Z', '+00:00')
+                # Python <3.11: fromisoformat braucht ggf. Anpassungen bei Mikrosekunden
+                if re.match(r'.*[+-]\d{4}$', iso) and iso[-5] != ':':
+                    iso = iso[:-2] + ':' + iso[-2:]
+                dt = datetime.fromisoformat(iso)
+                if dt.tzinfo is not None and berlin is not None:
+                    return dt.astimezone(berlin).strftime('%Y-%m-%d')
+                if dt.tzinfo is not None:
+                    # Fallback: Datum laut Offset der Quelle (nicht UTC-Mitternacht)
+                    return dt.strftime('%Y-%m-%d')
+                return dt.strftime('%Y-%m-%d')
+            except Exception:
+                m = re.match(r'(20\d{2})-(\d{2})-(\d{2})', s)
+                if m:
+                    return f'{m.group(1)}-{m.group(2)}-{m.group(3)}'
+
+        # Reines ISO-Datum
+        m = re.fullmatch(r'(20\d{2})-(\d{2})-(\d{2})', s)
+        if m:
+            return f'{m.group(1)}-{m.group(2)}-{m.group(3)}'
+
+        # yt-dlp YYYYMMDD – oft UTC; ohne bessere Quelle trotzdem übernehmen
+        if re.fullmatch(r'\d{8}', s):
+            return f'{s[:4]}-{s[4:6]}-{s[6:8]}'
+
+        m = re.match(r'(20\d{2})-(\d{2})-(\d{2})', s)
+        if m:
+            return f'{m.group(1)}-{m.group(2)}-{m.group(3)}'
+        return ''
+
+    def _broadcast_date_from_info(self, info: Optional[Dict]) -> str:
+        """Liest das Sendedatum aus API-, HTML- oder yt-dlp-Metadaten (Bevorzugt ARD-Lokaldatum)."""
+        if not isinstance(info, dict):
+            return ''
+        # Reihenfolge: zuerst explizite/ lokale ARD-Felder, yt-dlp-UTC erst ganz am Ende
+        keys = (
+            'broadcast_date', 'sendedatum', 'datum', 'erscheinungsdatum',
+            'publicationStartDateAndTime', 'publishDate', 'publicationDate',
+            'publicationStartDate', 'firstPublicationDate', 'broadcastedOn',
+            'broadcastDate', 'availableFrom', 'datePublished', 'uploadDate',
+            'release_date',
+            # yt-dlp: timestamp oft korrekt mit TZ umrechenbar, upload_date oft schon UTC-Tag
+            'release_timestamp', 'timestamp',
+            'upload_date',
+        )
+        for key in keys:
+            if key not in info or info.get(key) in (None, ''):
+                continue
+            iso = self._normalize_broadcast_date(info.get(key))
+            if iso:
+                return iso
+        return ''
+
+    def _filename_date_context(self, video_info: Optional[Dict]) -> Dict[str, str]:
+        iso = self._broadcast_date_from_info(video_info)
+        de = ''
+        if iso and len(iso) == 10:
+            de = f'{iso[8:10]}.{iso[5:7]}.{iso[:4]}'
+        return {
+            'date': iso,
+            'datum': iso,
+            'sendedatum': iso,
+            'date_de': de,
+            'datum_de': de,
+        }
+
+    def _with_filename_aliases(self, context: Dict) -> Dict:
+        ctx = dict(context)
+        ctx.setdefault('staffel', ctx.get('season'))
+        ctx.setdefault('staffel2', ctx.get('season2'))
+        ctx.setdefault('folge', ctx.get('episode'))
+        ctx.setdefault('folge2', ctx.get('episode2'))
+        ctx.setdefault('name', ctx.get('title'))
+        ctx.setdefault('date', '')
+        ctx.setdefault('datum', ctx.get('date', ''))
+        ctx.setdefault('sendedatum', ctx.get('date', ''))
+        ctx.setdefault('date_de', '')
+        ctx.setdefault('datum_de', ctx.get('date_de', ''))
+        return ctx
+
+    def _apply_filename_template(self, template: str, context: Dict) -> str:
+        """Wendet das Dateinamen-Template an; leere Platzhalter (z. B. fehlendes Datum) werden sauber entfernt."""
+        ctx = self._with_filename_aliases(context)
+        try:
+            name_raw = template.format(**ctx)
+        except Exception:
+            name_raw = str(ctx.get('title') or 'video')
+        name_raw = re.sub(r'(\s*[-–—_]\s*){2,}', r'\1', name_raw)
+        name_raw = re.sub(r'^[\s\-–—_]+', '', name_raw)
+        name_raw = re.sub(r'[\s\-–—_]+$', '', name_raw)
+        name_raw = re.sub(r'\s{2,}', ' ', name_raw).strip()
+        return self.sanitize_filename(name_raw)
     
     def _get_description_basename(self, video_info: Optional[Dict], is_series: bool = False,
                                    series_name: Optional[str] = None, season_number: Optional[int] = None,
@@ -2118,15 +2461,11 @@ class VideoDownloader:
                 'episode2': f"{int(episode_num_val):02d}" if episode_num_val else '',
                 'title': title_val,
             }
-            context.setdefault('staffel', context.get('season'))
-            context.setdefault('staffel2', context.get('season2'))
-            context.setdefault('folge', context.get('episode'))
-            context.setdefault('folge2', context.get('episode2'))
-            context.setdefault('name', context.get('title'))
+            context.update(self._filename_date_context(video_info))
             template = 'E{episode2} - {title}'
             if self.gui_instance and hasattr(self.gui_instance, 'settings'):
                 s = getattr(self.gui_instance, 'settings', {})
-                if url and 'ardaudiothek.de' in url.lower():
+                if self._is_audiothek_or_sounds_url(url):
                     template = s.get('audiothek_filename_template', template)
                 elif playlist_index is not None and url and ('youtube.com' in url.lower() or 'youtu.be' in url.lower()):
                     template = '{episode2} - {title}'
@@ -2137,17 +2476,16 @@ class VideoDownloader:
                 'series': '', 'season': 0, 'season2': '', 'episode': 0, 'episode2': '',
                 'title': title_val,
             }
-            context.setdefault('staffel', 0); context.setdefault('staffel2', ''); context.setdefault('folge', 0); context.setdefault('folge2', ''); context.setdefault('name', title_val)
+            context.update(self._filename_date_context(video_info))
             template = '{title}'
             if self.gui_instance and hasattr(self.gui_instance, 'settings'):
                 s = getattr(self.gui_instance, 'settings', {})
-                if url and 'ardaudiothek.de' in url.lower():
+                if self._is_audiothek_or_sounds_url(url):
                     template = s.get('audiothek_filename_template', template)
                 else:
                     template = s.get('movie_filename_template', template)
         try:
-            name_raw = template.format(**context)
-            name = self.sanitize_filename(name_raw)
+            name = self._apply_filename_template(template, context)
             return name if name else "Info"
         except Exception:
             return self.sanitize_filename(title_val) or "Info"
@@ -2201,11 +2539,14 @@ class VideoDownloader:
                     series_name = match.group(1).replace('-', ' ').title()
                     is_series = True
         
-        # Oberordner: bei Audiothek immer "Ardaudiothek", bei YouTube "YouTube", sonst Sender (z. B. ARD)
+        # Oberordner: bei Audiothek/Sounds immer "Ardaudiothek", bei YouTube "YouTube", sonst Sender (z. B. ARD)
         top_folder = None
-        if url and 'ardaudiothek.de' in url.lower():
+        if url and self._is_audiothek_or_sounds_url(url):
             top_folder = "Ardaudiothek"
-        elif video_info and ('ardaudiothek.de' in (_check_url or '').lower() or 'ardaudiothek.de' in (video_info.get('webpage_url') or '').lower()):
+        elif video_info and (
+            self._is_audiothek_or_sounds_url(_check_url or '')
+            or self._is_audiothek_or_sounds_url(video_info.get('webpage_url') or '')
+        ):
             top_folder = "Ardaudiothek"
         elif sender:
             top_folder = "YouTube" if sender == "YOUTUBE" else sender
@@ -2217,7 +2558,8 @@ class VideoDownloader:
         if not top_folder and is_series and (series_name or (video_info and video_info.get('series'))):
             combined = (url or '') + ' ' + (video_info.get('webpage_url') or video_info.get('url') or '') if video_info else (url or '')
             combined_lower = combined.lower()
-            if ('ardaudiothek.de' in combined_lower or 'urn:ard:episode' in combined or 'urn:ard:show' in combined or
+            if ('ardaudiothek.de' in combined_lower or 'ardsounds.de' in combined_lower
+                    or 'urn:ard:episode' in combined or 'urn:ard:show' in combined or
                     ('/episode/' in (url or '') and 'urn:ard' in (url or ''))):
                 top_folder = "Ardaudiothek"
         
@@ -2461,7 +2803,9 @@ class VideoDownloader:
         # ARD Sounds (Einzelfolge): yt-dlp leitet oft auf /embed/episode/… und scheitert mit „Unsupported URL“.
         # Wenn Metadaten vom Serien-Dialog kommen, wurde get_video_info übersprungen – dann fehlt die direkte Media-URL.
         _u_low = (url or '').lower()
-        if _u_low and ('ardsounds.de' in _u_low or 'ardaudiothek.de' in _u_low) and '/episode/' in _u_low and 'urn:ard:episode' in _u_low:
+        if _u_low and ('ardsounds.de' in _u_low or 'ardaudiothek.de' in _u_low) and '/episode/' in _u_low and (
+            'urn:ard:episode' in _u_low or 'urn:ard:section' in _u_low
+        ):
             mu = (video_info or {}).get('url') or ''
             has_direct_media = (
                 mu.startswith('http')
@@ -2474,7 +2818,7 @@ class VideoDownloader:
                         merged = {**(video_info or {}), **parsed}
                         # Metadaten aus GUI/Serien-Dialog haben Vorrage
                         if video_info:
-                            for k in ('title', 'series', 'season_number', 'episode_number', 'thumbnail'):
+                            for k in ('title', 'series', 'season_number', 'episode_number', 'thumbnail', 'broadcast_date', 'upload_date'):
                                 if video_info.get(k) is not None:
                                     merged[k] = video_info[k]
                         video_info = merged
@@ -3487,7 +3831,7 @@ class VideoDownloader:
                                 else:
                                     title_val = downloaded_file.stem if downloaded_file.stem and not downloaded_file.stem.startswith('urn:') else "Folge"
                             # Audiothek/Quelle: Präfix "STE04", "S04E04", "ST04 - " etc. entfernen, damit nur der reine Folgentitel im Template steht
-                            if title_val and 'ardaudiothek.de' in url.lower():
+                            if title_val and self._is_audiothek_or_sounds_url(url):
                                 title_val = re.sub(r'^(?:ST\d*E\d+|S\d+E\d+)\s*[-–—]\s*', '', title_val, flags=re.IGNORECASE).strip() or title_val
                             
                             # Versuche, Episode aus Titel zu extrahieren falls nicht vorhanden (einfacher Fallback)
@@ -3507,9 +3851,10 @@ class VideoDownloader:
                                 'episode2': f"{int(episode_num_val):02d}" if episode_num_val else '',
                                 'title': title_val,
                             }
+                            context.update(self._filename_date_context(video_info))
                             if self.gui_instance is not None and hasattr(self.gui_instance, 'settings'):
                                 s = getattr(self.gui_instance, 'settings', {})
-                                if 'ardaudiothek.de' in url.lower():
+                                if self._is_audiothek_or_sounds_url(url):
                                     template = s.get('audiothek_filename_template', 'E{episode2} - {title}')
                                 elif playlist_index is not None and url and ('youtube.com' in url.lower() or 'youtu.be' in url.lower()):
                                     # YouTube-Playlist: nur Nummer und Titel, kein "E" / "ST01E"
@@ -3534,9 +3879,10 @@ class VideoDownloader:
                                 'episode2': '',
                                 'title': title_val,
                             }
+                            context.update(self._filename_date_context(video_info if video_info else {'title': title_val}))
                             if self.gui_instance is not None and hasattr(self.gui_instance, 'settings'):
                                 s = getattr(self.gui_instance, 'settings', {})
-                                if 'ardaudiothek.de' in url.lower():
+                                if self._is_audiothek_or_sounds_url(url):
                                     template = s.get('audiothek_filename_template', '{title}')
                                 else:
                                     template = s.get('movie_filename_template', '{title}')
@@ -3545,16 +3891,7 @@ class VideoDownloader:
                         
                         if template:
                             try:
-                                # Deutsche Alias-Platzhalter ergänzen (staffel/folge/name)
-                                context_with_aliases = dict(context)
-                                context_with_aliases.setdefault('staffel', context_with_aliases.get('season'))
-                                context_with_aliases.setdefault('staffel2', context_with_aliases.get('season2'))
-                                context_with_aliases.setdefault('folge', context_with_aliases.get('episode'))
-                                context_with_aliases.setdefault('folge2', context_with_aliases.get('episode2'))
-                                context_with_aliases.setdefault('name', context_with_aliases.get('title'))
-                                
-                                new_name_raw = template.format(**context_with_aliases)
-                                new_name = self.sanitize_filename(new_name_raw)
+                                new_name = self._apply_filename_template(template, context)
                                 if not new_name:
                                     new_name = downloaded_file.stem
                                 new_path = downloaded_file.with_name(f"{new_name}{downloaded_file.suffix}")

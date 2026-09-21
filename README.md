@@ -89,13 +89,24 @@ Das Installationsskript (`install.sh`):
 
 Über das offizielle Repository erhalten Sie Installation und Updates wie bei anderen Systempaketen (inkl. Anzeige in der Aktualisierungsverwaltung).
 
-**1. Öffentlichen Schlüssel importieren (einmalig):**
+**Einfachste Variante – Install-Skript (Schlüssel, Quelle, Fallbacks, Fehler-Log):**
 ```bash
-curl -sS https://ppa.plertanix.de/apt/repo-key.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/universal-downloader.gpg
+# Skript aus dem Projektordner oder z. B. heruntergeladen:
+chmod +x install_apt_linux.sh
+sudo ./install_apt_linux.sh
 ```
-*Bei SSL-Fehler oder „Keine gültigen OpenPGP-Daten“:* Erst prüfen, was ankommt: `wget -O- https://ppa.plertanix.de/apt/repo-key.asc | head -5`. Wenn dort kein PGP-ASCII-Text steht, liefert der Server unter deinem Netz keine gültige Schlüsseldatei. Dann **Alternative ohne Schlüssel** (siehe unten) nutzen.
+Das Skript `install_apt_linux.sh` importiert den Repo-Schlüssel (ohne `sudo` in der Pipe), trägt die Quelle ein, wechselt bei Key-/SSL-Problemen automatisch auf `[trusted=yes]`, installiert das Paket und schreibt bei Fehlern ein Log unter `/var/log/` bzw. `/tmp/` (`universal-downloader-install_ERROR_*.log`).
 
-**2. Repository hinzufügen und installieren:**
+**Manuell – 1. Öffentlichen Schlüssel importieren (einmalig):**
+```bash
+curl -sS https://ppa.plertanix.de/apt/repo-key.asc -o /tmp/universal-downloader.asc
+sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/universal-downloader.gpg /tmp/universal-downloader.asc
+```
+Schlüssel und `sudo` nicht in einer Pipe kombinieren: sonst fragt `sudo` das Passwort aus der Schlüsseldatei und `gpg` sieht keine gültigen OpenPGP-Daten.
+
+*Bei SSL-Fehler oder „Keine gültigen OpenPGP-Daten“:* Erst prüfen, was ankommt: `head -5 /tmp/universal-downloader.asc`. Wenn dort kein PGP-ASCII-Text steht (`BEGIN PGP PUBLIC KEY BLOCK`), liefert der Server unter deinem Netz keine gültige Schlüsseldatei. Dann **Alternative ohne Schlüssel** (siehe unten) nutzen.
+
+**Manuell – 2. Repository hinzufügen und installieren:**
 ```bash
 echo "deb [signed-by=/etc/apt/trusted.gpg.d/universal-downloader.gpg] https://ppa.plertanix.de/apt/ ./" | sudo tee /etc/apt/sources.list.d/universal-downloader.list
 sudo apt update

@@ -4167,6 +4167,8 @@ class DeezerDownloaderGUI:
                     'season_number': ep.get('season_number'),
                     'episode_number': ep.get('episode_number'),
                     'webpage_url': ep_url,  # damit Ardaudiothek-Ordner erkannt wird
+                    'broadcast_date': ep.get('broadcast_date') or '',
+                    'upload_date': ep.get('upload_date') or '',
                 }
                 max_attempts = 2
                 success, file_path, error = False, None, ""
@@ -5575,6 +5577,13 @@ class DeezerDownloaderGUI:
                 series_name = ep_info.get('series_name') or ep_info.get('series') or ''
                 season_number = ep_info.get('season_number')
                 playlist_index_from_queue = ep_info.get('playlist_index') or ep_info.get('episode_number')
+                if video_info is None:
+                    video_info = {}
+                for k in ('title', 'series', 'season_number', 'episode_number', 'broadcast_date', 'upload_date'):
+                    if ep_info.get(k) not in (None, ''):
+                        video_info[k] = ep_info[k]
+                if series_name and not video_info.get('series'):
+                    video_info['series'] = series_name
             elif not is_youtube and video_info:
                 is_series = bool(video_info.get('series') or video_info.get('season_number'))
                 series_name = video_info.get('series')
@@ -6121,6 +6130,12 @@ class DeezerDownloaderGUI:
                 ep_num = episode.get('episode_number')
                 title = episode.get('title', 'Unbekannt')
                 duration = episode.get('duration_string', '')
+                date_iso = episode.get('broadcast_date') or ''
+                date_disp = ''
+                if date_iso and len(str(date_iso)) == 10 and str(date_iso)[4] == '-':
+                    date_disp = f"{date_iso[8:10]}.{date_iso[5:7]}.{date_iso[:4]}"
+                elif date_iso:
+                    date_disp = str(date_iso)
                 
                 if ep_num is not None:
                     if is_youtube_playlist:
@@ -6130,9 +6145,13 @@ class DeezerDownloaderGUI:
                 else:
                     label_text = f"▶ {title}"
                 
-                # Füge Dauer hinzu
+                extras = []
                 if duration:
-                    label_text += f" ({duration})"
+                    extras.append(duration)
+                if date_disp:
+                    extras.append(date_disp)
+                if extras:
+                    label_text += f" ({', '.join(extras)})"
                 
                 # Kürze Titel falls zu lang
                 if len(label_text) > 70:
@@ -6865,9 +6884,12 @@ class DeezerDownloaderGUI:
                             remaining_episode_info = {
                                 'title': remaining_episode.get('title', 'Unbekannt'),
                                 'series_name': remaining_episode.get('series', series_name),
+                                'series': remaining_episode.get('series', series_name),
                                 'season_number': remaining_episode.get('season_number', season_number),
                                 'episode_number': remaining_episode.get('episode_number'),
                                 'playlist_index': remaining_episode.get('playlist_index'),
+                                'broadcast_date': remaining_episode.get('broadcast_date') or '',
+                                'upload_date': remaining_episode.get('upload_date') or '',
                                 'url': remaining_url
                             }
                             # Füge zur Queue hinzu ohne Dialog
@@ -6911,7 +6933,18 @@ class DeezerDownloaderGUI:
                     self.root.after(0, _update)
                 
                 # Hole Video-Info für diese Episode
-                episode_info = self.video_downloader.get_video_info(url)
+                episode_info = self.video_downloader.get_video_info(url) or {}
+                if episode.get('title'):
+                    episode_info['title'] = episode.get('title')
+                if episode.get('series') or series_name:
+                    episode_info['series'] = episode.get('series') or series_name
+                if episode.get('season_number') is not None or season_number is not None:
+                    episode_info['season_number'] = episode.get('season_number') if episode.get('season_number') is not None else season_number
+                if episode.get('episode_number') is not None:
+                    episode_info['episode_number'] = episode.get('episode_number')
+                if episode.get('broadcast_date') or episode.get('upload_date'):
+                    episode_info['broadcast_date'] = episode.get('broadcast_date') or episode_info.get('broadcast_date') or ''
+                    episode_info['upload_date'] = episode.get('upload_date') or episode_info.get('upload_date') or ''
                 
                 # Geschwindigkeits-Limit (aus Einstellungen)
                 speed_limit = None
@@ -9736,6 +9769,8 @@ Copyright (c) 2025 Universal Downloader Contributors
             # {episode}  = Episodennummer
             # {episode2} = Episodennummer zweistellig (z. B. 01)
             # {title}   = Episoden- bzw. Filmtitel
+            # {date}/{datum}/{sendedatum} = Sendedatum YYYY-MM-DD (optional, z. B. ARD Sounds)
+            # {date_de}/{datum_de} = Sendedatum TT.MM.JJJJ
             'series_filename_template': 'E{episode2} - {title}',
             'movie_filename_template': '{title}',
             'audiothek_filename_template': 'E{episode2} - {title}',
@@ -10080,7 +10115,7 @@ Copyright (c) 2025 Universal Downloader Contributors
         series_template_entry.grid(row=3, column=1, padx=5, pady=5, sticky=(tk.W, tk.E))
         series_help = ttk.Label(
             video_frame,
-            text="Platzhalter: {series}/{staffel}, {season2}/{staffel2}, {episode}/{folge}, {episode2}/{folge2}, {title}/{name}",
+            text="Platzhalter: {series}/{staffel}, {season2}/{staffel2}, {episode}/{folge}, {episode2}/{folge2}, {title}/{name}, optional {date}/{sendedatum} (YYYY-MM-DD) oder {date_de}",
             font=("Arial", 8),
             style="Download.TLabel"
         )
@@ -10095,7 +10130,7 @@ Copyright (c) 2025 Universal Downloader Contributors
         audiothek_template_var = tk.StringVar(value=self.settings.get('audiothek_filename_template', 'E{episode2} - {title}'))
         audiothek_template_entry = ttk.Entry(video_frame, textvariable=audiothek_template_var, width=40, style="Download.TEntry")
         audiothek_template_entry.grid(row=6, column=1, padx=5, pady=(5, 5), sticky=(tk.W, tk.E))
-        ttk.Label(video_frame, text="Gilt für ARD Audiothek (Serien/Podcasts). Platzhalter wie bei Serie.", font=("Arial", 8), style="Download.TLabel").grid(row=7, column=0, columnspan=2, sticky=tk.W, padx=5)
+        ttk.Label(video_frame, text="Gilt für ARD Audiothek und ARD Sounds. Optional z. B. {date} - E{episode2} - {title} (Sendedatum zuerst).", font=("Arial", 8), style="Download.TLabel").grid(row=7, column=0, columnspan=2, sticky=tk.W, padx=5)
         
         # Grafikarte (GPU) für Konvertierung – nur verbaut/verfügbare anzeigen
         ttk.Label(video_frame, text="Grafikkarte (GPU):", style="Download.TLabel").grid(row=8, column=0, sticky=tk.W, pady=5)

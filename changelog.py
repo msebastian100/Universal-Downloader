@@ -11,6 +11,24 @@ from typing import List, Optional, Dict, Any
 # Neueste Version zuerst – wird für „Erster Start“ und Upgrade-Anzeige genutzt
 RELEASE_NOTES: List[Dict[str, Any]] = [
     {
+        "version": "2.1.15",
+        "date": "2026-09-21",
+        "items": [
+            "ARD Sounds: nach Website-Umbau wieder komplette Sendungs-Folgenlisten (API zuerst, auch urn:ard:section:… / extra).",
+            "ARD Sounds: Mini-Serien wie (1/5)–(5/5) korrekt sortiert bei gleichem Sendedatum.",
+            "Dateinamen: optionale Platzhalter {date}/{sendedatum} und {date_de}; Sendedatum in Europe/Berlin (kein Tag Versatz).",
+            "Linux: install_apt_linux.sh – APT-Repo inkl. Schlüssel-Import, Fallback und Fehler-Log.",
+        ],
+    },
+    {
+        "version": "2.1.14",
+        "date": "2026-09-03",
+        "items": [
+            "Dateinamen: optionale Platzhalter {date}/{sendedatum} (YYYY-MM-DD) und {date_de} (TT.MM.JJJJ) für das Sendedatum.",
+            "ARD Sounds/Audiothek: Sendedatum aus API/Webseite; Anzeige in der Folgenauswahl.",
+        ],
+    },
+    {
         "version": "2.1.13",
         "date": "2026-03-21",
         "items": [
