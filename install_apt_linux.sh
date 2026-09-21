@@ -110,11 +110,11 @@ is_pgp_ascii_key() {
 }
 
 write_sources_signed() {
-    echo "deb [signed-by=${KEY_DEST}] ${REPO_BASE_URL}/ ./" >"$LIST_DEST"
+    echo "deb [signed-by=${KEY_DEST}] ${REPO_BASE_URL} stable main" >"$LIST_DEST"
 }
 
 write_sources_trusted() {
-    echo "deb [trusted=yes] ${REPO_BASE_URL}/ ./" >"$LIST_DEST"
+    echo "deb [trusted=yes] ${REPO_BASE_URL} stable main" >"$LIST_DEST"
     USED_TRUSTED_YES=1
 }
 

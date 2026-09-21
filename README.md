@@ -108,14 +108,14 @@ Schlüssel und `sudo` nicht in einer Pipe kombinieren: sonst fragt `sudo` das Pa
 
 **Manuell – 2. Repository hinzufügen und installieren:**
 ```bash
-echo "deb [signed-by=/etc/apt/trusted.gpg.d/universal-downloader.gpg] https://ppa.plertanix.de/apt/ ./" | sudo tee /etc/apt/sources.list.d/universal-downloader.list
+echo "deb [signed-by=/etc/apt/trusted.gpg.d/universal-downloader.gpg] https://ppa.plertanix.de/apt stable main" | sudo tee /etc/apt/sources.list.d/universal-downloader.list
 sudo apt update
 sudo apt install universal-downloader
 ```
 
 **Alternative ohne Schlüsselverifikation** (nur wenn der Schlüssel-Import bei dir fehlschlägt, z. B. wegen SSL-Problemen): Repository ohne Signaturprüfung eintragen. Nur für vertrauenswürdige Quellen geeignet.
 ```bash
-echo "deb [trusted=yes] https://ppa.plertanix.de/apt/ ./" | sudo tee /etc/apt/sources.list.d/universal-downloader.list
+echo "deb [trusted=yes] https://ppa.plertanix.de/apt stable main" | sudo tee /etc/apt/sources.list.d/universal-downloader.list
 sudo apt update
 sudo apt install universal-downloader
 ```

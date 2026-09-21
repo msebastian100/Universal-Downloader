@@ -45,7 +45,11 @@ zip -r "$SCRIPT_DIR/$ZIP_NAME" "$PROJECT_DIR" \
   -x "*/.idea/*" \
   -x "*/.DS_Store" \
   -x "*/__MACOSX*" \
+  -x "*/Logs/*" \
+  -x "*/logs" \
   -x "*/logs/*" \
+  -x "*vbs.log.txt" \
+  -x "*.log.txt" \
   -x "*.dmg" \
   -x "*.deb" \
   -x "*.log" \

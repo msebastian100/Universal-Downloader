@@ -9448,7 +9448,7 @@ Historie-Einträge: {len(self.video_download_history)}
         frame = ttk.Frame(download_window, padding="20")
         frame.pack(fill=tk.BOTH, expand=True)
         
-        ttk.Label(frame, text="Lade Update herunter...").pack(pady=10)
+        ttk.Label(frame, text="Bereite Update vor...").pack(pady=10)
         
         progress = ttk.Progressbar(frame, mode='indeterminate')
         progress.pack(fill=tk.X, pady=10)
@@ -9460,29 +9460,40 @@ Historie-Einträge: {len(self.video_download_history)}
         def download_thread():
             try:
                 checker = UpdateChecker()
-                success = checker.download_update(update_info['download_url'], Path(save_path))
+                use_apt = str(update_info.get('download_url') or '').startswith('apt:')
+                if use_apt:
+                    success = True
+                else:
+                    success = checker.download_update(update_info['download_url'], Path(save_path))
                 
                 def update_ui():
                     progress.stop()
                     if success:
-                        status_label.config(text="✓ Download erfolgreich! Installiere Update...")
+                        status_label.config(text="Installiere Update (Passwort-Dialog)...")
                         self.root.update()
                         
-                        # Installiere Update (ersetze alte .exe)
-                        install_success = self._install_update(Path(save_path), update_info['version'])
+                        install_success, install_msg = self._install_update(
+                            None if use_apt else Path(save_path),
+                            update_info['version'],
+                        )
                         
                         if install_success:
                             status_label.config(text="✓ Update installiert! Starte Programm neu...")
                             self.root.update()
                             
                             # Starte Programm neu
-                            self._restart_application(Path(save_path))
+                            self._restart_application(Path(save_path) if not use_apt else None)
                         else:
                             status_label.config(text="⚠ Installation fehlgeschlagen")
+                            hint = (
+                                "sudo apt update && sudo apt install --only-upgrade universal-downloader"
+                                if use_apt else str(save_path)
+                            )
+                            detail = f"\n\n{install_msg}" if install_msg else ""
                             messagebox.showwarning(
                                 "Warnung",
-                                f"Update wurde heruntergeladen, aber die Installation ist fehlgeschlagen.\n\n"
-                                f"Bitte installieren Sie das Update manuell:\n{save_path}"
+                                "Update-Installation fehlgeschlagen."
+                                f"{detail}\n\nBitte manuell:\n{hint}"
                             )
                             download_window.destroy()
                             if parent_window:
@@ -9501,16 +9512,11 @@ Historie-Einträge: {len(self.video_download_history)}
         
         threading.Thread(target=download_thread, daemon=True).start()
     
-    def _install_update(self, update_file: Path, new_version: str) -> bool:
+    def _install_update(self, update_file: Optional[Path], new_version: str):
         """
-        Installiert das Update, indem die alte .exe ersetzt wird
-        
-        Args:
-            update_file: Pfad zur neuen .exe/.deb Datei
-            new_version: Neue Versionsnummer
-            
+        Installiert das Update (Windows: .exe ersetzen, Linux: APT/pkexec).
         Returns:
-            True bei Erfolg, False sonst
+            (True/False, Fehler- oder Logtext)
         """
         try:
             if sys.platform == "win32":
@@ -9520,7 +9526,7 @@ Historie-Einträge: {len(self.video_download_history)}
                 # Prüfe ob wir in einer .exe sind
                 if not getattr(sys, 'frozen', False):
                     # Normale Python-Umgebung - kann nicht automatisch installieren
-                    return False
+                    return False, "Kein Windows-.exe-Build – automatische Installation nicht möglich."
                 
                 # Erstelle Backup der alten .exe
                 backup_path = current_exe.parent / f"{current_exe.stem}_backup_{get_version()}.exe"
@@ -9531,24 +9537,22 @@ Historie-Einträge: {len(self.video_download_history)}
                 shutil.copy2(update_file, current_exe)
                 
                 # Lösche Update-Datei aus Temp
-                update_file.unlink(missing_ok=True)
+                if update_file:
+                    update_file.unlink(missing_ok=True)
                 
-                return True
+                return True, ""
             elif sys.platform == "linux":
-                # Linux: Installiere .deb Paket
-                result = subprocess.run(
-                    ['sudo', 'dpkg', '-i', str(update_file)],
-                    capture_output=True,
-                    text=True
-                )
-                return result.returncode == 0
+                if not UpdateChecker:
+                    return False, "Updater nicht verfügbar."
+                ok, msg = UpdateChecker().install_linux_update(update_file)
+                return ok, msg
             else:
                 # macOS: Kann nicht automatisch installieren
-                return False
+                return False, "macOS: bitte manuell neu installieren."
                 
         except Exception as e:
             print(f"[ERROR] Fehler bei Update-Installation: {e}")
-            return False
+            return False, str(e)
     
     def _restart_application(self, update_file: Path = None):
         """

@@ -19,14 +19,31 @@ def is_frozen():
     return getattr(sys, 'frozen', False) or hasattr(sys, '_MEIPASS')
 
 
+def is_snap():
+    """True wenn die App als Snap läuft (read-only, Abhängigkeiten gebündelt)."""
+    return bool(os.environ.get("SNAP"))
+
+
+def is_flatpak():
+    """True wenn die App als Flatpak läuft."""
+    return bool(os.environ.get("FLATPAK_ID"))
+
+
+def is_bundled_linux():
+    """Snap oder Flatpak: Abhängigkeiten sind im Paket, kein pip."""
+    return is_snap() or is_flatpak()
+
+
 def get_app_dir():
     """Gibt das Anwendungsverzeichnis zurück"""
+    if is_snap():
+        return Path(os.environ["SNAP"]) / "share" / "universal-downloader"
+    if is_flatpak():
+        return Path("/app/share/universal-downloader")
     if is_frozen():
         # In .exe: Verwende das Verzeichnis der .exe
         return Path(sys.executable).parent
-    else:
-        # Normale Python-Umgebung
-        return Path(__file__).parent
+    return Path(__file__).parent
 
 
 def _deps_marker_path():
@@ -39,7 +56,7 @@ def deps_marker_valid():
     Prüft ob die letzte Abhängigkeits-Installation noch gültig ist.
     Gültig = Marker existiert und requirements.txt wurde nicht geändert.
     """
-    if is_frozen():
+    if is_frozen() or is_bundled_linux():
         return True  # Bei gebündelter App keine pip-Installation
     marker = _deps_marker_path()
     if not marker.exists():
@@ -55,7 +72,7 @@ def deps_marker_valid():
 
 def set_deps_marker():
     """Setzt die Marker-Datei nach erfolgreicher Abhängigkeits-Installation."""
-    if is_frozen():
+    if is_frozen() or is_bundled_linux():
         return
     try:
         _deps_marker_path().touch()
@@ -609,6 +626,8 @@ def install_ffmpeg_windows(progress_callback=None):
 
 def install_ffmpeg_linux():
     """Installiert ffmpeg auf Linux"""
+    if is_bundled_linux():
+        return False, "im Paket gebündelt"
     try:
         print("[INFO] Installiere ffmpeg über Paket-Manager...")
         
@@ -767,6 +786,19 @@ def ensure_dependencies():
     ytdlp_ok = False
     ffmpeg_ok = False
     has_updates = False
+
+    if is_bundled_linux():
+        ytdlp_ok, ytdlp_version = check_ytdlp()
+        ffmpeg_ok, ffmpeg_version = check_ffmpeg()
+        if ytdlp_ok:
+            messages.append(f"[OK] yt-dlp verfügbar (Version: {ytdlp_version})")
+        else:
+            messages.append("[WARNING] yt-dlp nicht im Paket")
+        if ffmpeg_ok:
+            messages.append(f"[OK] ffmpeg verfügbar: {ffmpeg_version}")
+        else:
+            messages.append("[WARNING] ffmpeg nicht im Paket")
+        return ytdlp_ok, ffmpeg_ok, messages, False
     
     # Progress-Callback für alle Funktionen
     progress_callback = getattr(ensure_dependencies, '_progress_callback', None)

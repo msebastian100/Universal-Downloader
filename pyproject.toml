@@ -1,0 +1,12 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "universal-downloader"
+version = "0.0.0"
+description = "Universal Downloader (Snap/pip helper metadata)"
+requires-python = ">=3.8"
+
+[tool.setuptools]
+packages = []

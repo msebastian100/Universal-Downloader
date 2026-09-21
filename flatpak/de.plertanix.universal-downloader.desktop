@@ -1,0 +1,14 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Universal Downloader
+Name[de]=Universal Downloader
+Comment=Downloader for music, audiobooks and videos
+Comment[de]=Downloader für Musik, Hörbücher und Videos (Deezer, Audible, ORF, ARD, ZDF, YouTube, …)
+Exec=universal-downloader
+Icon=de.plertanix.universal-downloader
+Terminal=false
+Categories=AudioVideo;Audio;Video;Network;
+Keywords=download;music;video;deezer;youtube;ard;zdf;orf;audible;
+StartupNotify=true
+X-GNOME-UsesNotifications=true

@@ -11,6 +11,29 @@ from typing import List, Optional, Dict, Any
 # Neueste Version zuerst – wird für „Erster Start“ und Upgrade-Anzeige genutzt
 RELEASE_NOTES: List[Dict[str, Any]] = [
     {
+        "version": "2.1.18",
+        "date": "2026-09-21",
+        "items": [
+            "Linux: GNOME/Ubuntu „Software“ zeigt das Paket mit Icon und Beschreibung (AppStream wie bei Ubuntu-Apps).",
+        ],
+    },
+    {
+        "version": "2.1.17",
+        "date": "2026-09-21",
+        "items": [
+            "Linux: Paket erscheint in GNOME/Cinnamon „Software“ (AppStream/DEP-11, APT-Quelle „stable main“).",
+        ],
+    },
+    {
+        "version": "2.1.16",
+        "date": "2026-09-21",
+        "items": [
+            "Linux: In-App-Update nutzt das APT-Repo statt einer GitHub-Windows-.exe (die fälschlich als .deb gespeichert wurde).",
+            "Linux: Update-Installation über pkexec (Passwort-Dialog) statt sudo ohne Terminal.",
+            "Linux: klare Fehlermeldung, falls die Installation scheitert.",
+        ],
+    },
+    {
         "version": "2.1.15",
         "date": "2026-09-21",
         "items": [

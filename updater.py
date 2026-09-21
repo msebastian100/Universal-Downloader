@@ -6,12 +6,16 @@ Prüft auf Updates und ermöglicht automatische Installation
 """
 
 import json
+import os
 import requests
 import sys
 import platform
+import subprocess
 from pathlib import Path
 from typing import Optional, Dict, Tuple
 from version import get_version, compare_versions
+
+APT_PACKAGE = "universal-downloader"
 
 class UpdateChecker:
     """Klasse zum Prüfen und Installieren von Updates"""
@@ -33,6 +37,71 @@ class UpdateChecker:
             'User-Agent': 'UniversalDownloader/Updater'
         })
     
+    def _check_apt_update(self) -> Optional[Dict]:
+        """Linux: neuere Version im konfigurierten APT-Repo (ppa.plertanix.de)."""
+        try:
+            result = subprocess.run(
+                ['apt-cache', 'policy', APT_PACKAGE],
+                capture_output=True, text=True, timeout=20,
+                env={**os.environ, 'LC_ALL': 'C'},
+            )
+            if result.returncode != 0:
+                return None
+            installed = candidate = None
+            for line in result.stdout.splitlines():
+                stripped = line.strip()
+                if stripped.startswith('Installed:'):
+                    installed = stripped.split(':', 1)[1].strip()
+                elif stripped.startswith('Candidate:'):
+                    candidate = stripped.split(':', 1)[1].strip()
+            if not candidate or candidate in ('(none)', 'none'):
+                return None
+            if not installed or installed in ('(none)', 'none'):
+                installed = '0.0.0'
+            if compare_versions(installed, candidate) < 0:
+                return {
+                    'version': candidate,
+                    'download_url': f'apt:{APT_PACKAGE}',
+                    'changelog': '',
+                    'release_date': '',
+                    'release_url': 'https://ppa.plertanix.de/apt/',
+                    'install_method': 'apt',
+                }
+        except (OSError, subprocess.SubprocessError):
+            return None
+        return None
+
+    def install_linux_update(self, deb_path: Optional[Path] = None) -> Tuple[bool, str]:
+        """
+        Installiert unter Linux per APT (Passwort-Dialog über pkexec).
+        deb_path nur als Fallback, wenn es wirklich ein .deb ist.
+        """
+        pkexec = shutil_which('pkexec')
+        if not pkexec:
+            return False, (
+                "pkexec fehlt. Bitte im Terminal:\n"
+                "sudo apt update && sudo apt install --only-upgrade universal-downloader"
+            )
+
+        if deb_path and deb_path.is_file() and _is_debian_package(deb_path):
+            cmd = [pkexec, 'apt-get', 'install', '-y', str(deb_path)]
+        else:
+            cmd = [
+                pkexec, '/bin/bash', '-lc',
+                'export DEBIAN_FRONTEND=noninteractive; '
+                'apt-get update -qq && apt-get install -y universal-downloader',
+            ]
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        except subprocess.TimeoutExpired:
+            return False, "Zeitüberschreitung bei der Installation."
+        except OSError as exc:
+            return False, str(exc)
+        output = ((result.stderr or '') + '\n' + (result.stdout or '')).strip()
+        if result.returncode == 0:
+            return True, output
+        return False, output or f"Exit-Code {result.returncode}"
+
     def check_for_updates(self) -> Tuple[bool, Optional[Dict]]:
         """
         Prüft auf verfügbare Updates
@@ -41,6 +110,12 @@ class UpdateChecker:
             Tuple (update_available, update_info)
             update_info enthält: version, download_url, changelog, release_date
         """
+        # Linux mit APT-Paket: Repo hat Vorrang (GitHub hat oft nur die Windows-.exe)
+        if platform.system().lower() == 'linux':
+            apt_info = self._check_apt_update()
+            if apt_info:
+                return True, apt_info
+
         try:
             response = self.session.get(self.update_url, timeout=self.timeout)
             response.raise_for_status()
@@ -50,7 +125,7 @@ class UpdateChecker:
             
             if 'tag_name' in data:
                 # GitHub Releases Format
-                latest_version = data['tag_name'].lstrip('v')
+                latest_version = data['tag_name'].lstrip('v').lstrip('.')
                 download_url = None
                 
                 # Suche nach passender Asset-Datei
@@ -72,14 +147,12 @@ class UpdateChecker:
                                 download_url = asset['browser_download_url']
                                 break
                 elif system == 'linux':
-                    # Suche nach .deb (priorisiere universal-downloader)
-                    download_url = None
-                    # Zuerst nach universal-downloader suchen
+                    # Nur echte .deb-Dateien – niemals Windows-.exe als Linux-Update
                     for asset in assets:
-                        if 'universal-downloader' in asset['name'].lower() and asset['name'].endswith('.deb'):
+                        name = asset['name'].lower()
+                        if name.endswith('.deb') and 'universal-downloader' in name:
                             download_url = asset['browser_download_url']
                             break
-                    # Fallback: Irgendeine .deb Datei
                     if not download_url:
                         for asset in assets:
                             if asset['name'].endswith('.deb'):
@@ -100,20 +173,6 @@ class UpdateChecker:
                     'release_url': data.get('html_url', ''),
                     'assets': assets  # Für Debugging
                 }
-                
-                # Warnung wenn keine Download-URL gefunden wurde
-                if not download_url and assets:
-                    # Debug-Info: Zeige verfügbare Assets
-                    available_assets = [a['name'] for a in assets]
-                    print(f"[WARNING] Keine passende Asset-Datei gefunden für {system}")
-                    print(f"[INFO] Verfügbare Assets: {available_assets}")
-                    # Fallback: Verwende erste verfügbare Asset (außer Source Code)
-                    for asset in assets:
-                        if not asset['name'].endswith(('.zip', '.tar.gz')):
-                            download_url = asset['browser_download_url']
-                            update_info['download_url'] = download_url
-                            print(f"[INFO] Verwende Fallback-Asset: {asset['name']}")
-                            break
             else:
                 # Eigene JSON-Struktur
                 latest_version = data.get('version', '')
@@ -151,6 +210,8 @@ class UpdateChecker:
         """
         if not download_url:
             return False
+        if download_url.startswith('apt:'):
+            return True
         
         try:
             if save_path is None:
@@ -180,6 +241,19 @@ class UpdateChecker:
         """Kurze Prüfung ob ein Update verfügbar ist"""
         available, _ = self.check_for_updates()
         return available
+
+
+def shutil_which(cmd: str) -> Optional[str]:
+    from shutil import which
+    return which(cmd)
+
+
+def _is_debian_package(path: Path) -> bool:
+    try:
+        with open(path, 'rb') as fh:
+            return fh.read(8).startswith(b'!<arch>\n')
+    except OSError:
+        return False
 
 
 def check_updates_simple() -> Tuple[bool, Optional[str]]:

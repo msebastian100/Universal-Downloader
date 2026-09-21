@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>de.plertanix.universal-downloader</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Universal Downloader</name>
+  <summary>Downloader for music, audiobooks and videos</summary>
+  <summary xml:lang="de">Downloader für Musik, Hörbücher und Videos</summary>
+  <developer id="de.plertanix">
+    <name>PlerTanix</name>
+  </developer>
+  <description>
+    <p>Universal downloader for Deezer, Spotify, Audible, YouTube, ARD, ZDF, ORF and other sources.</p>
+    <p xml:lang="de">Universeller Downloader für Deezer, Spotify, Audible, YouTube, ARD, ZDF, ORF und weitere Quellen.</p>
+  </description>
+  <icon type="stock">de.plertanix.universal-downloader</icon>
+  <launchable type="desktop-id">universal-downloader.desktop</launchable>
+  <launchable type="desktop-id">de.plertanix.universal-downloader.desktop</launchable>
+  <url type="homepage">https://github.com/msebastian100/Universal-Downloader</url>
+  <url type="bugtracker">https://github.com/msebastian100/Universal-Downloader/issues</url>
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/msebastian100/Universal-Downloader/main/packaging/appstream/screenshots/window.png</image>
+      <caption>Main window</caption>
+      <caption xml:lang="de">Hauptfenster</caption>
+    </screenshot>
+  </screenshots>
+  <provides>
+    <binary>universal-downloader</binary>
+  </provides>
+  <categories>
+    <category>AudioVideo</category>
+    <category>Audio</category>
+    <category>Video</category>
+    <category>Network</category>
+  </categories>
+  <keywords>
+    <keyword>download</keyword>
+    <keyword>deezer</keyword>
+    <keyword>youtube</keyword>
+    <keyword>spotify</keyword>
+    <keyword>audible</keyword>
+    <keyword>ard</keyword>
+    <keyword>zdf</keyword>
+    <keyword>orf</keyword>
+  </keywords>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="2.1.18" date="2026-09-21"/>
+  </releases>
+</component>

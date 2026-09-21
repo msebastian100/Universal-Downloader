@@ -1,0 +1,109 @@
+name: universal-downloader
+base: core24
+adopt-info: universal-downloader
+title: Universal Downloader
+summary: Downloader for music, audiobooks and videos
+description: |
+  Universal Downloader is a desktop app for downloading music, audiobooks
+  and videos for personal use.
+
+  **Sources**
+  - Music: Deezer, Spotify
+  - Audiobooks: Audible
+  - Videos: YouTube
+  - Public broadcasters: ARD, ZDF, ORF, Arte, SWR, BR, WDR and others
+
+  **Features**
+  - Graphical interface (no command line needed)
+  - Quality and format selection (e.g. MP4 / MP3)
+  - Playlists, albums and individual titles
+  - Metadata and cover art where available
+  - Progress display and logging
+
+  For personal use only. Respect copyright, the terms of the services you
+  use, and local law.
+
+  Website: https://github.com/msebastian100/Universal-Downloader
+  Issues: https://github.com/msebastian100/Universal-Downloader/issues
+
+grade: stable
+confinement: strict
+license: MIT
+icon: snap/gui/universal-downloader.png
+website: https://github.com/msebastian100/Universal-Downloader
+issues: https://github.com/msebastian100/Universal-Downloader/issues
+source-code: https://github.com/msebastian100/Universal-Downloader
+contact: https://github.com/msebastian100/Universal-Downloader/issues
+
+platforms:
+  amd64:
+  arm64:
+
+apps:
+  universal-downloader:
+    command: bin/universal-downloader
+    extensions: [gnome]
+    common-id: de.plertanix.universal-downloader
+    plugs:
+      - home
+      - network
+      - network-bind
+      - removable-media
+      - audio-playback
+      - audio-record
+      - opengl
+      - browser-support
+    environment:
+      TCL_LIBRARY: $SNAP/usr/share/tcltk/tcl8.6
+      TK_LIBRARY: $SNAP/usr/share/tcltk/tk8.6
+
+layout:
+  /usr/share/tcltk:
+    bind: $SNAP/usr/share/tcltk
+
+parts:
+  universal-downloader:
+    plugin: nil
+    source: .
+    parse-info:
+      - packaging/appstream/de.plertanix.universal-downloader.metainfo.xml
+    build-packages:
+      - python3
+      - python3-pip
+      - python3-venv
+      - python3-tk
+    stage-packages:
+      - python3
+      - python3.12
+      - libpython3.12-stdlib
+      - python3-tk
+      - ffmpeg
+      - libblas3
+      - liblapack3
+      - tcl
+      - tk
+      - fonts-dejavu-core
+      - libtk8.6
+    override-build: |
+      craftctl default
+      python3 -m pip install --ignore-installed --no-compile \
+        -r requirements.txt \
+        --target "$CRAFT_PART_INSTALL/lib/python3.12/site-packages"
+      install -d "$CRAFT_PART_INSTALL/share/universal-downloader"
+      for f in \
+        start.py gui.py version.py changelog.py path_helper.py yt_dlp_helper.py \
+        deezer_downloader.py deezer_auth.py spotify_downloader.py \
+        video_downloader.py audible_integration.py \
+        updater.py update_from_github.py auto_install_dependencies.py \
+        install_ffmpeg.py create_shortcut.py check_dependencies.py \
+        audiobook_providers.py audiobook_search.py stream_automation.py \
+        audio_recorder.py audio_device_detector.py setup_audio_recording.py \
+        series_watch.py mac_platform.py \
+        requirements.txt icon.png
+      do
+        if [ -f "$f" ]; then
+          cp "$f" "$CRAFT_PART_INSTALL/share/universal-downloader/"
+        fi
+      done
+      install -Dm755 "$CRAFT_PROJECT_DIR/snap/local/launcher.sh" \
+        "$CRAFT_PART_INSTALL/bin/universal-downloader"

@@ -1,0 +1,125 @@
+# Flathub-Manifest (Einreichung). Lokal weiter ./build_flatpak.sh nutzen.
+# Quelle der App: GitHub-Tag v2.1.18 — erst nach Push/Tag den commit-Hash eintragen.
+id: de.plertanix.universal-downloader
+runtime: org.freedesktop.Platform
+runtime-version: "24.08"
+sdk: org.freedesktop.Sdk
+command: universal-downloader
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --device=dri
+  - --filesystem=xdg-download
+  - --filesystem=xdg-music
+  - --filesystem=xdg-videos
+  - --filesystem=xdg-documents
+  - --filesystem=/media
+  - --filesystem=/run/media
+  - --talk-name=org.freedesktop.Notifications
+add-extensions:
+  org.freedesktop.Platform.ffmpeg-full:
+    version: "24.08"
+    directory: lib/ffmpeg
+    add-ld-path: .
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /share/man
+  - "*.a"
+modules:
+  - name: tkinter
+    buildsystem: simple
+    build-commands:
+      - pip3 install --prefix=${FLATPAK_DEST} --no-build-isolation .
+    sources:
+      - type: git
+        url: https://github.com/iwalton3/tkinter-standalone
+        commit: 35bde961500fc39ebc5587dcc032a6de31adfe4a
+    modules:
+      - name: tcl
+        buildsystem: autotools
+        subdir: unix
+        config-opts:
+          - --disable-zipfs
+        post-install:
+          - chmod 755 ${FLATPAK_DEST}/lib/libtcl*.so
+        cleanup:
+          - /bin
+          - /lib/pkgconfig
+          - /man
+        sources:
+          - type: archive
+            url: https://prdownloads.sourceforge.net/tcl/tcl9.0.2-src.tar.gz
+            sha256: e074c6a8d9ba2cddf914ba97b6677a552d7a52a3ca102924389a05ccb249b520
+      - name: tk
+        buildsystem: autotools
+        subdir: unix
+        config-opts:
+          - --disable-zipfs
+        post-install:
+          - chmod 755 ${FLATPAK_DEST}/lib/libtcl9tk*.so
+        cleanup:
+          - /bin
+          - /lib/pkgconfig
+          - /man
+        sources:
+          - type: archive
+            url: https://prdownloads.sourceforge.net/tcl/tk9.0.2-src.tar.gz
+            sha256: 76fb852b2f167592fe8b41aa6549ce4e486dbf3b259a269646600e3894517c76
+
+  - name: ffmpeg
+    buildsystem: autotools
+    config-opts:
+      - --enable-gpl
+      - --enable-shared
+      - --disable-static
+      - --disable-doc
+      - --disable-debug
+      - --disable-ffplay
+    post-install:
+      - mkdir -p ${FLATPAK_DEST}/lib/ffmpeg
+    cleanup:
+      - /share/ffmpeg
+    sources:
+      - type: archive
+        url: https://github.com/FFmpeg/FFmpeg/archive/refs/tags/n7.1.1.tar.gz
+        sha256: f117507dc501f2a6c11f9241d8d0c3213846cfad91764361af37befd6b6c523d
+
+  - python3-requirements.json
+
+  - name: universal-downloader
+    buildsystem: simple
+    build-commands:
+      - install -d ${FLATPAK_DEST}/share/universal-downloader
+      - |
+        for f in start.py gui.py version.py changelog.py path_helper.py yt_dlp_helper.py \
+          deezer_downloader.py deezer_auth.py spotify_downloader.py \
+          video_downloader.py audible_integration.py \
+          updater.py update_from_github.py auto_install_dependencies.py \
+          install_ffmpeg.py create_shortcut.py check_dependencies.py \
+          audiobook_providers.py audiobook_search.py stream_automation.py \
+          audio_recorder.py audio_device_detector.py setup_audio_recording.py \
+          series_watch.py mac_platform.py requirements.txt icon.png
+        do
+          if [ -f "$f" ]; then
+            install -m644 "$f" ${FLATPAK_DEST}/share/universal-downloader/
+          fi
+        done
+      - install -Dm755 flatpak/launcher.sh ${FLATPAK_DEST}/bin/universal-downloader
+      - install -Dm644 flatpak/de.plertanix.universal-downloader.desktop \
+          ${FLATPAK_DEST}/share/applications/de.plertanix.universal-downloader.desktop
+      - install -Dm644 packaging/appstream/de.plertanix.universal-downloader.metainfo.xml \
+          ${FLATPAK_DEST}/share/metainfo/de.plertanix.universal-downloader.metainfo.xml
+      - |
+        ICON=snap/gui/icon-store-256.png
+        if [ ! -f "$ICON" ]; then ICON=icon.png; fi
+        install -Dm644 "$ICON" \
+          ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/de.plertanix.universal-downloader.png
+    sources:
+      - type: git
+        url: https://github.com/msebastian100/Universal-Downloader.git
+        tag: v2.1.18
+        # commit: nach git push + tag hier den vollen Hash eintragen

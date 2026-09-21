@@ -70,16 +70,21 @@ ftp_dele() {
     fi
 }
 
-# 1. .deb bauen
-echo "--- Schritt 1: .deb bauen (build_linux.sh) ---"
-./build_linux.sh
-echo ""
+SKIP_BUILD="${SKIP_BUILD:-0}"
 
-# Vorherige Version vom Server holen, damit apt-repo aktuell + Fallback enthält
-CURRENT_VER=$(python3 -c "from version import __version__; print(__version__)" 2>/dev/null || true)
-mkdir -p "$SCRIPT_DIR/deb_build" "$REPO_DIR"
-echo "--- Vorherige Version als Fallback sichern ---"
-PREV_VER=$(ftp_list | python3 -c "
+if [ "$SKIP_BUILD" = "1" ]; then
+    echo "[INFO] SKIP_BUILD=1 – .deb/APT-Repo gelten als fertig, nur FTP."
+else
+    # 1. .deb bauen
+    echo "--- Schritt 1: .deb bauen (build_linux.sh) ---"
+    ./build_linux.sh
+    echo ""
+
+    # Vorherige Version vom Server holen, damit apt-repo aktuell + Fallback enthält
+    CURRENT_VER=$(python3 -c "from version import __version__; print(__version__)" 2>/dev/null || true)
+    mkdir -p "$SCRIPT_DIR/deb_build" "$REPO_DIR"
+    echo "--- Vorherige Version als Fallback sichern ---"
+    PREV_VER=$(ftp_list | python3 -c "
 import sys
 from version import compare_versions
 app = '${APP_NAME}'
@@ -98,36 +103,37 @@ for raw in sys.stdin:
 print(prev or '')
 " 2>/dev/null || true)
 
-if [ -n "$PREV_VER" ]; then
-    PREV_DEB="${APP_NAME}_${PREV_VER}_all.deb"
-    if [ -f "$SCRIPT_DIR/deb_build/$PREV_DEB" ] || [ -f "$REPO_DIR/$PREV_DEB" ]; then
-        echo "[INFO] Vorherige Version $PREV_VER ist lokal vorhanden."
-    else
-        echo "[INFO] Lade Fallback $PREV_VER vom Server..."
-        if curl -f -sS "https://ppa.plertanix.de/apt/${PREV_DEB}" -o "$SCRIPT_DIR/deb_build/$PREV_DEB"; then
-            echo "[INFO] $PREV_DEB per HTTPS geholt."
-        elif curl -f -sS --ftp-pasv -u "${FTP_USER}:${FTP_PASS}" "${FTP_BASE_NO_TRAIL}/${PREV_DEB}" -o "$SCRIPT_DIR/deb_build/$PREV_DEB"; then
-            echo "[INFO] $PREV_DEB per FTP geholt."
+    if [ -n "$PREV_VER" ]; then
+        PREV_DEB="${APP_NAME}_${PREV_VER}_all.deb"
+        if [ -f "$SCRIPT_DIR/deb_build/$PREV_DEB" ] || [ -f "$REPO_DIR/$PREV_DEB" ]; then
+            echo "[INFO] Vorherige Version $PREV_VER ist lokal vorhanden."
         else
-            echo "[WARNUNG] Vorherige Version $PREV_VER konnte nicht geholt werden – Repo enthält nur die aktuelle."
-            rm -f "$SCRIPT_DIR/deb_build/$PREV_DEB"
+            echo "[INFO] Lade Fallback $PREV_VER vom Server..."
+            if curl -f -sS "https://ppa.plertanix.de/apt/${PREV_DEB}" -o "$SCRIPT_DIR/deb_build/$PREV_DEB"; then
+                echo "[INFO] $PREV_DEB per HTTPS geholt."
+            elif curl -f -sS --ftp-pasv -u "${FTP_USER}:${FTP_PASS}" "${FTP_BASE_NO_TRAIL}/${PREV_DEB}" -o "$SCRIPT_DIR/deb_build/$PREV_DEB"; then
+                echo "[INFO] $PREV_DEB per FTP geholt."
+            else
+                echo "[WARNUNG] Vorherige Version $PREV_VER konnte nicht geholt werden – Repo enthält nur die aktuelle."
+                rm -f "$SCRIPT_DIR/deb_build/$PREV_DEB"
+            fi
         fi
+    else
+        echo "[INFO] Keine ältere Version auf dem Server – Repo enthält nur die aktuelle."
     fi
-else
-    echo "[INFO] Keine ältere Version auf dem Server – Repo enthält nur die aktuelle."
-fi
-echo ""
+    echo ""
 
-# 2. APT-Repo erzeugen
-echo "--- Schritt 2: APT-Repo erzeugen (build_apt_repo.sh) ---"
-./build_apt_repo.sh
-echo ""
-echo "[INFO] Paketversionen im APT-Repo:"
-for f in "$REPO_DIR/${APP_NAME}_"*_all.deb; do
-    [ -f "$f" ] || continue
-    echo "  - $(deb_version_from_name "$(basename "$f")")"
-done
-echo ""
+    # 2. APT-Repo erzeugen
+    echo "--- Schritt 2: APT-Repo erzeugen (build_apt_repo.sh) ---"
+    ./build_apt_repo.sh
+    echo ""
+    echo "[INFO] Paketversionen im APT-Repo:"
+    for f in "$REPO_DIR/${APP_NAME}_"*_all.deb; do
+        [ -f "$f" ] || continue
+        echo "  - $(deb_version_from_name "$(basename "$f")")"
+    done
+    echo ""
+fi
 
 if [ ! -d "$REPO_DIR" ] || [ -z "$(ls -A "$REPO_DIR" 2>/dev/null)" ]; then
     echo "[FEHLER] apt-repo/ ist leer oder fehlt."
@@ -148,27 +154,30 @@ echo "[INFO] Lade Dateien aus apt-repo/ hoch (Reihenfolge: Inhalte zuerst, Relea
 upload_file() {
     local f="$1"
     [ -f "$f" ] || return 0
-    local name=$(basename "$f")
-    echo "[INFO] Hochladen: $name"
-    curl -s -T "$f" -u "${FTP_USER}:${FTP_PASS}" "${FTP_BASE_NO_TRAIL}/${name}" --ftp-create-dirs
+    local dest="${2:-$(basename "$f")}"
+    echo "[INFO] Hochladen: $dest"
+    curl -sS -T "$f" -u "${FTP_USER}:${FTP_PASS}" "${FTP_BASE_NO_TRAIL}/${dest}" --ftp-create-dirs
 }
-# 1) Packages und .deb zuerst
-for name in Packages Packages.gz; do
-    [ -f "$REPO_DIR/$name" ] && upload_file "$REPO_DIR/$name"
-done
-for f in "$REPO_DIR"/*.deb; do
-    [ -f "$f" ] && upload_file "$f"
-done
-# 2) Release-Dateien zuletzt
-for name in Release Release.gpg InRelease repo-key.asc; do
-    [ -f "$REPO_DIR/$name" ] && upload_file "$REPO_DIR/$name"
-done
-# 3) Alles Übrige (falls neue Dateien dazukommen)
-for f in "$REPO_DIR"/*; do
-    [ -f "$f" ] || continue
-    name=$(basename "$f")
-    case "$name" in Packages|Packages.gz|Release|Release.gpg|InRelease|repo-key.asc|*.deb) continue ;; esac
-    upload_file "$f"
+
+is_release_name() {
+    case "$1" in
+        Release|Release.gpg|InRelease) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+LATE_REL=()
+while IFS= read -r rel; do
+    [ -z "$rel" ] && continue
+    if is_release_name "$(basename "$rel")"; then
+        LATE_REL+=("$rel")
+        continue
+    fi
+    upload_file "$REPO_DIR/$rel" "$rel"
+done < <(cd "$REPO_DIR" && find . -type f | sed 's|^\./||' | sort)
+
+for rel in "${LATE_REL[@]+"${LATE_REL[@]}"}"; do
+    upload_file "$REPO_DIR/$rel" "$rel"
 done
 
 echo ""
@@ -185,6 +194,24 @@ while IFS= read -r name; do
             ;;
     esac
 done <<< "$(ftp_list)"
+
+POOL_FTP="pool/main/u/${APP_NAME}"
+POOL_LOCAL="$REPO_DIR/$POOL_FTP"
+if [ -d "$POOL_LOCAL" ]; then
+    echo "[INFO] Bereinige Pool-Verzeichnis $POOL_FTP ..."
+    while IFS= read -r name; do
+        [ -z "$name" ] && continue
+        case "$name" in .|..) continue ;; esac
+        case "$name" in
+            ${APP_NAME}_*_all.deb)
+                if [ -f "$POOL_LOCAL/$name" ]; then
+                    continue
+                fi
+                ftp_dele "${POOL_FTP}/${name}" || true
+                ;;
+        esac
+    done <<< "$(curl -s --ftp-pasv -u "${FTP_USER}:${FTP_PASS}" "${FTP_BASE_NO_TRAIL}/${POOL_FTP}/" -l 2>/dev/null | tr -d '\r' || true)"
+fi
 
 echo ""
 echo "============================================================"

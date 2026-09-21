@@ -16,8 +16,14 @@ dist/
 *.exe
 *.deb
 *.zip
-deb_build/
-apt-repo/
+*.snap
+.flatpak-builder/
+flatpak-build/
+*.flatpak
+parts/
+stage/
+prime/
+.snapcraft/
 .deps_ok
 # UniversalDownloader.spec sollte im Repo sein (nicht ignorieren)
 
@@ -33,9 +39,16 @@ apt-repo/
 *.sublime-project
 *.sublime-workspace
 
-# Logs
+# Logs und lokale Laufzeitdateien (nie in Releases)
 Logs/
+logs
 *.log
+*.log.txt
+vbs.log.txt
+.ytdlp_update_check.json
+
+# Cursor (lokal)
+.cursor/
 
 # Konfiguration (sensible Daten)
 .deezer_config.json

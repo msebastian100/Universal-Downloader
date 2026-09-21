@@ -1,0 +1,156 @@
+# Lokales/Flathub-Manifest. App-ID wie AppStream.
+# Bauen (Linux): ./build_flatpak.sh
+id: de.plertanix.universal-downloader
+runtime: org.freedesktop.Platform
+runtime-version: "24.08"
+sdk: org.freedesktop.Sdk
+command: universal-downloader
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --device=dri
+  - --filesystem=home
+  - --filesystem=xdg-download
+  - --filesystem=/media
+  - --filesystem=/run/media
+  - --talk-name=org.freedesktop.Notifications
+add-extensions:
+  org.freedesktop.Platform.ffmpeg-full:
+    version: "24.08"
+    directory: lib/ffmpeg
+    add-ld-path: .
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /share/man
+  - "*.a"
+modules:
+  # Freedesktop-Python hat kein _tkinter
+  - name: tkinter
+    buildsystem: simple
+    build-commands:
+      - pip3 install --prefix=${FLATPAK_DEST} --no-build-isolation .
+    sources:
+      - type: git
+        url: https://github.com/iwalton3/tkinter-standalone
+        # Python 3.12 (Freedesktop 24.08); neueres HEAD braucht >=3.13
+        commit: 35bde961500fc39ebc5587dcc032a6de31adfe4a
+    modules:
+      - name: tcl
+        buildsystem: autotools
+        subdir: unix
+        config-opts:
+          - --disable-zipfs
+        post-install:
+          - chmod 755 ${FLATPAK_DEST}/lib/libtcl*.so
+        cleanup:
+          - /bin
+          - /lib/pkgconfig
+          - /man
+        sources:
+          - type: archive
+            url: https://prdownloads.sourceforge.net/tcl/tcl9.0.2-src.tar.gz
+            sha256: e074c6a8d9ba2cddf914ba97b6677a552d7a52a3ca102924389a05ccb249b520
+      - name: tk
+        buildsystem: autotools
+        subdir: unix
+        config-opts:
+          - --disable-zipfs
+        post-install:
+          - chmod 755 ${FLATPAK_DEST}/lib/libtcl9tk*.so
+        cleanup:
+          - /bin
+          - /lib/pkgconfig
+          - /man
+        sources:
+          - type: archive
+            url: https://prdownloads.sourceforge.net/tcl/tk9.0.2-src.tar.gz
+            sha256: 76fb852b2f167592fe8b41aa6549ce4e486dbf3b259a269646600e3894517c76
+
+  - name: ffmpeg
+    buildsystem: simple
+    build-options:
+      build-args:
+        - --share=network
+    build-commands:
+      - mkdir -p ${FLATPAK_DEST}/lib/ffmpeg
+      - |
+        arch=$(uname -m)
+        case "$arch" in
+          x86_64)  url="https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz" ;;
+          aarch64) url="https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-arm64-static.tar.xz" ;;
+          *) echo "unsupported arch $arch" >&2; exit 1 ;;
+        esac
+        curl -fsSL "$url" -o /tmp/ffmpeg-static.tar.xz
+        tar -xJf /tmp/ffmpeg-static.tar.xz -C /tmp
+        install -Dm755 /tmp/ffmpeg-*-static/ffmpeg ${FLATPAK_DEST}/bin/ffmpeg
+        install -Dm755 /tmp/ffmpeg-*-static/ffprobe ${FLATPAK_DEST}/bin/ffprobe
+    sources:
+      - type: file
+        path: ../version.py
+
+  - name: python-deps
+    buildsystem: simple
+    build-options:
+      build-args:
+        - --share=network
+    build-commands:
+      - pip3 install --prefix=${FLATPAK_DEST} --ignore-installed -r requirements.txt
+    sources:
+      - type: file
+        path: ../requirements.txt
+
+  - name: universal-downloader
+    buildsystem: simple
+    build-commands:
+      - install -d ${FLATPAK_DEST}/share/universal-downloader
+      - |
+        for f in start.py gui.py version.py changelog.py path_helper.py yt_dlp_helper.py \
+          deezer_downloader.py deezer_auth.py spotify_downloader.py \
+          video_downloader.py audible_integration.py \
+          updater.py update_from_github.py auto_install_dependencies.py \
+          install_ffmpeg.py create_shortcut.py check_dependencies.py \
+          audiobook_providers.py audiobook_search.py stream_automation.py \
+          audio_recorder.py audio_device_detector.py setup_audio_recording.py \
+          series_watch.py mac_platform.py requirements.txt icon.png
+        do
+          if [ -f "$f" ]; then
+            install -m644 "$f" ${FLATPAK_DEST}/share/universal-downloader/
+          fi
+        done
+      - install -Dm755 flatpak/launcher.sh ${FLATPAK_DEST}/bin/universal-downloader
+      - install -Dm644 flatpak/de.plertanix.universal-downloader.desktop \
+          ${FLATPAK_DEST}/share/applications/de.plertanix.universal-downloader.desktop
+      - install -Dm644 packaging/appstream/de.plertanix.universal-downloader.metainfo.xml \
+          ${FLATPAK_DEST}/share/metainfo/de.plertanix.universal-downloader.metainfo.xml
+      - |
+        ICON=snap/gui/icon-store-256.png
+        if [ ! -f "$ICON" ]; then ICON=icon.png; fi
+        install -Dm644 "$ICON" \
+          ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/de.plertanix.universal-downloader.png
+    sources:
+      - type: dir
+        path: ..
+        skip:
+          - .git
+          - .cursor
+          - Logs
+          - logs
+          - .flatpak-builder
+          - flatpak-build
+          - apt-repo
+          - deb_build
+          - dist
+          - build
+          - parts
+          - stage
+          - prime
+          - "*.snap"
+          - "*.flatpak"
+          - .ftp-credentials
+          - .deezer_config.json
+          - .audible_config.json
+          - settings.json

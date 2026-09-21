@@ -73,6 +73,7 @@ PY_FILES=(
     install_ffmpeg.py create_shortcut.py check_dependencies.py
     audiobook_providers.py audiobook_search.py stream_automation.py
     audio_recorder.py audio_device_detector.py setup_audio_recording.py
+    series_watch.py mac_platform.py
 )
 
 echo "Kopiere Anwendungsdateien..."
@@ -86,13 +87,25 @@ done
 
 cp requirements.txt "$BUILD_DIR$INSTALL_DIR/" || exit 1
 
-# Icon: für Desktop-Verknüpfung (Startmenü) und im Installationsordner fürs Fenster-Icon
+# Icon: Pixmap, App-Ordner und hicolor (GNOME/Ubuntu „Software“ + Startmenü)
 if [ -f "icon.png" ]; then
     cp icon.png "$BUILD_DIR/usr/share/pixmaps/$APP_NAME.png"
-    cp icon.png "$BUILD_DIR$INSTALL_DIR/"  # App sucht Icon in script_dir (Path(__file__).parent)
+    cp icon.png "$BUILD_DIR$INSTALL_DIR/"
+    mkdir -p "$BUILD_DIR/usr/share/icons/hicolor/256x256/apps"
+    cp icon.png "$BUILD_DIR/usr/share/icons/hicolor/256x256/apps/$APP_NAME.png"
 fi
-if [ -f "icon.ico" ]; then
-    cp icon.ico "$BUILD_DIR$INSTALL_DIR/"  # optional, für Fenster-Icon unter Linux
+for sz in 48 64; do
+    src="packaging/appstream/icons/${sz}x${sz}/$APP_NAME.png"
+    if [ -f "$src" ]; then
+        mkdir -p "$BUILD_DIR/usr/share/icons/hicolor/${sz}x${sz}/apps"
+        cp "$src" "$BUILD_DIR/usr/share/icons/hicolor/${sz}x${sz}/apps/$APP_NAME.png"
+    fi
+done
+# AppStream-Metadaten (GNOME/Cinnamon „Software“)
+mkdir -p "$BUILD_DIR/usr/share/metainfo"
+if [ -f "packaging/appstream/de.plertanix.universal-downloader.metainfo.xml" ]; then
+    cp "packaging/appstream/de.plertanix.universal-downloader.metainfo.xml" \
+       "$BUILD_DIR/usr/share/metainfo/"
 fi
 
 # Wrapper-Skript: startet die App mit der venv (wird in postinst angelegt)
@@ -118,7 +131,7 @@ Name[de]=Universal Downloader
 Comment=Downloader für Musik, Hörbücher und Videos (Deezer, Audible, ORF, ARD, ZDF, YouTube, …)
 Comment[de]=Downloader für Musik, Hörbücher und Videos (Deezer, Audible, ORF, ARD, ZDF, YouTube, …)
 Exec=$APP_NAME
-Icon=$INSTALL_DIR/icon.png
+Icon=universal-downloader
 Terminal=false
 Categories=AudioVideo;Audio;Video;Network;
 Keywords=download;music;video;deezer;youtube;ard;zdf;orf;audible;

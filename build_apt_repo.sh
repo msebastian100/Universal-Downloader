@@ -11,8 +11,10 @@
 #   3. Inhalt von apt-repo/ auf den Server kopieren (z.B. nach /var/www/apt/)
 #
 # Nutzer fügen dann hinzu:
-#   deb [signed-by=/etc/apt/trusted.gpg.d/universal-downloader.gpg] https://ppa.plertanix.de/apt/ ./
+#   deb [signed-by=/etc/apt/trusted.gpg.d/universal-downloader.gpg] https://ppa.plertanix.de/apt stable main
 #   sudo apt update && sudo apt install universal-downloader
+#
+# Zusätzlich bleibt das flache Layout (Packages/.deb im Root) für ältere Quellen mit „./“.
 
 set -e
 
@@ -39,6 +41,8 @@ deb_version() {
 }
 
 mkdir -p "$REPO_DIR"
+# Pool/dists nicht mit in den flachen Packages-Index scannen
+rm -rf "$REPO_DIR/pool" "$REPO_DIR/dists"
 
 # Kandidaten: frisch gebaut (deb_build) plus bereits im Repo (vorherige Version)
 VERSIONS=$( {
@@ -163,8 +167,129 @@ if [ ! -s Packages ]; then
 fi
 gzip -9c Packages > Packages.gz
 
+# AppStream / DEP-11 – damit GNOME/Cinnamon „Software“ das Paket findet
+echo "[INFO] Erzeuge AppStream-Metadaten (DEP-11)..."
+python3 - <<'PY'
+from pathlib import Path
+import gzip, hashlib, shutil, tarfile, io, os
+
+repo = Path(".")
+root = Path("..")
+icon_src_64 = root / "packaging/appstream/icons/64x64/universal-downloader.png"
+icon_src_48 = root / "packaging/appstream/icons/48x48/universal-downloader.png"
+dep11 = repo / "dep11"
+if dep11.exists():
+    shutil.rmtree(dep11)
+dep11.mkdir()
+
+# Versionsnummer aus Packages (höchste Version)
+version = "0"
+for block in Path("Packages").read_text(encoding="utf-8").split("\n\n"):
+    for line in block.splitlines():
+        if line.startswith("Version:"):
+            version = line.split(":", 1)[1].strip()
+
+# Ubuntu-Software erwartet Icon-Namen {paket}_{id}.png IM TAR-ROOT
+# (nicht 64x64/…, sonst landet die Datei in …/64x64/64x64/ und die App wird versteckt).
+icon_name = "universal-downloader_de.plertanix.universal-downloader.png"
+yml = f"""---
+File: DEP-11
+Version: '0.14'
+Origin: plertanix
+---
+Type: desktop-application
+ID: de.plertanix.universal-downloader
+Package: universal-downloader
+Name:
+  C: Universal Downloader
+  de: Universal Downloader
+Summary:
+  C: Downloader for music, audiobooks and videos
+  de: Downloader für Musik, Hörbücher und Videos
+Description:
+  C: >-
+    <p>Universal downloader for Deezer, Spotify, Audible, YouTube, ARD, ZDF, ORF
+    and other sources.</p>
+  de: >-
+    <p>Universeller Downloader für Deezer, Spotify, Audible, YouTube, ARD, ZDF, ORF
+    und weitere Quellen.</p>
+Icon:
+  cached:
+  - name: {icon_name}
+    width: 48
+    height: 48
+  - name: {icon_name}
+    width: 64
+    height: 64
+  stock: universal-downloader
+Categories:
+- AudioVideo
+- Audio
+- Video
+- Network
+Keywords:
+  C:
+  - download
+  - deezer
+  - youtube
+  - spotify
+  - audible
+  - ard
+  - zdf
+  - orf
+Launchable:
+  desktop-id:
+  - universal-downloader.desktop
+Provides:
+  binaries:
+  - universal-downloader
+ProjectLicense: MIT
+DeveloperName:
+  C: PlerTanix
+Url:
+  homepage: https://github.com/msebastian100/Universal-Downloader
+ContentRating:
+  oars-1.1: {{}}
+Releases:
+- version: '{version}'
+  type: stable
+"""
+# Unkomprimiert + .gz: apt matched den IndexTarget nur gegen den
+# MetaKey ohne Suffix (…/Components-arm64.yml, …/icons-64x64.tar).
+yml_bytes = yml.encode("utf-8")
+for arch in ("amd64", "arm64"):
+    raw = dep11 / f"Components-{arch}.yml"
+    raw.write_bytes(yml_bytes)
+    with gzip.open(str(raw) + ".gz", "wb", compresslevel=9) as fh:
+        fh.write(yml_bytes)
+
+def write_icon_tar(src: Path, size: int):
+    if not src.is_file():
+        return
+    tar_path = dep11 / f"icons-{size}x{size}.tar"
+    buf = io.BytesIO()
+    data = src.read_bytes()
+    with tarfile.open(fileobj=buf, mode="w") as tf:
+        info = tarfile.TarInfo(name=icon_name)
+        info.size = len(data)
+        tf.addfile(info, io.BytesIO(data))
+    tar_path.write_bytes(buf.getvalue())
+    with gzip.open(str(tar_path) + ".gz", "wb", compresslevel=9) as fh:
+        fh.write(tar_path.read_bytes())
+
+write_icon_tar(icon_src_48, 48)
+write_icon_tar(icon_src_64, 64)
+print("[OK] DEP-11 geschrieben:", ", ".join(p.name for p in sorted(dep11.iterdir())))
+PY
+
 # Release-File mit Date und SHA256 (entfernt apt-Warnungen zu Hash/Date)
 echo "[INFO] Erzeuge Release..."
+sha_line() {
+  local f="$1"
+  local listed="$2"
+  [ -f "$f" ] || return 0
+  printf ' %s %s %s\n' "$(sha256sum -b "$f" | awk '{print $1}')" "$(stat -c %s "$f" 2>/dev/null || wc -c < "$f")" "$listed"
+}
 {
   echo "Origin: Universal Downloader"
   echo "Label: Universal Downloader"
@@ -176,28 +301,99 @@ echo "[INFO] Erzeuge Release..."
   # RFC 2822, UTC – erforderlich damit apt den Date-Eintrag akzeptiert (kein "Ungültiger Date-Eintrag")
   echo "Date: $(LC_ALL=C date -u +"%a, %d %b %Y %H:%M:%S UTC")"
   echo "SHA256:"
-  printf ' %s %s %s\n' "$(sha256sum -b Packages    | awk '{print $1}')" "$(stat -c %s Packages 2>/dev/null || wc -c < Packages)" "Packages"
-  printf ' %s %s %s\n' "$(sha256sum -b Packages.gz | awk '{print $1}')" "$(stat -c %s Packages.gz 2>/dev/null || wc -c < Packages.gz)" "Packages.gz"
+  sha_line Packages Packages
+  sha_line Packages.gz Packages.gz
+  # Pfade wie apt sie für ein Flat-Repo mit Component „.“ erwartet
+  for f in dep11/Components-amd64.yml dep11/Components-amd64.yml.gz \
+           dep11/Components-arm64.yml dep11/Components-arm64.yml.gz \
+           dep11/icons-48x48.tar dep11/icons-48x48.tar.gz \
+           dep11/icons-64x64.tar dep11/icons-64x64.tar.gz; do
+    sha_line "$f" "./$f"
+    sha_line "$f" "$f"
+  done
 } > Release
 
-# Optional: Release mit GPG signieren → „Ign: ... Release.gpg“ und „Ign: ... InRelease“ verschwinden
-if command -v gpg &>/dev/null; then
+sign_release() {
+  # Signiert Release im aktuellen Verzeichnis (Release.gpg + InRelease).
+  local label="$1"
+  if ! command -v gpg &>/dev/null; then
+    echo "[Hinweis] gpg nicht installiert – $label wird nicht signiert."
+    rm -f Release.gpg InRelease
+    return 0
+  fi
   SIGNING_KEY="${APT_SIGNING_KEY:-}"
   [ -z "$SIGNING_KEY" ] && SIGNING_KEY=$(gpg --list-secret-keys --with-colons 2>/dev/null | awk -F: '$1=="sec"{print $5;exit}')
-  if [ -n "$SIGNING_KEY" ]; then
+  if [ -z "$SIGNING_KEY" ]; then
+    echo "[Hinweis] Kein GPG-Schlüssel – $label ohne Release.gpg/InRelease."
     rm -f Release.gpg InRelease
-    if gpg -abs -u "$SIGNING_KEY" -o Release.gpg Release 2>/dev/null; then
-      echo "[INFO] Release signiert (Release.gpg)."
-      gpg --clearsign -u "$SIGNING_KEY" -o InRelease Release 2>/dev/null && echo "[INFO] InRelease erstellt (clearsigned)."
-      gpg --export --armor "$SIGNING_KEY" > repo-key.asc 2>/dev/null && echo "[INFO] Öffentlicher Schlüssel: apt-repo/repo-key.asc – nach https://ppa.plertanix.de/apt/ hochladen."
-    fi
-  else
-    echo "[Hinweis] Kein GPG-Schlüssel – Release.gpg/InRelease nicht erstellt. Deploy löscht alte InRelease auf dem Server; apt nutzt dann Release ([trusted=yes])."
+    return 0
   fi
-else
-  echo "[Hinweis] gpg nicht installiert – Release wird nicht signiert."
   rm -f Release.gpg InRelease
+  if gpg -abs -u "$SIGNING_KEY" -o Release.gpg Release 2>/dev/null; then
+    echo "[INFO] $label signiert (Release.gpg)."
+    gpg --clearsign -u "$SIGNING_KEY" -o InRelease Release 2>/dev/null && echo "[INFO] $label InRelease erstellt."
+    return 0
+  fi
+  echo "[WARNUNG] Signatur von $label fehlgeschlagen."
+}
+
+# Optional: Release mit GPG signieren → „Ign: ... Release.gpg“ und „Ign: ... InRelease“ verschwinden
+sign_release "Flat-Release"
+if [ -n "${SIGNING_KEY:-}" ]; then
+  gpg --export --armor "$SIGNING_KEY" > repo-key.asc 2>/dev/null && echo "[INFO] Öffentlicher Schlüssel: apt-repo/repo-key.asc – nach https://ppa.plertanix.de/apt/ hochladen."
 fi
+
+# Standard-Debian-Layout: GNOME/Cinnamon „Software“ holt DEP-11 nur bei
+# Component „main“ (nicht bei flachem „./“ – dort fehlt apt der flatMetaKey).
+echo "[INFO] Erzeuge dists/stable/main (Suite + Component für AppStream)..."
+POOL_REL="pool/main/u/${APP_NAME}"
+rm -rf pool dists
+mkdir -p "$POOL_REL"
+for f in ${APP_NAME}_*_all.deb; do
+  [ -f "$f" ] && cp "$f" "$POOL_REL/"
+done
+DIST_PKGS="Packages.dists"
+sed "s|^Filename: |Filename: ${POOL_REL}/|" Packages > "$DIST_PKGS"
+gzip -9c "$DIST_PKGS" > "${DIST_PKGS}.gz"
+for arch in all amd64 arm64; do
+  bin_dir="dists/stable/main/binary-${arch}"
+  mkdir -p "$bin_dir"
+  cp "$DIST_PKGS" "$bin_dir/Packages"
+  cp "${DIST_PKGS}.gz" "$bin_dir/Packages.gz"
+done
+mkdir -p dists/stable/main/dep11
+cp -a dep11/. dists/stable/main/dep11/
+rm -f "$DIST_PKGS" "${DIST_PKGS}.gz"
+
+{
+  echo "Origin: Universal Downloader"
+  echo "Label: Universal Downloader"
+  echo "Suite: stable"
+  echo "Codename: stable"
+  echo "Architectures: amd64 arm64"
+  echo "Components: main"
+  echo "Description: Universal Downloader - APT Repository"
+  echo "Date: $(LC_ALL=C date -u +"%a, %d %b %Y %H:%M:%S UTC")"
+  echo "SHA256:"
+  (
+    cd dists/stable
+    for f in main/binary-all/Packages main/binary-all/Packages.gz \
+             main/binary-amd64/Packages main/binary-amd64/Packages.gz \
+             main/binary-arm64/Packages main/binary-arm64/Packages.gz \
+             main/dep11/Components-amd64.yml main/dep11/Components-amd64.yml.gz \
+             main/dep11/Components-arm64.yml main/dep11/Components-arm64.yml.gz \
+             main/dep11/icons-48x48.tar main/dep11/icons-48x48.tar.gz \
+             main/dep11/icons-64x64.tar main/dep11/icons-64x64.tar.gz; do
+      [ -f "$f" ] || continue
+      printf ' %s %s %s\n' "$(sha256sum -b "$f" | awk '{print $1}')" "$(stat -c %s "$f" 2>/dev/null || wc -c < "$f")" "$f"
+    done
+  )
+} > dists/stable/Release
+
+(
+  cd dists/stable
+  sign_release "dists/stable/Release"
+)
 
 cd "$SCRIPT_DIR"
 

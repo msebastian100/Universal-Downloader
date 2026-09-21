@@ -42,6 +42,16 @@ zip -r "$SCRIPT_DIR/$ZIP_NAME" "$(basename "$SCRIPT_DIR")" \
   -x "*.pyc" \
   -x "*/.git/*" \
   -x "*/Logs/*" \
+  -x "*/logs" \
+  -x "*/logs/*" \
+  -x "*vbs.log.txt" \
+  -x "*.log" \
+  -x "*/.cursor/*" \
+  -x "*/.ytdlp_update_check.json" \
+  -x "*/.ftp-credentials" \
+  -x "*/settings.json" \
+  -x "*/.deezer_config.json" \
+  -x "*/.audible_config.json" \
   -x "*/.gnupg/*" \
   -x "*/.gnupg.zip" \
   -x "*/.DS_Store" \

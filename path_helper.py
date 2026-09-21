@@ -10,6 +10,15 @@ import sys
 from pathlib import Path
 
 
+def user_home():
+    """Home-Verzeichnis des Nutzers (im Snap: echtes Home, nicht ~/snap/…)."""
+    if os.environ.get("SNAP"):
+        real = os.environ.get("SNAP_REAL_HOME")
+        if real:
+            return Path(real)
+    return Path.home()
+
+
 def get_downloads_folder():
     """
     Gibt den Standard-Download-Ordner des Systems zurück
@@ -139,7 +148,7 @@ def get_downloads_folder():
         # Linux: XDG User Directories
         try:
             # Prüfe XDG_USER_DIRS
-            xdg_config_home = os.getenv('XDG_CONFIG_HOME', Path.home() / '.config')
+            xdg_config_home = os.getenv('XDG_CONFIG_HOME', user_home() / '.config')
             user_dirs_file = Path(xdg_config_home) / 'user-dirs.dirs'
             
             if user_dirs_file.exists():
@@ -150,7 +159,7 @@ def get_downloads_folder():
                             path_str = line.split('=', 1)[1].strip().strip('"').strip("'")
                             # Ersetze $HOME mit tatsächlichem Home-Pfad
                             if path_str.startswith('$HOME'):
-                                path_str = str(Path.home()) + path_str[5:]
+                                path_str = str(user_home()) + path_str[5:]
                             elif path_str.startswith('~'):
                                 path_str = str(Path(path_str).expanduser())
                             
@@ -161,10 +170,10 @@ def get_downloads_folder():
             pass
         
         # Fallback: Standard-Pfad
-        downloads_path = Path.home() / "Downloads"
+        downloads_path = user_home() / "Downloads"
         if downloads_path.exists():
             return downloads_path
-        return Path.home() / "Downloads"
+        return user_home() / "Downloads"
 
 
 def get_app_base_path():
@@ -196,7 +205,7 @@ def get_app_base_path():
         return app_path
     
     # Linux: zuerst explizit ~/Downloads/Universal Downloader anlegen (auch bei Start über System-Verknüpfung)
-    standard_path = Path.home() / "Downloads" / "Universal Downloader"
+    standard_path = user_home() / "Downloads" / "Universal Downloader"
     try:
         standard_path.mkdir(parents=True, exist_ok=True)
         return standard_path
@@ -208,7 +217,7 @@ def get_app_base_path():
         app_path.mkdir(parents=True, exist_ok=True)
         return app_path
     except (PermissionError, OSError):
-        app_path = Path.home() / ".universal-downloader"
+        app_path = user_home() / ".universal-downloader"
         app_path.mkdir(parents=True, exist_ok=True)
         return app_path
 
