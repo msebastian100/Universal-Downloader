@@ -122,4 +122,4 @@ modules:
       - type: git
         url: https://github.com/msebastian100/Universal-Downloader.git
         tag: v2.1.18
-        # commit: nach git push + tag hier den vollen Hash eintragen
+        commit: af89e89fc5dd7e8a0cf3b6d605a3efd7bbeb3b2b
