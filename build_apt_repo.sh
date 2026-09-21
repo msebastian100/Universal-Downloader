@@ -85,7 +85,82 @@ done <<< "$KEEP_VERS"
 # Filename: ./file.deb → Filename: file.deb (manche APT-Setups haben mit ./ Probleme)
 echo "[INFO] Erzeuge Packages-Index..."
 cd "$REPO_DIR"
-dpkg-scanpackages -m . /dev/null 2>/dev/null | sed 's|^Filename: \./|Filename: |' > Packages
+if command -v dpkg-scanpackages >/dev/null 2>&1; then
+  dpkg-scanpackages -m . /dev/null 2>/dev/null | sed 's|^Filename: \./|Filename: |' > Packages
+else
+  echo "[Hinweis] dpkg-scanpackages fehlt – erzeuge Packages per Fallback (ar/zstd/tar)."
+  python3 - <<'PY'
+import hashlib, io, os, struct, subprocess, tarfile
+from pathlib import Path
+
+repo = Path(".")
+entries = []
+
+def read_ar_members(data: bytes):
+    assert data[:8] == b"!<arch>\n", "kein ar-Archiv"
+    off = 8
+    while off + 60 <= len(data):
+        hdr = data[off:off + 60]
+        off += 60
+        name = hdr[0:16].decode("ascii", "replace").strip()
+        if name.endswith("/"):
+            name = name[:-1]
+        size = int(hdr[48:58].decode("ascii").strip())
+        body = data[off:off + size]
+        off += size + (size % 2)
+        yield name, body
+
+def control_from_deb(path: Path) -> str:
+    data = path.read_bytes()
+    for name, body in read_ar_members(data):
+        if not name.startswith("control.tar"):
+            continue
+        raw = body
+        if name.endswith(".zst") or name.endswith(".zstd"):
+            raw = subprocess.check_output(["zstd", "-d", "-c"], input=body)
+            mode = "r:"
+        elif name.endswith(".xz"):
+            mode = "r:xz"
+        elif name.endswith(".gz"):
+            mode = "r:gz"
+        else:
+            mode = "r:"
+        with tarfile.open(fileobj=io.BytesIO(raw), mode=mode) as tf:
+            for m in tf.getmembers():
+                base = m.name.split("/")[-1]
+                if base == "control" and m.isfile():
+                    return tf.extractfile(m).read().decode("utf-8", "replace")
+    raise RuntimeError(f"Kein control in {path.name}")
+
+for deb in sorted(repo.glob("*.deb")):
+    ctrl = control_from_deb(deb).strip() + "\n"
+    size = deb.stat().st_size
+    md5 = hashlib.md5(deb.read_bytes()).hexdigest()
+    sha1 = hashlib.sha1(deb.read_bytes()).hexdigest()
+    sha256 = hashlib.sha256(deb.read_bytes()).hexdigest()
+    # bestehende Hash-Zeilen entfernen und neu setzen
+    lines = []
+    for line in ctrl.splitlines():
+        if line.startswith(("MD5sum:", "SHA1:", "SHA256:", "Size:", "Filename:")):
+            continue
+        lines.append(line)
+    while lines and not lines[-1].strip():
+        lines.pop()
+    lines.append(f"Filename: {deb.name}")
+    lines.append(f"Size: {size}")
+    lines.append(f"MD5sum: {md5}")
+    lines.append(f"SHA1: {sha1}")
+    lines.append(f"SHA256: {sha256}")
+    entries.append("\n".join(lines) + "\n")
+
+Path("Packages").write_text("\n".join(entries) + ("\n" if entries else ""), encoding="utf-8")
+print(f"[OK] Packages für {len(entries)} Paket(e) geschrieben.")
+PY
+fi
+if [ ! -s Packages ]; then
+  echo "[FEHLER] Packages-Index ist leer."
+  exit 1
+fi
 gzip -9c Packages > Packages.gz
 
 # Release-File mit Date und SHA256 (entfernt apt-Warnungen zu Hash/Date)
@@ -121,6 +196,7 @@ if command -v gpg &>/dev/null; then
   fi
 else
   echo "[Hinweis] gpg nicht installiert – Release wird nicht signiert."
+  rm -f Release.gpg InRelease
 fi
 
 cd "$SCRIPT_DIR"
