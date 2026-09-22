@@ -46,7 +46,10 @@ if command -v gh >/dev/null 2>&1; then
     gh release view "$TAG" >/dev/null 2>&1 || \
         gh release create "$TAG" --title "Release $TAG" --generate-notes
     shopt -s nullglob
-    mac_dmgs=(dist/UniversalDownloader_"${VERSION}"*.dmg)
+    mac_dmgs=(
+        dist/UniversalDownloader_"${VERSION}"_arm64.dmg
+        dist/UniversalDownloader_"${VERSION}"_x86_64.dmg
+    )
     if ((${#mac_dmgs[@]})); then
         echo "[INFO] Lade macOS-.dmg hoch: ${mac_dmgs[*]}"
         gh release upload "$TAG" "${mac_dmgs[@]}" --clobber
