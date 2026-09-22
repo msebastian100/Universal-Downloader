@@ -11,6 +11,13 @@ from typing import List, Optional, Dict, Any
 # Neueste Version zuerst – wird für „Erster Start“ und Upgrade-Anzeige genutzt
 RELEASE_NOTES: List[Dict[str, Any]] = [
     {
+        "version": "2.1.20",
+        "date": "2026-09-22",
+        "items": [
+            "Windows: Absturz der GUI nach Tray-Start behoben (Tray läuft in eigenem Prozess, keine zweite Message-Loop).",
+        ],
+    },
+    {
         "version": "2.1.19",
         "date": "2026-09-22",
         "items": [

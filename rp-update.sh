@@ -71,6 +71,12 @@ rsync_to_builder() {
         --exclude 'apt-repo/' \
         --exclude 'dist/' \
         --exclude 'build/' \
+        --exclude 'flatpak-build/' \
+        --exclude '.flatpak-builder/' \
+        --exclude 'stage/' \
+        --exclude 'parts/' \
+        --exclude 'prime/' \
+        --exclude '.craft/' \
         --exclude '.ftp-credentials' \
         --exclude 'Logs/' \
         --exclude 'logs' \

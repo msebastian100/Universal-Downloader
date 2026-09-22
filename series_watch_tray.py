@@ -189,13 +189,31 @@ def steal_tray_instance(base: Path) -> None:
         _log(f"steal_tray_instance: {e}")
 
 
+def _windows_base_pythonw() -> Path:
+    """pythonw der echten Installation – nicht Scripts\\pythonw aus dem venv (braucht pyvenv.cfg)."""
+    candidates: List[Path] = []
+    base = Path(getattr(sys, "base_prefix", "") or sys.prefix)
+    candidates.append(base / "pythonw.exe")
+    exe = Path(sys.executable)
+    same_dir = exe.with_name("pythonw.exe")
+    if same_dir.is_file():
+        candidates.append(same_dir)
+    for p in candidates:
+        if not p.is_file():
+            continue
+        # venv-Launcher: pyvenv.cfg liegt eine Ebene über Scripts\
+        if p.parent.name.lower() == "scripts" and (p.parent.parent / "pyvenv.cfg").is_file():
+            continue
+        return p
+    return candidates[0] if candidates else exe
+
+
 def _windows_unique_pythonw() -> str:
-    """Eigene EXE-Kopie, damit Windows 11 einen sichtbaren Infobereich-Eintrag anlegt."""
-    src = Path(sys.executable)
-    if src.name.lower() != "pythonw.exe":
-        cand = src.with_name("pythonw.exe")
-        if cand.is_file():
-            src = cand
+    """Kopie von pythonw.exe (Basis-Python), eigener Name für den Infobereich."""
+    src = _windows_base_pythonw()
+    if not src.is_file():
+        _log(f"Kein pythonw.exe unter {src}")
+        return str(sys.executable)
     dest_dir = Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "UniversalDownloader"
     dest = dest_dir / "UniversalDownloaderTray.exe"
     try:
@@ -457,20 +475,23 @@ class WinNotifyIcon:
         self.hicon = hicon
 
         def _wndproc(hwnd, msg, wparam, lparam):
-            if msg == _WM_TRAYICON:
-                event = int(lparam) & 0xFFFF
-                if event in (_WM_RBUTTONUP, _WM_CONTEXTMENU):
-                    try:
-                        self.on_right_click()
-                    except Exception as e:
-                        _log(f"Tray Rechtsklick: {e}")
-                    return 0
-                if event in (_WM_LBUTTONUP, _WM_LBUTTONDBLCLK, _NIN_SELECT, _NIN_KEYSELECT):
-                    try:
-                        self.on_left_click()
-                    except Exception as e:
-                        _log(f"Tray Linksklick: {e}")
-                    return 0
+            try:
+                if msg == _WM_TRAYICON:
+                    event = int(lparam) & 0xFFFF
+                    if event in (_WM_RBUTTONUP, _WM_CONTEXTMENU):
+                        try:
+                            self.on_right_click()
+                        except Exception as e:
+                            _log(f"Tray Rechtsklick: {e}")
+                        return 0
+                    if event in (_WM_LBUTTONUP, _WM_LBUTTONDBLCLK, _NIN_SELECT, _NIN_KEYSELECT):
+                        try:
+                            self.on_left_click()
+                        except Exception as e:
+                            _log(f"Tray Linksklick: {e}")
+                        return 0
+            except Exception:
+                pass
             return user32.DefWindowProcW(hwnd, msg, wparam, lparam)
 
         self._wndproc = WNDPROC(_wndproc)
@@ -1139,7 +1160,6 @@ class TrayApp:
         if not icon.create():
             return False
         self._win_notify = icon
-        icon.start_message_loop_background()
         return True
 
     def _on_win_left(self) -> None:

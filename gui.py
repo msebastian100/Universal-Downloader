@@ -2016,7 +2016,7 @@ class DeezerDownloaderGUI:
             pass
 
     def _start_series_watch_tray(self):
-        """Serien-Wächter-Icon im Infobereich/Menüleiste (im GUI-Prozess) plus Login-Autostart."""
+        """Serien-Wächter-Icon: unter Windows eigener Prozess (sonst stürzt die GUI ab)."""
         if os.environ.get("SERIES_WATCH_NO_TRAY"):
             return
         if getattr(self, "_series_watch_tray_app", None) is not None:
@@ -2040,13 +2040,29 @@ class DeezerDownloaderGUI:
                 return
         try:
             swt.steal_tray_instance(self.base_download_path)
-            app = swt.TrayApp(self.base_download_path, tk_root=self.root)
-            rc = app.run_tray_detached()
-            if rc == 0:
-                self._series_watch_tray_app = app
-                self._write_to_log_file("[Serien-Wächter] Tray-Icon im Infobereich gestartet.", "INFO")
+            if sys.platform == "win32":
+                argv = swt.get_tray_launch_argv()
+                flags = 0
+                if hasattr(subprocess, "DETACHED_PROCESS"):
+                    flags |= subprocess.DETACHED_PROCESS
+                if hasattr(subprocess, "CREATE_NEW_PROCESS_GROUP"):
+                    flags |= subprocess.CREATE_NEW_PROCESS_GROUP
+                subprocess.Popen(
+                    argv,
+                    cwd=str(Path(argv[0]).resolve().parent) if argv else None,
+                    close_fds=True,
+                    creationflags=flags,
+                )
+                self._series_watch_tray_app = True
+                self._write_to_log_file("[Serien-Wächter] Tray-Prozess gestartet.", "INFO")
             else:
-                self._write_to_log_file("[Serien-Wächter] Tray-Icon konnte nicht erstellt werden.", "WARNING")
+                app = swt.TrayApp(self.base_download_path, tk_root=self.root)
+                rc = app.run_tray_detached()
+                if rc == 0:
+                    self._series_watch_tray_app = app
+                    self._write_to_log_file("[Serien-Wächter] Tray-Icon im Infobereich gestartet.", "INFO")
+                else:
+                    self._write_to_log_file("[Serien-Wächter] Tray-Icon konnte nicht erstellt werden.", "WARNING")
             if self.settings.get("series_watch_tray_autostart", True):
                 if swt.install_login_autostart():
                     self._write_to_log_file("[Serien-Wächter] Autostart nach Anmeldung eingerichtet.", "INFO")

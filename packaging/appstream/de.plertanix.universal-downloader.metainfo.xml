@@ -47,6 +47,12 @@
   <content_rating type="oars-1.1"/>
   <!-- Release-Historie für GNOME/Cinnamon „Software“ (neueste zuerst, aus changelog.py) -->
   <releases>
+    <release version="2.1.20" date="2026-09-22">
+      <description>
+        <p xml:lang="de">Windows: Absturz nach Tray-Start behoben.</p>
+        <p>Windows: crash after tray start fixed.</p>
+      </description>
+    </release>
     <release version="2.1.19" date="2026-09-22">
       <description>
         <p xml:lang="de">Serien-Wächter: Auto-Abhaken, Auto-Download für Video und Hörbücher, Tray-Icon mit Autostart (Windows/macOS/Linux).</p>
