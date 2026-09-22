@@ -2029,7 +2029,7 @@ class DeezerDownloaderGUI:
             except Exception:
                 pass
             return
-        if sys.platform != "win32":
+        if sys.platform != "win32" and not sys.platform.startswith("linux"):
             try:
                 import pystray  # noqa: F401
             except ImportError:
@@ -2040,19 +2040,26 @@ class DeezerDownloaderGUI:
                 return
         try:
             swt.steal_tray_instance(self.base_download_path)
-            if sys.platform == "win32":
+            if sys.platform == "win32" or sys.platform.startswith("linux"):
                 argv = swt.get_tray_launch_argv()
-                flags = 0
-                if hasattr(subprocess, "DETACHED_PROCESS"):
-                    flags |= subprocess.DETACHED_PROCESS
-                if hasattr(subprocess, "CREATE_NEW_PROCESS_GROUP"):
-                    flags |= subprocess.CREATE_NEW_PROCESS_GROUP
-                subprocess.Popen(
-                    argv,
-                    cwd=str(Path(argv[0]).resolve().parent) if argv else None,
-                    close_fds=True,
-                    creationflags=flags,
-                )
+                popen_kw = {
+                    "close_fds": True,
+                }
+                try:
+                    popen_kw["cwd"] = str(Path(argv[0]).resolve().parent)
+                except Exception:
+                    pass
+                if sys.platform == "win32":
+                    flags = 0
+                    if hasattr(subprocess, "DETACHED_PROCESS"):
+                        flags |= subprocess.DETACHED_PROCESS
+                    if hasattr(subprocess, "CREATE_NEW_PROCESS_GROUP"):
+                        flags |= subprocess.CREATE_NEW_PROCESS_GROUP
+                    popen_kw["creationflags"] = flags
+                else:
+                    popen_kw["start_new_session"] = True
+                    popen_kw["env"] = os.environ.copy()
+                subprocess.Popen(argv, **popen_kw)
                 self._series_watch_tray_app = True
                 self._write_to_log_file("[Serien-Wächter] Tray-Prozess gestartet.", "INFO")
             else:

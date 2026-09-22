@@ -184,7 +184,10 @@ def steal_tray_instance(base: Path) -> None:
                             os.kill(old, 9)
                 except Exception as e:
                     _log(f"Alte Instanz nicht beendet: {e}")
-        path.write_text(str(os.getpid()), encoding="utf-8")
+        try:
+            path.unlink()
+        except OSError:
+            pass
     except Exception as e:
         _log(f"steal_tray_instance: {e}")
 
@@ -231,11 +234,12 @@ def get_tray_launch_argv() -> List[str]:
     """Kommandozeile, mit der der Wächter nach dem Login startet."""
     if getattr(sys, "frozen", False):
         return [sys.executable, "--series-watch-tray"]
-    script = str(_ROOT / "series_watch_tray.py")
-    exe = sys.executable
     if sys.platform == "win32":
-        exe = _windows_unique_pythonw()
-    return [exe, script]
+        return [_windows_unique_pythonw(), str(_ROOT / "series_watch_tray.py")]
+    wrapper = Path("/usr/bin/universal-downloader")
+    if sys.platform.startswith("linux") and wrapper.is_file():
+        return [str(wrapper), "--series-watch-tray"]
+    return [sys.executable, str(_ROOT / "series_watch_tray.py")]
 
 
 def _quote_argv(argv: List[str]) -> str:
@@ -615,6 +619,302 @@ class WinNotifyIcon:
             pass
 
 
+def _ensure_linux_gi() -> bool:
+    """venv hat oft kein PyGObject – System-gi nachladen (Cinnamon/XApp)."""
+    if not sys.platform.startswith("linux"):
+        return False
+    try:
+        import gi  # noqa: F401
+        return True
+    except ImportError:
+        pass
+    extra = [
+        "/usr/lib/python3/dist-packages",
+        f"/usr/lib/python{sys.version_info.major}.{sys.version_info.minor}/dist-packages",
+    ]
+    for p in extra:
+        gi_dir = Path(p) / "gi"
+        if gi_dir.is_dir() and p not in sys.path:
+            sys.path.append(p)
+    try:
+        import gi  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+def _linux_icon_path() -> str:
+    """Kleine PNG für Tray (1024px-icon.png blendet Cinnamon aus)."""
+    for p in (
+        Path("/usr/share/icons/hicolor/48x48/apps/universal-downloader.png"),
+        Path("/usr/share/icons/hicolor/64x64/apps/universal-downloader.png"),
+        _ROOT / "icon.png",
+        Path("/usr/share/pixmaps/universal-downloader.png"),
+    ):
+        if p.is_file():
+            try:
+                from PIL import Image
+                w, h = Image.open(p).size
+                if max(w, h) > 128:
+                    continue
+            except Exception:
+                pass
+            return str(p)
+    return ""
+
+
+def _linux_icon_name() -> str:
+    return "universal-downloader"
+
+
+class LinuxStatusIcon:
+    """Cinnamon/Mint: XApp-Statusicon (Leiste rechts). Fallback: Ayatana AppIndicator."""
+
+    def __init__(self, app: "TrayApp"):
+        self.app = app
+        self._xapp = None
+        self._gtk_status = None
+        self._indicator = None
+        self._menu = None
+        self._loop = None
+        self._Gtk = None
+        self._GLib = None
+
+    def create(self) -> bool:
+        if not _ensure_linux_gi():
+            _log("PyGObject (gi) fehlt – kein Cinnamon-Tray.")
+            return False
+        import gi
+
+        try:
+            gi.require_version("Gtk", "3.0")
+            from gi.repository import GLib, Gtk
+        except Exception as e:
+            _log(f"Gtk3 für Tray nicht ladbar: {e}")
+            return False
+        self._Gtk = Gtk
+        self._GLib = GLib
+        try:
+            Gtk.init_check()
+        except Exception:
+            pass
+
+        icon_path = _linux_icon_path()
+        icon_name = _linux_icon_name()
+        try:
+            theme = Gtk.IconTheme.get_default()
+            if theme is None or theme.lookup_icon(icon_name, 24, 0) is None:
+                icon_name = icon_path or "video-x-generic"
+        except Exception:
+            icon_name = icon_path or icon_name
+
+        # Cinnamon: XApp-Statusicon sitzt in der Infoleiste rechts (nicht Windows-Taskleiste).
+        xapp_ok = False
+        try:
+            gi.require_version("XApp", "1.0")
+            from gi.repository import XApp
+
+            try:
+                si = XApp.StatusIcon.new_with_name("UniversalDownloader")
+            except Exception:
+                si = XApp.StatusIcon()
+            si.set_name("Serien-Wächter")
+            si.set_icon_name(icon_name)
+            si.set_tooltip_text("Serien-Wächter")
+            si.set_visible(True)
+            self._xapp = si
+            self._rebuild_menu()
+            xapp_ok = True
+            _log(f"Linux-Tray: XApp.StatusIcon ({icon_name})")
+        except Exception as e:
+            _log(f"XApp.StatusIcon nicht verfügbar: {e}")
+
+        if not xapp_ok:
+            try:
+                sti = Gtk.StatusIcon()
+                if icon_path:
+                    sti.set_from_file(icon_path)
+                else:
+                    sti.set_from_icon_name(icon_name)
+                sti.set_title("Serien-Wächter")
+                sti.set_tooltip_text("Serien-Wächter")
+                sti.set_visible(True)
+                sti.connect("activate", lambda *_: self.app.open_main())
+                sti.connect("popup-menu", self._on_gtk_popup)
+                self._gtk_status = sti
+                self._loop = GLib.MainLoop()
+                _log(f"Linux-Tray: Gtk.StatusIcon ({icon_path or icon_name})")
+                return True
+            except Exception as e:
+                _log(f"Gtk.StatusIcon nicht verfügbar: {e}")
+
+        if not xapp_ok:
+            AppIndicator = None
+            try:
+                gi.require_version("AyatanaAppIndicator3", "0.1")
+                from gi.repository import AyatanaAppIndicator3 as AppIndicator
+            except Exception:
+                try:
+                    gi.require_version("AppIndicator3", "0.1")
+                    from gi.repository import AppIndicator3 as AppIndicator
+                except Exception as e:
+                    _log(f"AppIndicator nicht verfügbar: {e}")
+                    AppIndicator = None
+            if AppIndicator is None:
+                return False
+            category = AppIndicator.IndicatorCategory.APPLICATION_STATUS
+            if icon_path:
+                ind = AppIndicator.Indicator.new_with_path(
+                    "universal-downloader-series-watch",
+                    Path(icon_path).stem,
+                    category,
+                    str(Path(icon_path).parent),
+                )
+            else:
+                ind = AppIndicator.Indicator.new(
+                    "universal-downloader-series-watch",
+                    icon_name,
+                    category,
+                )
+            ind.set_status(AppIndicator.IndicatorStatus.ACTIVE)
+            ind.set_title("Serien-Wächter")
+            self._indicator = ind
+            self._rebuild_menu()
+            _log(f"Linux-Tray: AppIndicator ({icon_path or icon_name})")
+
+        self._loop = GLib.MainLoop()
+        return True
+
+    def _on_gtk_popup(self, icon, button, time) -> None:
+        Gtk = self._Gtk
+        self._rebuild_menu()
+        menu = self._menu
+        if menu is None or Gtk is None:
+            return
+        try:
+            menu.popup(None, None, Gtk.StatusIcon.position_menu, icon, button, time)
+        except Exception:
+            try:
+                menu.popup_at_pointer(None)
+            except Exception as e:
+                _log(f"Linux-Tray Menü: {e}")
+
+    def _on_xapp_activate(self, *args) -> None:
+        btn = 1
+        if len(args) >= 2:
+            try:
+                btn = int(args[1])
+            except (TypeError, ValueError):
+                btn = 1
+        if btn == 1:
+            self.app.open_main()
+        else:
+            self._popup_menu()
+
+    def _popup_menu(self) -> None:
+        menu = self._menu
+        Gtk = self._Gtk
+        if menu is None or Gtk is None:
+            return
+        try:
+            menu.popup_at_pointer(None)
+        except Exception:
+            try:
+                menu.popup(None, None, None, None, 0, Gtk.get_current_event_time())
+            except Exception as e:
+                _log(f"Linux-Tray Menü: {e}")
+
+    def _rebuild_menu(self) -> None:
+        Gtk = self._Gtk
+        if Gtk is None:
+            return
+        menu = Gtk.Menu()
+        rt = series_watch.read_runtime_status(self.app.base)
+        tip = self.app._tooltip(rt)
+        head = Gtk.MenuItem.new_with_label(tip[:80] or "Serien-Wächter")
+        head.set_sensitive(False)
+        menu.append(head)
+        menu.append(Gtk.SeparatorMenuItem())
+        if (rt.get("phase") or "") == "downloading":
+            item = Gtk.MenuItem.new_with_label("Download abbrechen")
+            item.connect("activate", lambda *_: self.app.cancel_download())
+            menu.append(item)
+            menu.append(Gtk.SeparatorMenuItem())
+        rows = (
+            ("Jetzt prüfen", self.app.do_check_now),
+            ("Hauptprogramm öffnen", self.app.open_main),
+            ("Video-Ordner öffnen", self.app._open_video_folder),
+            ("Hörbuch-/Musik-Ordner öffnen", self.app._open_music_folder),
+        )
+        for label, cb in rows:
+            item = Gtk.MenuItem.new_with_label(label)
+            item.connect("activate", lambda _w, fn=cb: fn())
+            menu.append(item)
+        menu.append(Gtk.SeparatorMenuItem())
+        quit_item = Gtk.MenuItem.new_with_label("Beenden")
+        quit_item.connect("activate", lambda *_: self.app.quit_app())
+        menu.append(quit_item)
+        menu.show_all()
+        self._menu = menu
+        if self._xapp is not None:
+            try:
+                self._xapp.set_primary_menu(menu)
+            except Exception:
+                pass
+            try:
+                self._xapp.set_secondary_menu(menu)
+            except Exception:
+                pass
+        if self._indicator is not None:
+            try:
+                self._indicator.set_menu(menu)
+            except Exception as e:
+                _log(f"AppIndicator set_menu: {e}")
+
+    def refresh(self) -> bool:
+        try:
+            tip = self.app._tooltip()
+            if self._gtk_status is not None:
+                self._gtk_status.set_tooltip_text(tip)
+            if self._xapp is not None:
+                self._xapp.set_tooltip_text(tip)
+            self._rebuild_menu()
+        except Exception as e:
+            _log(f"Linux-Tray Refresh: {e}")
+        return False
+
+    def run(self) -> None:
+        if self._loop is None:
+            return
+        try:
+            self._loop.run()
+        except KeyboardInterrupt:
+            pass
+
+    def stop(self) -> None:
+        loop = self._loop
+        glib = self._GLib
+        if loop is None:
+            return
+        try:
+            if glib is not None:
+                glib.idle_add(loop.quit)
+            else:
+                loop.quit()
+        except Exception:
+            pass
+        try:
+            if self._gtk_status is not None:
+                self._gtk_status.set_visible(False)
+        except Exception:
+            pass
+        try:
+            if self._xapp is not None:
+                self._xapp.set_visible(False)
+        except Exception:
+            pass
+
+
 def install_login_autostart() -> bool:
     """Wächter beim Anmelden starten: Windows (Run), macOS (LaunchAgent), Linux (autostart.desktop)."""
     argv = get_tray_launch_argv()
@@ -684,7 +984,9 @@ def install_login_autostart() -> bool:
             f"Exec={exec_cmd}\n"
             f"{icon_line}"
             "Terminal=false\n"
+            "StartupNotify=false\n"
             "X-GNOME-Autostart-enabled=true\n"
+            "X-GNOME-Autostart-Delay=3\n"
             "Hidden=false\n",
             encoding="utf-8",
         )
@@ -760,6 +1062,7 @@ class TrayApp:
         self._last_run = 0.0
         self._icon = None
         self._win_notify: Optional[WinNotifyIcon] = None
+        self._linux_status: Optional[LinuxStatusIcon] = None
         self._tk_root = tk_root
         self._owns_tk = False
         self._tk_menu = None
@@ -786,6 +1089,13 @@ class TrayApp:
             tip = self._tooltip(rt)
             if self._win_notify is not None:
                 self._win_notify.set_tooltip(tip)
+                return
+            if self._linux_status is not None:
+                glib = self._linux_status._GLib
+                if glib is not None:
+                    glib.idle_add(self._linux_status.refresh)
+                else:
+                    self._linux_status.refresh()
                 return
             if not self._icon:
                 return
@@ -986,6 +1296,11 @@ class TrayApp:
                 self._win_notify.stop()
             except Exception:
                 pass
+        if self._linux_status is not None:
+            try:
+                self._linux_status.stop()
+            except Exception:
+                pass
         if icon is not None:
             try:
                 icon.stop()
@@ -1101,6 +1416,10 @@ class TrayApp:
     def _create_icon(self) -> bool:
         if sys.platform == "win32" and self._create_windows_notify_icon():
             return True
+        if sys.platform.startswith("linux") and self._create_linux_status_icon():
+            return True
+        if sys.platform.startswith("linux"):
+            os.environ.setdefault("PYSTRAY_BACKEND", "xorg")
         try:
             import pystray
             from pystray import MenuItem as Item
@@ -1160,6 +1479,13 @@ class TrayApp:
         if not icon.create():
             return False
         self._win_notify = icon
+        return True
+
+    def _create_linux_status_icon(self) -> bool:
+        icon = LinuxStatusIcon(self)
+        if not icon.create():
+            return False
+        self._linux_status = icon
         return True
 
     def _on_win_left(self) -> None:
@@ -1253,6 +1579,10 @@ class TrayApp:
             except KeyboardInterrupt:
                 pass
             return 0
+        if self._linux_status is not None:
+            _log("Tray-Icon sichtbar gesetzt.")
+            self._linux_status.run()
+            return 0
         self._icon.run(setup=self._on_icon_ready)
         return 0
 
@@ -1263,6 +1593,10 @@ class TrayApp:
         threading.Thread(target=self._loop, daemon=True).start()
         _log(f"Tray (im Hauptprogramm) gestartet. Basis: {self.base}")
         if self._win_notify is not None:
+            return 0
+        if self._linux_status is not None:
+            threading.Thread(target=self._linux_status.run, daemon=True).start()
+            _log("Tray-Icon sichtbar gesetzt.")
             return 0
         self._icon.run_detached(setup=self._on_icon_ready)
         return 0

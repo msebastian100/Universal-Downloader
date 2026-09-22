@@ -11,6 +11,14 @@ from typing import List, Optional, Dict, Any
 # Neueste Version zuerst – wird für „Erster Start“ und Upgrade-Anzeige genutzt
 RELEASE_NOTES: List[Dict[str, Any]] = [
     {
+        "version": "2.1.21",
+        "date": "2026-09-22",
+        "items": [
+            "Linux Mint/Cinnamon: Serien-Wächter-Icon in der Infoleiste (XApp, eigener Prozess).",
+            "Windows: Tray startet zuverlässig neben der GUI (PID-Datei blockiert den Wächter nicht mehr).",
+        ],
+    },
+    {
         "version": "2.1.20",
         "date": "2026-09-22",
         "items": [

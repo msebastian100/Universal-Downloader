@@ -145,7 +145,8 @@ Version: $VERSION
 Section: multimedia
 Priority: optional
 Architecture: all
-Depends: python3 (>= 3.8), python3-venv, python3-tk, ffmpeg
+Depends: python3 (>= 3.8), python3-venv, python3-tk, ffmpeg, python3-gi, python3-gi-cairo, gir1.2-gtk-3.0
+Recommends: gir1.2-ayatanaappindicator3-0.1, gir1.2-xapp-1.0
 Maintainer: Universal Downloader Team
 Description: Universal Downloader für Musik, Hörbücher und Videos
  Ein universeller Downloader für:
@@ -189,6 +190,16 @@ if [ -f "requirements.txt" ]; then
 fi
 # yt-dlp mind. 2026 (ZDF/ARD/ORF) – immer aktuelle Version von PyPI
 "$PY" -m pip install --upgrade "yt-dlp>=2026" -q || true
+
+# venv: System-PyGObject für Cinnamon/GNOME-Tray (XApp / AppIndicator)
+PYVER="$("$PY" -c 'import sys; print("%d.%d" % (sys.version_info.major, sys.version_info.minor))')"
+SITE="$INSTALL_DIR/venv/lib/python${PYVER}/site-packages"
+mkdir -p "$SITE"
+if [ -d /usr/lib/python3/dist-packages/gi ]; then
+    echo "/usr/lib/python3/dist-packages" > "$SITE/system-dist-packages.pth"
+elif [ -d "/usr/lib/python${PYVER}/dist-packages/gi" ]; then
+    echo "/usr/lib/python${PYVER}/dist-packages" > "$SITE/system-dist-packages.pth"
+fi
 
 # Desktop-Datenbank aktualisieren (Startmenü)
 if command -v update-desktop-database &> /dev/null; then
