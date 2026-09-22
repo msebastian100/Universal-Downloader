@@ -9738,6 +9738,16 @@ Historie-Einträge: {len(self.video_download_history)}
     def _download_update(self, update_info, parent_window=None):
         """Lädt ein Update herunter und installiert es automatisch"""
         if not update_info.get('download_url'):
+            if platform.system().lower() == 'linux':
+                messagebox.showinfo(
+                    "Update",
+                    "Die neue Version kommt für Linux über das APT-Repo "
+                    "(ppa.plertanix.de), nicht als GitHub-Download.\n\n"
+                    "Sobald sie dort liegt: Einstellungen → Updates prüfen, "
+                    "oder im Terminal:\n"
+                    "sudo apt update && sudo apt install --only-upgrade universal-downloader",
+                )
+                return
             # Zeige detaillierte Fehlermeldung
             assets_info = ""
             if 'assets' in update_info and update_info['assets']:

@@ -71,6 +71,26 @@ class UpdateChecker:
             return None
         return None
 
+    def _linux_uses_apt(self) -> bool:
+        """True, wenn das Paket über APT installiert/kandidatisch ist (kein GitHub-.exe)."""
+        try:
+            result = subprocess.run(
+                ['apt-cache', 'policy', APT_PACKAGE],
+                capture_output=True, text=True, timeout=20,
+                env={**os.environ, 'LC_ALL': 'C'},
+            )
+            if result.returncode != 0:
+                return False
+            for line in result.stdout.splitlines():
+                stripped = line.strip()
+                if stripped.startswith('Installed:') and '(none)' not in stripped:
+                    return True
+                if stripped.startswith('Candidate:') and '(none)' not in stripped and stripped.split(':', 1)[1].strip() not in ('none',):
+                    return True
+            return 'ppa.plertanix.de' in result.stdout
+        except (OSError, subprocess.SubprocessError):
+            return False
+
     def install_linux_update(self, deb_path: Optional[Path] = None) -> Tuple[bool, str]:
         """
         Installiert unter Linux per APT (Passwort-Dialog über pkexec).
@@ -110,11 +130,13 @@ class UpdateChecker:
             Tuple (update_available, update_info)
             update_info enthält: version, download_url, changelog, release_date
         """
-        # Linux mit APT-Paket: Repo hat Vorrang (GitHub hat oft nur die Windows-.exe)
+        # Linux mit APT-Paket: nur das Repo, nie GitHub ohne .deb (sonst Windows-Release-Warnung)
         if platform.system().lower() == 'linux':
             apt_info = self._check_apt_update()
             if apt_info:
                 return True, apt_info
+            if self._linux_uses_apt():
+                return False, None
 
         try:
             response = self.session.get(self.update_url, timeout=self.timeout)

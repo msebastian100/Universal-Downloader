@@ -152,7 +152,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v1
         with:
-          files: deb_build/universal-downloader_v*.deb
+          files: deb_build/*.deb
           tag_name: ${{ github.ref_name }}
           name: Release ${{ github.ref_name }}
           draft: false
