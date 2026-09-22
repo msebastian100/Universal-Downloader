@@ -11,6 +11,15 @@ from typing import List, Optional, Dict, Any
 # Neueste Version zuerst – wird für „Erster Start“ und Upgrade-Anzeige genutzt
 RELEASE_NOTES: List[Dict[str, Any]] = [
     {
+        "version": "2.1.25",
+        "date": "2026-09-22",
+        "items": [
+            "macOS: Fenster schließen lässt den Wächter in der Menüleiste; das Programm lässt sich wieder öffnen, ohne extra Dock-Icons.",
+            "macOS: Einstellungsfenster und Dialoge passen sich der Bildschirmgröße an.",
+            "GitHub: macOS-Installer als .dmg für Apple Silicon (arm64) und Intel (x86_64).",
+        ],
+    },
+    {
         "version": "2.1.24",
         "date": "2026-09-22",
         "items": [

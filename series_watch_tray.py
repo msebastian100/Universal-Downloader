@@ -139,26 +139,78 @@ def _pid_running(pid: int) -> bool:
 
 def try_become_tray_instance(base: Path) -> bool:
     """Nur eine Tray-Instanz pro App-Basisordner."""
+    global _tray_lock_fd
+    others = _macos_other_tray_pids()
+    if others:
+        _log(f"Tray läuft bereits (PID {others[0]}).")
+        return False
     path = Path(base) / "series_watch_tray.pid"
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        if path.exists():
+        fd = os.open(str(path), os.O_CREAT | os.O_RDWR, 0o644)
+        if sys.platform != "win32":
+            import fcntl
+
             try:
-                old = int((path.read_text(encoding="utf-8") or "0").strip().split()[0])
-            except (ValueError, OSError):
-                old = 0
-            if old and old != os.getpid() and _pid_running(old):
-                _log(f"Tray läuft bereits (PID {old}).")
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError:
+                os.close(fd)
+                _log("Tray läuft bereits (PID-Lock).")
                 return False
-        path.write_text(str(os.getpid()), encoding="utf-8")
+        try:
+            os.lseek(fd, 0, os.SEEK_SET)
+            raw = os.read(fd, 32).decode("utf-8", errors="ignore").strip().split()
+            old = int(raw[0]) if raw else 0
+        except (ValueError, OSError):
+            old = 0
+        if old and old != os.getpid() and _pid_running(old):
+            os.close(fd)
+            _log(f"Tray läuft bereits (PID {old}).")
+            return False
+        os.lseek(fd, 0, os.SEEK_SET)
+        try:
+            os.ftruncate(fd, 0)
+        except OSError:
+            pass
+        os.write(fd, str(os.getpid()).encode("utf-8"))
+        os.fsync(fd)
+        _tray_lock_fd = fd  # Lock halten, solange der Prozess lebt
         return True
     except Exception as e:
         _log(f"Tray-PID-Datei: {e}")
         return True
 
 
+def _macos_other_tray_pids() -> List[int]:
+    """Andere Tray-Prozesse derselben .app (auch ohne PID-Datei)."""
+    if sys.platform != "darwin":
+        return []
+    me = os.getpid()
+    found: List[int] = []
+    try:
+        out = subprocess.check_output(
+            ["pgrep", "-lf", "Universal Downloader.app/Contents/MacOS/Universal Downloader"],
+            text=True,
+            timeout=2,
+        )
+    except Exception:
+        return found
+    for line in out.splitlines():
+        if "--series-watch-tray" not in line:
+            continue
+        try:
+            pid = int(line.split(None, 1)[0])
+        except ValueError:
+            continue
+        if pid != me:
+            found.append(pid)
+    return found
+
+
 def tray_instance_running(base: Path) -> bool:
     """True, wenn bereits ein anderer Serien-Wächter-Tray läuft."""
+    if _macos_other_tray_pids():
+        return True
     path = Path(base) / "series_watch_tray.pid"
     try:
         if not path.exists():
@@ -204,6 +256,167 @@ def steal_tray_instance(base: Path) -> None:
             pass
     except Exception as e:
         _log(f"steal_tray_instance: {e}")
+
+
+_darwin_main_pending: List[Any] = []
+_DarwinMainCaller = None
+
+
+def _darwin_main_caller_class():
+    global _DarwinMainCaller
+    if _DarwinMainCaller is not None:
+        return _DarwinMainCaller
+    from Foundation import NSObject
+
+    class DarwinMainCaller(NSObject):
+        def invoke_(self, _obj=None):
+            fn = getattr(self, "_ud_fn", None)
+            try:
+                if fn is not None:
+                    fn()
+            except Exception as e:
+                _log(f"macOS-Hauptthread: {e}")
+            finally:
+                try:
+                    _darwin_main_pending.remove(self)
+                except ValueError:
+                    pass
+
+    _DarwinMainCaller = DarwinMainCaller
+    return DarwinMainCaller
+
+
+def _darwin_call_on_main(fn) -> None:
+    """NSStatusItem darf unter macOS 26/27 nur auf dem Main-Thread angefasst werden."""
+    if sys.platform != "darwin":
+        fn()
+        return
+    try:
+        from Foundation import NSThread
+
+        if bool(NSThread.isMainThread()):
+            fn()
+            return
+        caller = _darwin_main_caller_class().alloc().init()
+        caller._ud_fn = fn
+        _darwin_main_pending.append(caller)
+        caller.performSelectorOnMainThread_withObject_waitUntilDone_("invoke:", None, False)
+    except Exception:
+        try:
+            fn()
+        except Exception:
+            pass
+
+
+_macos_tray_ns_delegate = None
+_TrayNSDelegate = None
+_macos_hide_logged = False
+_tray_lock_fd = None
+_tray_born_ts = 0.0
+_last_gui_seen_ts = 0.0
+
+
+def _macos_mark_agent_bundle() -> None:
+    """LSUIElement in-memory, muss vor NSApplication.sharedApplication() stehen."""
+    if sys.platform != "darwin":
+        return
+    try:
+        from Foundation import NSBundle
+
+        info = NSBundle.mainBundle().infoDictionary()
+        if info is not None:
+            info["LSUIElement"] = True
+    except Exception:
+        pass
+
+
+def _macos_hide_from_dock() -> None:
+    """Tray aus dem Dock nehmen (sonst erscheint jede Instanz als extra Icon)."""
+    if sys.platform != "darwin":
+        return
+    global _macos_hide_logged
+    _macos_mark_agent_bundle()
+    try:
+        from AppKit import NSApplication, NSApplicationActivationPolicyAccessory
+
+        app = NSApplication.sharedApplication()
+        app.setActivationPolicy_(NSApplicationActivationPolicyAccessory)
+        policy = int(app.activationPolicy())
+        if policy != 1 and not _macos_hide_logged:
+            _log(f"Dock-Hide: activationPolicy={policy} (1=Accessory)")
+            _macos_hide_logged = True
+        if policy == 1:
+            return
+    except Exception as e:
+        if not _macos_hide_logged:
+            _log(f"Dock-Hide AppKit: {e}")
+            _macos_hide_logged = True
+    try:
+        import ctypes
+
+        class _PSN(ctypes.Structure):
+            _fields_ = [("highLongOfPSN", ctypes.c_uint32), ("lowLongOfPSN", ctypes.c_uint32)]
+
+        hi = ctypes.cdll.LoadLibrary(
+            "/System/Library/Frameworks/ApplicationServices.framework/"
+            "Frameworks/HIServices.framework/HIServices"
+        )
+        psn = _PSN()
+        try:
+            hi.GetCurrentProcess(ctypes.byref(psn))
+        except Exception:
+            psn = _PSN(0, 2)  # kCurrentProcess
+        hi.TransformProcessType(ctypes.byref(psn), ctypes.c_uint32(4))
+    except Exception:
+        pass
+
+
+def _tray_ns_delegate_class():
+    global _TrayNSDelegate
+    if _TrayNSDelegate is not None:
+        return _TrayNSDelegate
+    from AppKit import NSObject
+
+    class TrayNSDelegate(NSObject):
+        def applicationShouldHandleReopen_hasVisibleWindows_(self, _app, _flag):
+            # Nicht sofort nach Tray-Start oder nach Schließen des Fensters neu öffnen
+            # (sonst heftet sich immer wieder ein Dock-Icon an).
+            global _last_gui_seen_ts
+            try:
+                now = time.time()
+                if _tray_born_ts and now - _tray_born_ts < 8:
+                    return True
+                pids = series_watch._macos_gui_pids()
+                if pids:
+                    _last_gui_seen_ts = now
+                    series_watch.open_main_app()
+                    return True
+                if _last_gui_seen_ts and now - _last_gui_seen_ts < 4:
+                    return True
+                series_watch.open_main_app()
+            except Exception as e:
+                _log(f"Reopen Hauptprogramm: {e}")
+            return True
+
+    _TrayNSDelegate = TrayNSDelegate
+    return TrayNSDelegate
+
+
+def _macos_prepare_statusitem_process() -> None:
+    """Tray-Prozess: Menüleiste ohne Dock-Icon; Klick auf die App öffnet das Hauptfenster."""
+    if sys.platform != "darwin":
+        return
+    global _macos_tray_ns_delegate
+    try:
+        from AppKit import NSApplication
+
+        app = NSApplication.sharedApplication()
+        _macos_hide_from_dock()
+        if _macos_tray_ns_delegate is None:
+            _macos_tray_ns_delegate = _tray_ns_delegate_class().alloc().init()
+            app.setDelegate_(_macos_tray_ns_delegate)
+    except Exception as e:
+        _log(f"macOS Tray AppKit: {e}")
 
 
 def _windows_base_pythonw() -> Path:
@@ -1152,12 +1365,15 @@ def install_login_autostart() -> bool:
             )
             uid = os.getuid()
             label = "de.plertanix.universal-downloader.series-watch"
-            subprocess.run(
-                ["launchctl", "bootout", f"gui/{uid}", label],
+            loaded = subprocess.run(
+                ["launchctl", "print", f"gui/{uid}/{label}"],
                 capture_output=True,
                 timeout=5,
                 check=False,
             )
+            if loaded.returncode == 0:
+                _log(f"Autostart (macOS LaunchAgent, bereits aktiv): {plist}")
+                return True
             subprocess.run(
                 ["launchctl", "bootstrap", f"gui/{uid}", str(plist)],
                 capture_output=True,
@@ -1283,6 +1499,12 @@ class TrayApp:
         return max(1.0, h) * 3600.0
 
     def _refresh_icon_and_menu(self) -> None:
+        if sys.platform == "darwin" and self._icon is not None:
+            _darwin_call_on_main(self._refresh_icon_and_menu_now)
+            return
+        self._refresh_icon_and_menu_now()
+
+    def _refresh_icon_and_menu_now(self) -> None:
         try:
             rt = series_watch.read_runtime_status(self.base)
             tip = self._tooltip(rt)
@@ -1755,11 +1977,31 @@ class TrayApp:
         except Exception:
             pass
         windows_promote_notify_icon()
+        _macos_prepare_statusitem_process()
+        _macos_hide_from_dock()
+        if sys.platform == "darwin":
+            def _keep_hidden() -> None:
+                global _last_gui_seen_ts
+                while True:
+                    time.sleep(2.0)
+                    try:
+                        if series_watch._macos_gui_pids():
+                            _last_gui_seen_ts = time.time()
+                    except Exception:
+                        pass
+                    _macos_hide_from_dock()
+
+            threading.Thread(target=_keep_hidden, daemon=True).start()
         _log("Tray-Icon sichtbar gesetzt.")
 
     def run_tray(self) -> int:
+        global _tray_born_ts
         if not try_become_tray_instance(self.base):
             return 0
+        _tray_born_ts = time.time()
+        _macos_mark_agent_bundle()
+        _macos_hide_from_dock()
+        _macos_prepare_statusitem_process()
         if not self._create_icon():
             _log("Fallback: Hintergrund ohne Icon (Ctrl+C).")
             return self.run_headless()
@@ -1854,9 +2096,12 @@ def main(argv: Optional[List[str]] = None) -> int:
         app._handle_notifications(settings, notifications)
         return 0
 
-    app = TrayApp(base)
     if args.no_tray or os.environ.get("SERIES_WATCH_NO_TRAY"):
+        app = TrayApp(base)
         return app.run_headless()
+    if sys.platform == "darwin":
+        _macos_mark_agent_bundle()
+    app = TrayApp(base)
     return app.run_tray()
 
 

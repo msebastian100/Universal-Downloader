@@ -148,6 +148,16 @@ def install_ffmpeg_if_missing():
 if __name__ == "__main__":
     # Eigenständiger Serien-Wächter (System-Tray / Menüleiste), auch aus der gepackten .exe
     if "--series-watch-tray" in sys.argv:
+        # LSUIElement setzen, BEVOR irgendwer NSApplication.startet – sonst Dock-Icon.
+        if sys.platform == "darwin":
+            try:
+                from Foundation import NSBundle
+
+                info = NSBundle.mainBundle().infoDictionary()
+                if info is not None:
+                    info["LSUIElement"] = True
+            except Exception:
+                pass
         _tray_argv = [a for a in sys.argv[1:] if a != "--series-watch-tray"]
         from series_watch_tray import main as tray_main
         raise SystemExit(tray_main(_tray_argv))
@@ -183,8 +193,14 @@ if __name__ == "__main__":
                 try:
                     import subprocess
                     subprocess.run(
-                        ["osascript", "-e", 'tell application "Universal Downloader" to activate'],
-                        capture_output=True, timeout=2
+                        [
+                            "osascript",
+                            "-e",
+                            f'tell application "System Events" to set frontmost of '
+                            f"(first process whose unix id is {_old_pid}) to true",
+                        ],
+                        capture_output=True,
+                        timeout=2,
                     )
                 except Exception:
                     pass
@@ -329,8 +345,14 @@ if __name__ == "__main__":
                             try:
                                 import subprocess
                                 subprocess.run(
-                                    ["osascript", "-e", 'tell application "Universal Downloader" to activate'],
-                                    capture_output=True, timeout=2
+                                    [
+                                        "osascript",
+                                        "-e",
+                                        f'tell application "System Events" to set frontmost of '
+                                        f"(first process whose unix id is {old_pid}) to true",
+                                    ],
+                                    capture_output=True,
+                                    timeout=2,
                                 )
                             except Exception:
                                 pass

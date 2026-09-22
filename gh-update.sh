@@ -2,8 +2,8 @@
 # GH-Update: GitHub-Release für die Version aus version.py (Tag + Push).
 # Baut/lädt NICHT das APT-Repo. Dafür: ./rp-update.sh
 #
-# GitHub Actions (.github/workflows/build.yml) baut Windows/.deb als Release-Assets,
-# sobald der Tag vX.Y.Z existiert.
+# GitHub Actions (.github/workflows/build.yml) baut Windows/.deb/macOS-.dmg als Release-Assets,
+# sobald der Tag vX.Y.Z existiert. Lokal gebaute dist/*.dmg werden mit gh hochgeladen.
 #
 # Nutzung: ./gh-update.sh
 
@@ -45,8 +45,14 @@ if command -v gh >/dev/null 2>&1; then
     echo "[INFO] GitHub-Release (falls noch nicht vorhanden)..."
     gh release view "$TAG" >/dev/null 2>&1 || \
         gh release create "$TAG" --title "Release $TAG" --generate-notes
+    shopt -s nullglob
+    mac_dmgs=(dist/UniversalDownloader_"${VERSION}"*.dmg)
+    if ((${#mac_dmgs[@]})); then
+        echo "[INFO] Lade macOS-.dmg hoch: ${mac_dmgs[*]}"
+        gh release upload "$TAG" "${mac_dmgs[@]}" --clobber
+    fi
 else
-    echo "[Hinweis] gh CLI fehlt – Actions startet trotzdem durch den Tag-Push."
+    echo "[Hinweis] gh CLI fehlt – Actions startet trotzdem durch den Tag-Push (inkl. macOS-.dmg)."
 fi
 
 echo

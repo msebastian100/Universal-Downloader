@@ -181,11 +181,32 @@ class UpdateChecker:
                                 download_url = asset['browser_download_url']
                                 break
                 elif system == 'darwin':
-                    # Suche nach .dmg oder .pkg
+                    # Passende .dmg: Apple Silicon vs. Intel
+                    mach = platform.machine().lower()
+                    apple = mach in ("arm64", "aarch64")
+                    ranked = []
                     for asset in assets:
-                        if asset['name'].endswith(('.dmg', '.pkg')):
-                            download_url = asset['browser_download_url']
-                            break
+                        name = asset["name"].lower()
+                        if not name.endswith((".dmg", ".pkg")):
+                            continue
+                        if apple:
+                            if "arm64" in name or "aarch64" in name:
+                                rank = 0
+                            elif "x86_64" in name or "intel" in name:
+                                rank = 2
+                            else:
+                                rank = 1
+                        else:
+                            if "x86_64" in name or "intel" in name:
+                                rank = 0
+                            elif "arm64" in name or "aarch64" in name:
+                                rank = 2
+                            else:
+                                rank = 1
+                        ranked.append((rank, asset))
+                    ranked.sort(key=lambda x: x[0])
+                    if ranked:
+                        download_url = ranked[0][1]["browser_download_url"]
                 
                 update_info = {
                     'version': latest_version,

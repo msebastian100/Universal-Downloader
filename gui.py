@@ -716,6 +716,21 @@ class DeezerDownloaderGUI:
             win.configure(bg=getattr(self, '_tk_bg_panel', '#383838'))
         except tk.TclError:
             pass
+
+    def _fit_dialog(self, win, width, height, min_width=None, min_height=None):
+        """Dialoggröße setzen und auf den Bildschirm begrenzen (macOS/Windows/Linux)."""
+        try:
+            win.update_idletasks()
+            sw = int(win.winfo_screenwidth() or 1280)
+            sh = int(win.winfo_screenheight() or 800)
+        except tk.TclError:
+            sw, sh = 1280, 800
+        w = max(320, min(int(width), sw - 40))
+        h = max(220, min(int(height), sh - 80))
+        win.geometry(f"{w}x{h}")
+        if min_width is not None or min_height is not None:
+            win.minsize(int(min_width or min(w, 400)), int(min_height or min(h, 280)))
+        return w, h
     
     def _style_log_scrolledtext(self, st_widget):
         """Log-Widget (Hintergrund/Scrollbar) ans aktuelle Theme anpassen."""
@@ -1527,12 +1542,10 @@ class DeezerDownloaderGUI:
         """Zeigt Dialog zur Konfiguration der Spotify API Credentials"""
         config_window = tk.Toplevel(self.root)
         config_window.title("Spotify API Konfiguration")
-        config_window.geometry("600x500")
         config_window.resizable(True, True)
-        
-        # Zentriere das Fenster
         config_window.transient(self.root)
         config_window.grab_set()
+        self._fit_dialog(config_window, 740, 640, 560, 420)
         
         main_frame = ttk.Frame(config_window, padding="20")
         main_frame.pack(fill=tk.BOTH, expand=True)
@@ -1557,7 +1570,7 @@ class DeezerDownloaderGUI:
             info_frame,
             text=info_text,
             justify=tk.LEFT,
-            wraplength=620,
+            wraplength=680,
             font=("Arial", 9)
         ).pack(anchor=tk.W)
         
@@ -1660,8 +1673,7 @@ class DeezerDownloaderGUI:
         win = tk.Toplevel(self.root)
         win.title(title)
         win.transient(self.root)
-        win.geometry("520x420")
-        win.minsize(400, 300)
+        self._fit_dialog(win, 680, 540, 480, 320)
         f = ttk.Frame(win, padding=10)
         f.pack(fill=tk.BOTH, expand=True)
         ttk.Label(f, text="Klicken Sie auf eine URL, um die Seite im Browser zu öffnen.", font=("Arial", 9)).pack(anchor=tk.W)
@@ -2016,7 +2028,7 @@ class DeezerDownloaderGUI:
             pass
 
     def _start_series_watch_tray(self):
-        """Serien-Wächter-Icon: unter Windows eigener Prozess (sonst stürzt die GUI ab)."""
+        """Serien-Wächter-Icon in eigenem Prozess (im GUI-Prozess stürzt macOS/Windows ab)."""
         if os.environ.get("SERIES_WATCH_NO_TRAY"):
             return
         if not self.settings.get("series_watch_tray_enabled", True):
@@ -2050,7 +2062,7 @@ class DeezerDownloaderGUI:
             if swt.tray_instance_running(self.base_download_path):
                 self._series_watch_tray_app = True
                 self._write_to_log_file("[Serien-Wächter] Tray-Prozess läuft bereits — Icon bleibt.", "INFO")
-            elif sys.platform == "win32" or sys.platform.startswith("linux"):
+            else:
                 swt.steal_tray_instance(self.base_download_path)
                 argv = swt.get_tray_launch_argv()
                 popen_kw = {
@@ -2075,15 +2087,6 @@ class DeezerDownloaderGUI:
                 subprocess.Popen(argv, **popen_kw)
                 self._series_watch_tray_app = True
                 self._write_to_log_file("[Serien-Wächter] Tray-Prozess gestartet.", "INFO")
-            else:
-                swt.steal_tray_instance(self.base_download_path)
-                app = swt.TrayApp(self.base_download_path, tk_root=self.root)
-                rc = app.run_tray_detached()
-                if rc == 0:
-                    self._series_watch_tray_app = app
-                    self._write_to_log_file("[Serien-Wächter] Tray-Icon im Infobereich gestartet.", "INFO")
-                else:
-                    self._write_to_log_file("[Serien-Wächter] Tray-Icon konnte nicht erstellt werden.", "WARNING")
             if self.settings.get("series_watch_tray_enabled", True) and self.settings.get("series_watch_tray_autostart", True):
                 if swt.install_login_autostart():
                     self._write_to_log_file("[Serien-Wächter] Autostart nach Anmeldung eingerichtet.", "INFO")
@@ -2357,17 +2360,17 @@ class DeezerDownloaderGUI:
         it = dict(items[item_index])
         d = tk.Toplevel(parent)
         d.title("Besitz-Regeln (Schnell)")
-        d.geometry("480x220")
         d.transient(parent)
         d.grab_set()
         self._apply_dark_toplevel(d)
+        self._fit_dialog(d, 580, 300, 480, 240)
         f = ttk.Frame(d, padding="12", style="Download.TFrame")
         f.pack(fill=tk.BOTH, expand=True)
         ttk.Label(
             f,
             text="Diese Regeln unterdrücken Hinweise für bereits „gehörte“ Folgen.\n"
             "Es werden die aktuell in der Mediathek gelisteten Folgen anhand S/E im Titel zugeordnet.",
-            wraplength=440,
+            wraplength=520,
             style="Download.TLabel",
         ).pack(anchor=tk.W, pady=(0, 8))
         row1 = ttk.Frame(f, style="Download.TFrame")
@@ -2471,10 +2474,10 @@ class DeezerDownloaderGUI:
         """Checkbox-UI: angehakt = bereits vorhanden."""
         sel_win = tk.Toplevel(parent)
         sel_win.title("Bereits vorhandene Folgen markieren")
-        sel_win.geometry("900x700")
         sel_win.transient(parent)
         sel_win.grab_set()
         self._apply_dark_toplevel(sel_win)
+        self._fit_dialog(sel_win, 960, 740, 720, 520)
         main_frame = ttk.Frame(sel_win, padding="12", style="Download.TFrame")
         main_frame.pack(fill=tk.BOTH, expand=True)
         hid = set(str(x) for x in (item_copy.get("have_ids") or []))
@@ -2482,7 +2485,7 @@ class DeezerDownloaderGUI:
             main_frame,
             text=f"Serie: {series_data.get('series_name', '')} — Haken = „habe ich schon“, dann keine Hinweise für diese IDs.\n"
             "Pro Staffel: „Gesamte Staffel markieren“ setzt alle Folgen dieser Staffel; unten auch „Alle Folgen“ / „Alle abwählen“.",
-            wraplength=860,
+            wraplength=900,
             style="Download.TLabel",
         ).pack(anchor=tk.W, pady=(0, 8))
         quick_fr = ttk.Frame(main_frame, style="Download.TFrame")
@@ -2580,10 +2583,10 @@ class DeezerDownloaderGUI:
             return
         d = tk.Toplevel(parent)
         d.title(heading)
-        d.geometry("820x620")
         d.transient(parent)
         d.grab_set()
         self._apply_dark_toplevel(d)
+        self._fit_dialog(d, 900, 680, 640, 480)
         mf = ttk.Frame(d, padding="10", style="Download.TFrame")
         mf.pack(fill=tk.BOTH, expand=True)
         ttk.Label(mf, text="Neue Folgen — auswählen und zur Queue hinzufügen oder Download starten:", style="Download.TLabel").pack(anchor=tk.W)
@@ -2723,9 +2726,9 @@ class DeezerDownloaderGUI:
             return
         win = tk.Toplevel(self.root)
         win.title("📺 Serien-Wächter")
-        win.geometry("780x560")
         win.transient(self.root)
         self._apply_dark_toplevel(win)
+        self._fit_dialog(win, 960, 720, 720, 520)
         main = ttk.Frame(win, padding="12", style="Download.TFrame")
         main.pack(fill=tk.BOTH, expand=True)
         ttk.Label(
@@ -2735,7 +2738,7 @@ class DeezerDownloaderGUI:
             "Audiodeskription wird ignoriert. Downloads werden als „habe ich“ abgehakt.\n"
             "Auto-Download: global in den Einstellungen oder pro Serie. Audio landet im Musik-Ordner (MP3), Video im Video-Ordner.",
             style="Download.TLabel",
-            wraplength=740,
+            wraplength=900,
         ).pack(anchor=tk.W, pady=(0, 8))
 
         list_frame = ttk.LabelFrame(main, text="Überwachte Serien", padding="8", style="Download.TLabelframe")
@@ -3286,9 +3289,9 @@ class DeezerDownloaderGUI:
         """Zeigt Setup-Dialog für Audio-Aufnahme"""
         setup_window = tk.Toplevel(self.root)
         setup_window.title("Audio-Aufnahme Setup")
-        setup_window.geometry("800x600")
         setup_window.transient(self.root)
         setup_window.grab_set()
+        self._fit_dialog(setup_window, 880, 680, 640, 480)
         
         main_frame = ttk.Frame(setup_window, padding="20")
         main_frame.pack(fill=tk.BOTH, expand=True)
@@ -3618,9 +3621,9 @@ class DeezerDownloaderGUI:
         
         win = tk.Toplevel(self.root)
         win.title("Musik-Queue")
-        win.geometry("700x450")
         win.transient(self.root)
         self._apply_dark_toplevel(win)
+        self._fit_dialog(win, 900, 580, 640, 400)
         
         frame = ttk.Frame(win, padding="10", style="Download.TFrame")
         frame.pack(fill=tk.BOTH, expand=True)
@@ -4547,9 +4550,9 @@ class DeezerDownloaderGUI:
         # Öffne neues Fenster für Login
         login_window = tk.Toplevel(self.root)
         login_window.title("Deezer Anmeldung")
-        login_window.geometry("500x400")
         login_window.transient(self.root)
         login_window.grab_set()
+        self._fit_dialog(login_window, 580, 460, 480, 360)
         
         # Login-Frame
         login_frame = ttk.Frame(login_window, padding="20")
@@ -4613,9 +4616,9 @@ class DeezerDownloaderGUI:
         
         login_window = tk.Toplevel(self.root)
         login_window.title("Audible Anmeldung")
-        login_window.geometry("450x300")
         login_window.transient(self.root)
         login_window.grab_set()
+        self._fit_dialog(login_window, 580, 500, 480, 380)
         
         login_frame = ttk.Frame(login_window, padding="20")
         login_frame.pack(fill=tk.BOTH, expand=True)
@@ -4683,9 +4686,9 @@ class DeezerDownloaderGUI:
         # Dieser Dialog wird im Haupt-Thread geöffnet, BEVOR der Thread startet
         continue_window = tk.Toplevel(self.root)
         continue_window.title("Browser-Anmeldung")
-        continue_window.geometry("500x300")
         continue_window.transient(self.root)
         continue_window.grab_set()
+        self._fit_dialog(continue_window, 580, 380, 480, 280)
         
         continue_frame = ttk.Frame(continue_window, padding="20")
         continue_frame.pack(fill=tk.BOTH, expand=True)
@@ -4786,9 +4789,9 @@ class DeezerDownloaderGUI:
         """Zeigt Dialog für Cookie-Anmeldung"""
         cookie_window = tk.Toplevel(self.root)
         cookie_window.title("Cookie-Anmeldung")
-        cookie_window.geometry("600x550")
         cookie_window.transient(self.root)
         cookie_window.grab_set()
+        self._fit_dialog(cookie_window, 740, 660, 560, 440)
         
         cookie_frame = ttk.Frame(cookie_window, padding="20")
         cookie_frame.pack(fill=tk.BOTH, expand=True)
@@ -5045,9 +5048,9 @@ class DeezerDownloaderGUI:
         
         dialog = tk.Toplevel(self.root)
         dialog.title("Activation Bytes")
-        dialog.geometry("550x450")
         dialog.transient(self.root)
         dialog.grab_set()
+        self._fit_dialog(dialog, 660, 540, 520, 400)
         
         frame = ttk.Frame(dialog, padding="20")
         frame.pack(fill=tk.BOTH, expand=True)
@@ -5104,7 +5107,7 @@ class DeezerDownloaderGUI:
             "Versucht automatisch die Activation Bytes aus Ihrer Audible-Session zu extrahieren.\n"
             "Dies funktioniert nur, wenn Sie mit der audible-Bibliothek angemeldet sind."
         )
-        ttk.Label(auto_frame, text=info_text, justify=tk.LEFT, wraplength=500).pack(pady=5)
+        ttk.Label(auto_frame, text=info_text, justify=tk.LEFT, wraplength=600).pack(pady=5)
         
         def auto_extract():
             """Extrahiert Activation Bytes automatisch"""
@@ -5237,9 +5240,9 @@ class DeezerDownloaderGUI:
         """
         options_window = tk.Toplevel(self.root)
         options_window.title("Download-Optionen")
-        options_window.geometry("450x350")
         options_window.transient(self.root)
         options_window.grab_set()
+        self._fit_dialog(options_window, 560, 500, 460, 400)
         
         options_frame = ttk.Frame(options_window, padding="20")
         options_frame.pack(fill=tk.BOTH, expand=True)
@@ -5471,9 +5474,9 @@ class DeezerDownloaderGUI:
             # Zeige Info-Dialog mit Optionen
             info_window = tk.Toplevel(self.root)
             info_window.title("ARD Plus - DRM-geschützte Inhalte")
-            info_window.geometry("600x380")
             info_window.transient(self.root)
             info_window.grab_set()
+            self._fit_dialog(info_window, 720, 460, 560, 360)
             
             # Variable um zu verfolgen, ob weitergemacht werden soll
             continue_download = tk.BooleanVar(value=False)
@@ -5501,7 +5504,7 @@ class DeezerDownloaderGUI:
                 main_frame,
                 text=info_text,
                 justify=tk.LEFT,
-                wraplength=550
+                wraplength=660
             ).pack(pady=10, padx=10)
             
             button_frame = ttk.Frame(main_frame)
@@ -6308,9 +6311,9 @@ class DeezerDownloaderGUI:
             selection_window.title("Playlisten und Videos auswählen")
         else:
             selection_window.title("Staffeln und Folgen auswählen")
-        selection_window.geometry("950x750")
         selection_window.transient(self.root)
         selection_window.grab_set()
+        self._fit_dialog(selection_window, 980, 760, 720, 520)
         
         # Hauptcontainer mit einheitlichem Design
         main_frame = ttk.Frame(selection_window, padding="15")
@@ -6557,9 +6560,9 @@ class DeezerDownloaderGUI:
         """
         selection_window = tk.Toplevel(self.root)
         selection_window.title("Tracks auswählen")
-        selection_window.geometry("800x700")
         selection_window.transient(self.root)
         selection_window.grab_set()
+        self._fit_dialog(selection_window, 880, 720, 640, 500)
         
         # Hauptcontainer
         main_frame = ttk.Frame(selection_window, padding="15")
@@ -6706,9 +6709,9 @@ class DeezerDownloaderGUI:
         """
         selection_window = tk.Toplevel(self.root)
         selection_window.title("Alben auswählen")
-        selection_window.geometry("900x700")
         selection_window.transient(self.root)
         selection_window.grab_set()
+        self._fit_dialog(selection_window, 960, 720, 700, 500)
         
         # Hauptcontainer
         main_frame = ttk.Frame(selection_window, padding="15")
@@ -8385,9 +8388,9 @@ class DeezerDownloaderGUI:
         """Zeigt die Download-Queue an"""
         queue_window = tk.Toplevel(self.root)
         queue_window.title("Download-Queue")
-        queue_window.geometry("700x450")
         queue_window.transient(self.root)
         self._apply_dark_toplevel(queue_window)
+        self._fit_dialog(queue_window, 940, 580, 700, 400)
         
         frame = ttk.Frame(queue_window, padding="10", style="Download.TFrame")
         frame.pack(fill=tk.BOTH, expand=True)
@@ -8603,8 +8606,8 @@ class DeezerDownloaderGUI:
         """Zeigt Dialog für geplante Downloads"""
         schedule_window = tk.Toplevel(self.root)
         schedule_window.title("Geplante Downloads")
-        schedule_window.geometry("700x500")
         schedule_window.transient(self.root)
+        self._fit_dialog(schedule_window, 860, 580, 640, 400)
         
         frame = ttk.Frame(schedule_window, padding="10")
         frame.pack(fill=tk.BOTH, expand=True)
@@ -8652,8 +8655,8 @@ class DeezerDownloaderGUI:
         def add_scheduled():
             add_window = tk.Toplevel(schedule_window)
             add_window.title("Download vormerken")
-            add_window.geometry("500x300")
             add_window.transient(schedule_window)
+            self._fit_dialog(add_window, 560, 360, 440, 280)
             
             add_frame = ttk.Frame(add_window, padding="20")
             add_frame.pack(fill=tk.BOTH, expand=True)
@@ -8810,8 +8813,8 @@ class DeezerDownloaderGUI:
         """Zeigt Download-Historie; Doppelklick auf einen Eintrag kopiert die URL in die Zwischenablage."""
         history_window = tk.Toplevel(self.root)
         history_window.title("Download-Historie")
-        history_window.geometry("800x500")
         history_window.transient(self.root)
+        self._fit_dialog(history_window, 960, 620, 700, 420)
         
         frame = ttk.Frame(history_window, padding="10")
         frame.pack(fill=tk.BOTH, expand=True)
@@ -8916,8 +8919,8 @@ class DeezerDownloaderGUI:
         """Zeigt Favoriten-Verwaltung"""
         fav_window = tk.Toplevel(self.root)
         fav_window.title("Favoriten")
-        fav_window.geometry("600x400")
         fav_window.transient(self.root)
+        self._fit_dialog(fav_window, 720, 500, 520, 360)
         
         frame = ttk.Frame(fav_window, padding="10")
         frame.pack(fill=tk.BOTH, expand=True)
@@ -8936,8 +8939,8 @@ class DeezerDownloaderGUI:
         def add_favorite():
             add_window = tk.Toplevel(fav_window)
             add_window.title("Favorit hinzufügen")
-            add_window.geometry("400x200")
             add_window.transient(fav_window)
+            self._fit_dialog(add_window, 500, 260, 400, 220)
             
             add_frame = ttk.Frame(add_window, padding="20")
             add_frame.pack(fill=tk.BOTH, expand=True)
@@ -8987,8 +8990,8 @@ class DeezerDownloaderGUI:
         """Zeigt Such-Dialog für Filme und Serien"""
         search_window = tk.Toplevel(self.root)
         search_window.title("🔍 Suche nach Filmen und Serien")
-        search_window.geometry("900x700")
         search_window.transient(self.root)
+        self._fit_dialog(search_window, 960, 740, 700, 500)
         
         main_frame = ttk.Frame(search_window, padding="15")
         main_frame.pack(fill=tk.BOTH, expand=True)
@@ -9302,8 +9305,8 @@ class DeezerDownloaderGUI:
         """Zeigt Download-Statistiken"""
         stats_window = tk.Toplevel(self.root)
         stats_window.title("Download-Statistiken")
-        stats_window.geometry("500x400")
         stats_window.transient(self.root)
+        self._fit_dialog(stats_window, 560, 460, 440, 340)
         
         frame = ttk.Frame(stats_window, padding="20")
         frame.pack(fill=tk.BOTH, expand=True)
@@ -9564,8 +9567,7 @@ Historie-Einträge: {len(self.video_download_history)}
         win = tk.Toplevel(parent)
         win.title("Was ist neu?")
         win.transient(parent)
-        win.geometry("580x440")
-        win.minsize(400, 280)
+        self._fit_dialog(win, 720, 560, 480, 320)
         try:
             win.update_idletasks()
             x = (win.winfo_screenwidth() // 2) - (win.winfo_width() // 2)
@@ -9634,9 +9636,9 @@ Historie-Einträge: {len(self.video_download_history)}
         # Erstelle Dialog
         update_window = tk.Toplevel(self.root)
         update_window.title("🔄 Updates prüfen")
-        update_window.geometry("500x300")
         update_window.transient(self.root)
         update_window.grab_set()
+        self._fit_dialog(update_window, 580, 420, 460, 300)
         
         frame = ttk.Frame(update_window, padding="20")
         frame.pack(fill=tk.BOTH, expand=True)
@@ -9993,8 +9995,8 @@ Historie-Einträge: {len(self.video_download_history)}
         """Zeigt Info-Dialog über die Anwendung"""
         about_window = tk.Toplevel(self.root)
         about_window.title("ℹ️ Über Universal Downloader")
-        about_window.geometry("500x400")
         about_window.transient(self.root)
+        self._fit_dialog(about_window, 580, 480, 440, 340)
         
         frame = ttk.Frame(about_window, padding="20")
         frame.pack(fill=tk.BOTH, expand=True)
@@ -10280,10 +10282,10 @@ Copyright (c) 2025 Universal Downloader Contributors
         """Zeigt das Einstellungsfenster"""
         settings_window = tk.Toplevel(self.root)
         settings_window.title("⚙️ Einstellungen")
-        settings_window.geometry("600x700")
         settings_window.transient(self.root)
         settings_window.grab_set()
         self._apply_dark_toplevel(settings_window)
+        self._fit_dialog(settings_window, 980, 900, 760, 580)
         
         # Hauptframe mit Scrollbar (dunkles Design)
         main_frame = ttk.Frame(settings_window, padding="15", style="Download.TFrame")
@@ -10299,8 +10301,23 @@ Copyright (c) 2025 Universal Downloader Contributors
             lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
         )
         
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas_win_id = canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
+        settings_wrap_labels = []
+
+        def _sync_settings_canvas(event):
+            if event.widget is not canvas:
+                return
+            inner_w = max(1, event.width)
+            canvas.itemconfigure(canvas_win_id, width=inner_w)
+            wrap = max(480, inner_w - 48)
+            for lbl in settings_wrap_labels:
+                try:
+                    lbl.configure(wraplength=wrap)
+                except tk.TclError:
+                    pass
+
+        canvas.bind("<Configure>", _sync_settings_canvas)
         
         # Standard-Download-Pfade
         paths_frame = ttk.LabelFrame(scrollable_frame, text="📁 Standard-Download-Pfade", padding="10", style="Download.TLabelframe")
@@ -10391,6 +10408,7 @@ Copyright (c) 2025 Universal Downloader Contributors
             d.title("Sender-Voreinstellung")
             d.transient(settings_window)
             d.grab_set()
+            self._fit_dialog(d, 520, 280, 440, 220)
             f = ttk.Frame(d, padding="10")
             f.pack(fill=tk.BOTH, expand=True)
             ttk.Label(f, text="Domain (z. B. youtube.com):", style="Download.TLabel").grid(row=0, column=0, sticky=tk.W, pady=5)
@@ -10457,9 +10475,11 @@ Copyright (c) 2025 Universal Downloader Contributors
             video_frame,
             text="Platzhalter: {series}/{staffel}, {season2}/{staffel2}, {episode}/{folge}, {episode2}/{folge2}, {title}/{name}, optional {date}/{sendedatum} (YYYY-MM-DD) oder {date_de}",
             font=("Arial", 8),
+            wraplength=840,
             style="Download.TLabel"
         )
         series_help.grid(row=4, column=0, columnspan=2, sticky=tk.W, padx=5)
+        settings_wrap_labels.append(series_help)
         
         ttk.Label(video_frame, text="Dateiname Film (Template):", style="Download.TLabel").grid(row=5, column=0, sticky=tk.W, pady=(5, 5))
         movie_template_var = tk.StringVar(value=self.settings.get('movie_filename_template', '{title}'))
@@ -10470,7 +10490,15 @@ Copyright (c) 2025 Universal Downloader Contributors
         audiothek_template_var = tk.StringVar(value=self.settings.get('audiothek_filename_template', 'E{episode2} - {title}'))
         audiothek_template_entry = ttk.Entry(video_frame, textvariable=audiothek_template_var, width=40, style="Download.TEntry")
         audiothek_template_entry.grid(row=6, column=1, padx=5, pady=(5, 5), sticky=(tk.W, tk.E))
-        ttk.Label(video_frame, text="Gilt für ARD Audiothek und ARD Sounds. Optional z. B. {date} - E{episode2} - {title} (Sendedatum zuerst).", font=("Arial", 8), style="Download.TLabel").grid(row=7, column=0, columnspan=2, sticky=tk.W, padx=5)
+        audiothek_help_lbl = ttk.Label(
+            video_frame,
+            text="Gilt für ARD Audiothek und ARD Sounds. Optional z. B. {date} - E{episode2} - {title} (Sendedatum zuerst).",
+            font=("Arial", 8),
+            wraplength=840,
+            style="Download.TLabel",
+        )
+        audiothek_help_lbl.grid(row=7, column=0, columnspan=2, sticky=tk.W, padx=5)
+        settings_wrap_labels.append(audiothek_help_lbl)
         
         # Grafikarte (GPU) für Konvertierung – nur verbaut/verfügbare anzeigen
         ttk.Label(video_frame, text="Grafikkarte (GPU):", style="Download.TLabel").grid(row=8, column=0, sticky=tk.W, pady=5)
@@ -10499,8 +10527,10 @@ Copyright (c) 2025 Universal Downloader Contributors
                     gpu_hint = _sum
             except Exception:
                 pass
-        ttk.Label(gpu_frame, text=gpu_hint, font=("Arial", 8), style="Download.TLabel").pack(side=tk.LEFT, padx=5)
-        video_frame.rowconfigure(9, minsize=5)
+        gpu_hint_lbl = ttk.Label(video_frame, text=gpu_hint, font=("Arial", 8), style="Download.TLabel")
+        gpu_hint_lbl.grid(row=9, column=0, columnspan=2, sticky=tk.W, padx=5, pady=(0, 5))
+        settings_wrap_labels.append(gpu_hint_lbl)
+        video_frame.columnconfigure(1, weight=1)
         
         # Anmeldung / Account-Verwaltung (Video + Musik: ORF, ARD Plus, YouTube, Deezer)
         video_accounts_frame = ttk.LabelFrame(scrollable_frame, text="🔐 Anmeldung / Account-Verwaltung", padding="10", style="Download.TLabelframe")
@@ -10516,14 +10546,16 @@ Copyright (c) 2025 Universal Downloader Contributors
             "YouTube / YouTube Music: .youtube.com (für Playlists/Radio). Deezer: .deezer.com (Cookie „arl“). "
             "Für YouTube/YouTube Music: Get cookies.txt LOCALLY auf youtube.com oder music.youtube.com ausführen (eingeloggt), „Nur diese Seite“ exportieren."
         )
-        ttk.Label(
+        cookie_hint_lbl = ttk.Label(
             video_accounts_frame,
             text=cookie_hint,
             font=("Arial", 8),
             style="Download.TLabel",
             foreground="gray",
-            wraplength=700
-        ).pack(anchor=tk.W, pady=(0, 8))
+            wraplength=840
+        )
+        cookie_hint_lbl.pack(anchor=tk.W, pady=(0, 8))
+        settings_wrap_labels.append(cookie_hint_lbl)
         video_accounts_working = list(self.settings.get('video_accounts', []))
         video_accounts_listbox = tk.Listbox(
             video_accounts_frame, height=3, selectmode=tk.SINGLE,
@@ -10541,9 +10573,9 @@ Copyright (c) 2025 Universal Downloader Contributors
             """Öffnet Dialog zum Hinzufügen/Bearbeiten eines Video-Accounts. Returns (service, name, cookies) or None."""
             d = tk.Toplevel(settings_window)
             d.title("Account hinzufügen" if edit_index is None else "Account bearbeiten")
-            d.geometry("520x420")
             d.transient(settings_window)
             d.grab_set()
+            self._fit_dialog(d, 640, 520, 500, 400)
             f = ttk.Frame(d, padding="10")
             f.pack(fill=tk.BOTH, expand=True)
             ttk.Label(f, text="Dienst:").grid(row=0, column=0, sticky=tk.W, pady=5)
@@ -10625,14 +10657,16 @@ Copyright (c) 2025 Universal Downloader Contributors
         # Serien-Wächter (Benachrichtigungen bei neuen Mediathek-Folgen)
         sw_frame = ttk.LabelFrame(scrollable_frame, text="📺 Serien-Wächter (neue Folgen / Staffel)", padding="10", style="Download.TLabelframe")
         sw_frame.pack(fill=tk.X, pady=5, padx=5)
-        ttk.Label(
+        sw_help_lbl = ttk.Label(
             sw_frame,
             text="URLs im Dialog „Serien-Wächter“ (Button in der Titelleiste). Unterstützt Playlists, die yt-dlp ausliest (z. B. ARD-Staffel-Seite).\n"
             "E-Mail: SMTP wie bei einem normalen Mailprogramm. Telegram: Bot von @BotFather, chat_id z. B. von @userinfobot. Discord: Webhook-URL des Kanals.",
             font=("Arial", 8),
-            wraplength=700,
+            wraplength=840,
             style="Download.TLabel",
-        ).pack(anchor=tk.W, pady=(0, 8))
+        )
+        sw_help_lbl.pack(anchor=tk.W, pady=(0, 8))
+        settings_wrap_labels.append(sw_help_lbl)
         series_watch_tray_enabled_var = tk.BooleanVar(value=self.settings.get('series_watch_tray_enabled', True))
         ttk.Checkbutton(
             sw_frame,
@@ -10663,13 +10697,15 @@ Copyright (c) 2025 Universal Downloader Contributors
         ).pack(anchor=tk.W, pady=(6, 2))
         series_notify_desktop_var = tk.BooleanVar(value=self.settings.get('series_notify_desktop', True))
         ttk.Checkbutton(sw_frame, text="Desktop-Benachrichtigung (Serien-Wächter)", variable=series_notify_desktop_var, style="Download.TCheckbutton").pack(anchor=tk.W, pady=(6, 2))
-        ttk.Label(
+        sw_tray_help_lbl = ttk.Label(
             sw_frame,
             text="Tray-Helper: Icon in der Taskleiste (Windows), Menüleiste (macOS) bzw. System-Tray (Linux). Startet mit der App und – wenn aktiviert – nach der Anmeldung.",
             font=("Arial", 8),
-            wraplength=700,
+            wraplength=840,
             style="Download.TLabel",
-        ).pack(anchor=tk.W, pady=(4, 2))
+        )
+        sw_tray_help_lbl.pack(anchor=tk.W, pady=(4, 2))
+        settings_wrap_labels.append(sw_tray_help_lbl)
 
         series_notify_email_var = tk.BooleanVar(value=self.settings.get('series_notify_email_enabled', False))
         ttk.Checkbutton(sw_frame, text="E-Mail senden (SMTP)", variable=series_notify_email_var, style="Download.TCheckbutton").pack(anchor=tk.W, pady=(8, 2))
@@ -10789,14 +10825,16 @@ Copyright (c) 2025 Universal Downloader Contributors
         max_downloads_var = tk.StringVar(value=str(min(8, max(1, int(self.settings.get('max_concurrent_downloads', 3))))))
         max_downloads_spin = ttk.Spinbox(general_frame, from_=1, to=8, textvariable=max_downloads_var, width=10, style="Download.TEntry")
         max_downloads_spin.pack(anchor=tk.W, pady=5)
-        ttk.Label(
+        max_dl_help_lbl = ttk.Label(
             general_frame,
             text="Mehrere URLs aus der Queue gleichzeitig. Bei YouTube: Rate-Limits möglich. Bei aktiver GPU-Beschleunigung wird sie pro parallelem Job automatisch ausgeschaltet (sonst fehlgeschlagene MP4-Konvertierung).",
             font=("Arial", 8),
             foreground="gray",
-            wraplength=520,
+            wraplength=840,
             style="Download.TLabel",
-        ).pack(anchor=tk.W, padx=(0, 0), pady=(0, 5))
+        )
+        max_dl_help_lbl.pack(anchor=tk.W, padx=(0, 0), pady=(0, 5))
+        settings_wrap_labels.append(max_dl_help_lbl)
         
         # Sprache
         ttk.Label(general_frame, text="Sprache:", style="Download.TLabel").pack(anchor=tk.W, pady=(10, 5))
@@ -11132,9 +11170,9 @@ Copyright (c) 2025 Universal Downloader Contributors
         """
         quality_window = tk.Toplevel(self.root)
         quality_window.title("Qualität auswählen")
-        quality_window.geometry("400x300")
         quality_window.transient(self.root)
         quality_window.grab_set()
+        self._fit_dialog(quality_window, 480, 360, 400, 280)
         
         quality_frame = ttk.Frame(quality_window, padding="20")
         quality_frame.pack(fill=tk.BOTH, expand=True)

@@ -1134,6 +1134,82 @@ def download_episodes_headless(
     return ok, fail
 
 
+_last_open_main_ts = 0.0
+
+
+def _macos_gui_pids() -> List[int]:
+    """PIDs des Hauptfensters (ohne Tray-Helfer)."""
+    me = os.getpid()
+    found: List[int] = []
+    try:
+        import subprocess
+
+        out = subprocess.check_output(
+            ["pgrep", "-lf", "Universal Downloader.app/Contents/MacOS/Universal Downloader"],
+            text=True,
+            timeout=2,
+        )
+    except Exception:
+        return found
+    for line in out.splitlines():
+        if "--series-watch-tray" in line:
+            continue
+        try:
+            pid = int(line.split(None, 1)[0])
+        except ValueError:
+            continue
+        if pid != me:
+            found.append(pid)
+    return found
+
+
+def _gui_lock_pid() -> Optional[int]:
+    """PID des laufenden Hauptfensters, oder None."""
+    lock = Path.home() / ".universal_downloader.lock"
+    try:
+        pid = int((lock.read_text(encoding="utf-8") or "0").strip().split()[0])
+    except Exception:
+        return None
+    if pid <= 0:
+        return None
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return None
+    return pid
+
+
+def _macos_activate_pid(pid: int) -> bool:
+    """Holt einen bestehenden GUI-Prozess nach vorn (nicht den Tray-Helfer)."""
+    try:
+        from AppKit import NSRunningApplication, NSApplicationActivateIgnoringOtherApps
+
+        app = NSRunningApplication.runningApplicationWithProcessIdentifier_(int(pid))
+        if app is None:
+            return False
+        app.activateWithOptions_(NSApplicationActivateIgnoringOtherApps)
+        return True
+    except Exception:
+        pass
+    try:
+        import subprocess
+
+        subprocess.run(
+            [
+                "osascript",
+                "-e",
+                f'tell application "System Events" to set frontmost of '
+                f"(first process whose unix id is {int(pid)}) to true",
+            ],
+            capture_output=True,
+            timeout=2,
+            check=False,
+        )
+        return True
+    except Exception:
+        return False
+
+
 def find_main_app_command() -> List[str]:
     """Befehl zum Starten der Haupt-App (plattformabhängig)."""
     import shutil
@@ -1178,14 +1254,47 @@ def open_main_app() -> bool:
     """Startet/aktiviert das Hauptprogramm. True bei Startversuch."""
     import subprocess
     import sys
+    import time
+
+    global _last_open_main_ts
+
+    if sys.platform == "darwin":
+        now = time.time()
+        if now - _last_open_main_ts < 2.5:
+            return True
+        for pid in _macos_gui_pids():
+            _last_open_main_ts = now
+            return _macos_activate_pid(pid)
+        gui_pid = _gui_lock_pid()
+        if gui_pid and gui_pid != os.getpid():
+            _last_open_main_ts = now
+            if _macos_activate_pid(gui_pid):
+                return True
+        # Nicht „open -a“: das aktiviert den Tray derselben .app.
+        if getattr(sys, "frozen", False):
+            cmd = [sys.executable]
+        else:
+            start_py = Path(__file__).resolve().parent / "start.py"
+            if start_py.exists():
+                cmd = [sys.executable, str(start_py)]
+            else:
+                cmd = find_main_app_command()
+                if cmd and cmd[0] == "open":
+                    cmd = ["open", "-n", *cmd[1:]]
+        if not cmd:
+            return False
+        try:
+            _last_open_main_ts = now
+            subprocess.Popen(cmd, start_new_session=True, close_fds=True)
+            return True
+        except Exception:
+            return False
 
     cmd = find_main_app_command()
     if not cmd:
         return False
     try:
-        if sys.platform == "darwin" and cmd[0] == "open":
-            subprocess.Popen(cmd)
-        elif sys.platform == "win32":
+        if sys.platform == "win32":
             from path_helper import win_hidden_kwargs
             flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
             extra = win_hidden_kwargs()

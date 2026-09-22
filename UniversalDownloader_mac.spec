@@ -124,8 +124,16 @@ app = BUNDLE(
         'CFBundleName': 'Universal Downloader',
         'CFBundleDisplayName': 'Universal Downloader',
         'CFBundleVersion': _APP_VERSION,
+        'CFBundleShortVersionString': _APP_VERSION,
         'NSHighResolutionCapable': True,
-        'LSMultipleInstancesProhibited': True,
+        'LSMultipleInstancesProhibited': False,
         'LSRequiresNativeExecution': True if _target_arch == 'arm64' else False,
+        'NSDownloadsFolderUsageDescription': (
+            'Universal Downloader speichert Downloads, Einstellungen und Protokolle '
+            'im Ordner Downloads/Universal Downloader.'
+        ),
+        'NSRemovableVolumesUsageDescription': (
+            'Universal Downloader kann Dateien auf externe Laufwerke herunterladen.'
+        ),
     },
 )
