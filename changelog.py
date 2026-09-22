@@ -11,6 +11,17 @@ from typing import List, Optional, Dict, Any
 # Neueste Version zuerst – wird für „Erster Start“ und Upgrade-Anzeige genutzt
 RELEASE_NOTES: List[Dict[str, Any]] = [
     {
+        "version": "2.1.19",
+        "date": "2026-09-22",
+        "items": [
+            "Serien-Wächter: nach erfolgreichem Download Folgen automatisch als „habe ich“ markieren.",
+            "Serien-Wächter: Option „Neue Folgen automatisch herunterladen“ (global und pro Serie).",
+            "Serien-Wächter: Tray-Helper – Fortschritt, neue Folgen, Abbruch, Video- und Hörbuch-Ordner; Autostart nach Anmeldung (Windows/macOS/Linux).",
+            "Serien-Wächter: Hörbücher/Audiothek (ARD Audiothek, ARD Sounds, LibriVox, …) prüfen und als MP3 in den Musik-Ordner laden.",
+            "Windows: Tray-Icon über natives Notify-Icon (sichtbar in Windows 11); Setup-Installer zusätzlich zur portablen EXE.",
+        ],
+    },
+    {
         "version": "2.1.18",
         "date": "2026-09-21",
         "items": [

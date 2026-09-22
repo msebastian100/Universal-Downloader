@@ -38,6 +38,8 @@ a = Analysis(
         'path_helper',
         'mac_platform',
         'series_watch',
+        'series_watch_tray',
+        'pystray',
         'requests',
         'urllib3',
         'certifi',

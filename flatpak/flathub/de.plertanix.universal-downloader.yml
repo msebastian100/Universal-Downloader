@@ -102,7 +102,7 @@ modules:
           install_ffmpeg.py create_shortcut.py check_dependencies.py \
           audiobook_providers.py audiobook_search.py stream_automation.py \
           audio_recorder.py audio_device_detector.py setup_audio_recording.py \
-          series_watch.py mac_platform.py requirements.txt icon.png
+          series_watch.py series_watch_tray.py mac_platform.py requirements.txt icon.png
         do
           if [ -f "$f" ]; then
             install -m644 "$f" ${FLATPAK_DEST}/share/universal-downloader/

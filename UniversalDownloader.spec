@@ -53,6 +53,9 @@ a = Analysis(
         'update_from_github',
         'create_shortcut',
         'setup_audio_recording',
+        'series_watch',
+        'series_watch_tray',
+        'pystray',
         # URL-Liste aus Dateien (gui.py, optional dynamisch)
         'docx',
         'striprtf',

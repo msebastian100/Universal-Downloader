@@ -73,7 +73,7 @@ PY_FILES=(
     install_ffmpeg.py create_shortcut.py check_dependencies.py
     audiobook_providers.py audiobook_search.py stream_automation.py
     audio_recorder.py audio_device_detector.py setup_audio_recording.py
-    series_watch.py mac_platform.py
+    series_watch.py series_watch_tray.py mac_platform.py
 )
 
 echo "Kopiere Anwendungsdateien..."

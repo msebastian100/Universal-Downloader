@@ -386,6 +386,8 @@ class DeezerDownloaderGUI:
         self.root.after(350, self._resize_download_panels)
         # Serien-Wächter: erster Timer-Tick nach 90 s, danach minütlich (Prüfintervall in Einstellungen)
         self.root.after(90000, self._series_watch_schedule_tick)
+        # Tray-Icon (Windows-Infobereich / macOS-Menüleiste) mit der GUI starten
+        self.root.after(1800, self._start_series_watch_tray)
         
         # Prüfe ob bereits angemeldet (Deezer)
         if DeezerAuth:
@@ -2013,6 +2015,47 @@ class DeezerDownloaderGUI:
         except Exception:
             pass
 
+    def _start_series_watch_tray(self):
+        """Serien-Wächter-Icon im Infobereich/Menüleiste (im GUI-Prozess) plus Login-Autostart."""
+        if os.environ.get("SERIES_WATCH_NO_TRAY"):
+            return
+        if getattr(self, "_series_watch_tray_app", None) is not None:
+            return
+        try:
+            import series_watch_tray as swt
+        except ImportError:
+            try:
+                self._write_to_log_file("[Serien-Wächter] Tray-Modul fehlt.", "INFO")
+            except Exception:
+                pass
+            return
+        if sys.platform != "win32":
+            try:
+                import pystray  # noqa: F401
+            except ImportError:
+                try:
+                    self._write_to_log_file("[Serien-Wächter] Tray nicht gestartet (pystray fehlt).", "INFO")
+                except Exception:
+                    pass
+                return
+        try:
+            swt.steal_tray_instance(self.base_download_path)
+            app = swt.TrayApp(self.base_download_path, tk_root=self.root)
+            rc = app.run_tray_detached()
+            if rc == 0:
+                self._series_watch_tray_app = app
+                self._write_to_log_file("[Serien-Wächter] Tray-Icon im Infobereich gestartet.", "INFO")
+            else:
+                self._write_to_log_file("[Serien-Wächter] Tray-Icon konnte nicht erstellt werden.", "WARNING")
+            if self.settings.get("series_watch_tray_autostart", True):
+                if swt.install_login_autostart():
+                    self._write_to_log_file("[Serien-Wächter] Autostart nach Anmeldung eingerichtet.", "INFO")
+        except Exception as e:
+            try:
+                self._write_to_log_file(f"[Serien-Wächter] Tray-Start fehlgeschlagen: {e}", "WARNING")
+            except Exception:
+                pass
+
     def _series_watch_schedule_tick(self):
         """Ruft periodisch die Serien-Prüfung auf (minütlich; Abstand siehe Einstellungen)."""
         try:
@@ -2023,6 +2066,181 @@ class DeezerDownloaderGUI:
             self._series_watch_after_id = self.root.after(60000, self._series_watch_schedule_tick)
         except Exception:
             pass
+
+    def _series_watch_mark_downloaded(self, url: str = "", episode_id=None):
+        """Nach erfolgreichem Video-Download: passendes have_ids im Serien-Wächter setzen."""
+        if series_watch is None:
+            return
+        try:
+            urls = [url] if (url or "").strip() else []
+            ids = [str(episode_id)] if episode_id else []
+            if not urls and not ids:
+                return
+            n = series_watch.mark_downloaded_episodes(
+                self.base_download_path, urls=urls, episode_ids=ids
+            )
+            if n:
+                self._write_to_log_file(
+                    f"[Serien-Wächter] {n} Folge(n) als „habe ich“ markiert ({(url or '')[:80]})",
+                    "INFO",
+                )
+        except Exception as e:
+            try:
+                self._write_to_log_file(f"[Serien-Wächter] Abhaken fehlgeschlagen: {e}", "WARNING")
+            except Exception:
+                pass
+
+    def _series_watch_item_for_notification(self, n: Dict) -> Optional[Dict]:
+        if series_watch is None or not isinstance(n, dict):
+            return None
+        data = series_watch.load_state(self.base_download_path)
+        url = (n.get("series_url") or "").strip()
+        name = (n.get("watch_name") or "").strip()
+        for it in data.get("items") or []:
+            if not isinstance(it, dict):
+                continue
+            if url and (it.get("url") or "").strip() == url:
+                return it
+            dn = (it.get("display_name") or "").strip()
+            if name and (dn == name or (it.get("playlist_title") or "").strip() == name):
+                return it
+        return None
+
+    def _series_watch_collect_auto_download_episodes(self, notifications: List[Dict]) -> List[Dict]:
+        """Sammelt neue Folgen, die laut Einstellung/Serie automatisch geladen werden sollen."""
+        if series_watch is None:
+            return []
+        out: List[Dict] = []
+        seen_urls = set()
+        for n in notifications or []:
+            if not isinstance(n, dict):
+                continue
+            it = self._series_watch_item_for_notification(n)
+            if it is None:
+                it = {}
+            if not series_watch.item_wants_auto_download(it, self.settings):
+                continue
+            series_name = (n.get("watch_name") or "").strip()
+            series_url = (n.get("series_url") or (it.get("url") if isinstance(it, dict) else "") or "").strip()
+            kind = series_watch.watch_item_kind(it if isinstance(it, dict) else None, series_url)
+            for ep in series_watch.episodes_for_video_download(
+                n.get("new_episodes") or [], series_name, kind=kind, series_url=series_url
+            ):
+                u = (ep.get("url") or "").strip()
+                if not u or u in seen_urls:
+                    continue
+                seen_urls.add(u)
+                out.append(ep)
+        return out
+
+    def _series_watch_start_auto_downloads(self, episodes: List[Dict]):
+        """Startet Auto-Download: Video-Tab bzw. Musik-Tab (Hörbuch/Audiothek)."""
+        if not episodes:
+            return
+        audio_eps = [
+            e for e in episodes
+            if (e.get("kind") == "audio") or (series_watch and series_watch.is_audio_watch_url(e.get("url") or e.get("series_url") or ""))
+        ]
+        video_eps = [e for e in episodes if e not in audio_eps]
+        try:
+            if series_watch is not None:
+                series_watch.write_runtime_status(
+                    self.base_download_path,
+                    phase="downloading",
+                    pending=[
+                        {
+                            "title": (e.get("title") or "")[:80],
+                            "series": (e.get("series") or e.get("series_name") or "")[:60],
+                        }
+                        for e in episodes[1:]
+                    ],
+                    cancel_requested=False,
+                )
+                first = episodes[0]
+                series_watch.set_download_progress(
+                    self.base_download_path,
+                    title=first.get("title") or "",
+                    series=first.get("series") or first.get("series_name") or "",
+                    percent=0.0,
+                    index=1,
+                    total=len(episodes),
+                    pending=[
+                        {
+                            "title": (e.get("title") or "")[:80],
+                            "series": (e.get("series") or e.get("series_name") or "")[:60],
+                        }
+                        for e in episodes[1:]
+                    ],
+                )
+            if video_eps and VideoDownloader:
+                self._series_watch_get_video_downloader()
+                self.video_download_button.config(state=tk.DISABLED)
+                if hasattr(self, "video_cancel_button"):
+                    self.video_cancel_button.config(state=tk.NORMAL)
+                self.video_log(f"\n[Serien-Wächter] Auto-Download Video: {len(video_eps)} Folge(n)")
+                threading.Thread(target=self.video_download_episodes_thread, args=(video_eps,), daemon=True).start()
+            if audio_eps:
+                self._series_watch_get_video_downloader()
+                if hasattr(self, "music_download_button"):
+                    self.music_download_button.config(state=tk.DISABLED)
+                self.music_log(f"\n[Serien-Wächter] Auto-Download Hörbuch/Audio: {len(audio_eps)} Folge(n)")
+                threading.Thread(
+                    target=self._audiothek_episodes_download_thread,
+                    args=(audio_eps,),
+                    kwargs={"silent": True},
+                    daemon=True,
+                ).start()
+        except Exception as e:
+            self._write_to_log_file(f"[Serien-Wächter] Auto-Download Start fehlgeschlagen: {e}", "ERROR")
+            if series_watch is not None:
+                try:
+                    series_watch.clear_download_status(self.base_download_path)
+                except Exception:
+                    pass
+
+
+    def _series_watch_notify_and_maybe_download(self, notifications: List[Dict], *, interactive: bool = False, parent=None):
+        """Benachrichtigungen + optional Auto-Download. Interactive: Dialog bei manueller Prüfung."""
+        if series_watch is None or not notifications:
+            return
+        auto_eps = self._series_watch_collect_auto_download_episodes(notifications)
+        for n in notifications:
+            title, body = series_watch.format_notification_text(n)
+            if auto_eps:
+                n_count = len(n.get("new_episodes") or [])
+                title = f"Auto-Download: {n.get('watch_name') or title}"
+                body = f"{n_count} neue Folge(n) – Download gestartet.\n\n" + body
+            try:
+                series_watch.send_external_notifications(self.settings, title, body)
+            except Exception as e:
+                self._write_to_log_file(f"[Serien-Wächter] Versand (E-Mail/Telegram/Discord): {e}", "WARNING")
+            short = body[:500] + ("…" if len(body) > 500 else "")
+            self.root.after(0, lambda t=title, m=short: self._series_watch_desktop_notify(t, m))
+
+        if auto_eps:
+            self.root.after(0, lambda eps=list(auto_eps): self._series_watch_start_auto_downloads(eps))
+            return
+
+        if interactive:
+            all_new = []
+            for n in notifications:
+                wn = (n.get("watch_name") or "").strip()
+                for ep in n.get("new_episodes") or []:
+                    e = dict(ep)
+                    if wn and not e.get("series"):
+                        e["series"] = wn
+                    all_new.append(e)
+            parent_win = parent or self.root
+
+            def ask():
+                if messagebox.askyesno(
+                    "Neue Folgen",
+                    f"{len(notifications)} Meldung(en). Neue Folgen zur Queue hinzufügen oder herunterladen?",
+                    parent=parent_win,
+                ):
+                    self._series_watch_new_episodes_actions_dialog(parent_win, all_new, "Neue Folgen — Aktion")
+
+            self.root.after(0, ask)
 
     def _series_watch_maybe_run(self):
         if series_watch is None:
@@ -2042,23 +2260,24 @@ class DeezerDownloaderGUI:
             return
 
         def work():
-            try:
-                _, notifications = series_watch.check_all(
-                    self.base_download_path,
-                    on_item_error=lambda n, e: self._write_to_log_file(f"[Serien-Wächter] {n}: {e}", "WARNING"),
-                )
-            except Exception as e:
-                self._write_to_log_file(f"[Serien-Wächter] Prüfung fehlgeschlagen: {e}", "ERROR")
+            lock = series_watch.try_acquire_check_lock(self.base_download_path, "gui")
+            if lock is None:
+                self._write_to_log_file("[Serien-Wächter] Prüfung übersprungen (Lock belegt, z. B. Tray aktiv).", "INFO")
                 return
-            self._series_watch_last_run = time.time()
-            for n in notifications:
-                title, body = series_watch.format_notification_text(n)
+            try:
                 try:
-                    series_watch.send_external_notifications(self.settings, title, body)
+                    _, notifications = series_watch.check_all(
+                        self.base_download_path,
+                        on_item_error=lambda n, e: self._write_to_log_file(f"[Serien-Wächter] {n}: {e}", "WARNING"),
+                    )
                 except Exception as e:
-                    self._write_to_log_file(f"[Serien-Wächter] Versand (E-Mail/Telegram/Discord): {e}", "WARNING")
-                short = body[:500] + ("…" if len(body) > 500 else "")
-                self.root.after(0, lambda t=title, m=short: self._series_watch_desktop_notify(t, m))
+                    self._write_to_log_file(f"[Serien-Wächter] Prüfung fehlgeschlagen: {e}", "ERROR")
+                    return
+                self._series_watch_last_run = time.time()
+                if notifications:
+                    self._series_watch_notify_and_maybe_download(notifications, interactive=False)
+            finally:
+                series_watch.release_check_lock(lock)
 
         threading.Thread(target=work, daemon=True).start()
 
@@ -2420,6 +2639,7 @@ class DeezerDownloaderGUI:
                 "episode_number": ep.get("episode_number"),
                 "playlist_index": ep.get("playlist_index"),
                 "url": url,
+                "id": ep.get("id"),
             }
             if info["season_number"] is None or info["episode_number"] is None:
                 s, e = series_watch.episode_s_e_from_title(ep.get("title") or "")
@@ -2473,9 +2693,10 @@ class DeezerDownloaderGUI:
         main.pack(fill=tk.BOTH, expand=True)
         ttk.Label(
             main,
-            text="ARD: Auch bei „Staffel-x“-Links wird intern die Serien-URL genutzt — es erscheinen alle Staffeln/Folgen, die yt-dlp liefert.\n"
-            "Audiodeskription wird ignoriert. Unter „Besitz markieren“ tragen Sie ein, was Sie schon haben — dann nur noch Hinweise auf wirklich neue/fehlende Folgen.\n"
-            "Erster Ablauf: Referenz ohne Meldung. Danach: neue Folgen → optional zur Video-Queue oder sofortiger Download.",
+            text="Video (z. B. ARD Mediathek) und Hörbücher/Hörspiele (ARD Audiothek, ARD Sounds, LibriVox, …).\n"
+            "ARD-Video: Auch bei „Staffel-x“-Links wird intern die Serien-URL genutzt.\n"
+            "Audiodeskription wird ignoriert. Downloads werden als „habe ich“ abgehakt.\n"
+            "Auto-Download: global in den Einstellungen oder pro Serie. Audio landet im Musik-Ordner (MP3), Video im Video-Ordner.",
             style="Download.TLabel",
             wraplength=740,
         ).pack(anchor=tk.W, pady=(0, 8))
@@ -2497,10 +2718,16 @@ class DeezerDownloaderGUI:
                     continue
                 nm = (it.get("display_name") or "").strip() or (it.get("url") or "")[:50]
                 u = (it.get("url") or "")[:72]
+                kind = "🎧" if series_watch.watch_item_kind(it) == "audio" else "📺"
                 n_ep = len(it.get("episodes") or {}) if isinstance(it.get("episodes"), dict) else 0
                 n_have = len(it.get("have_ids") or []) if isinstance(it.get("have_ids"), list) else 0
                 bl = "✓" if it.get("baseline_done") else "…"
-                lb.insert(tk.END, f"{bl} {nm}  |  Stand {n_ep} IDs  |  als „habe“ {n_have}  |  {u}")
+                ad = ""
+                if "auto_download" in it:
+                    ad = "  |  Auto-DL an" if it.get("auto_download") else "  |  Auto-DL aus"
+                elif self.settings.get("series_watch_auto_download", False):
+                    ad = "  |  Auto-DL (global)"
+                lb.insert(tk.END, f"{bl} {kind} {nm}  |  Stand {n_ep} IDs  |  als „habe“ {n_have}{ad}  |  {u}")
 
         refresh_list()
 
@@ -2523,9 +2750,10 @@ class DeezerDownloaderGUI:
                 return
             data = series_watch.load_state(self.base_download_path)
             items = data.setdefault("items", [])
-            nu = series_watch.normalize_ardmediathek_watch_url(u)
+            nu = series_watch.normalize_watch_url(u)
             items.append({
                 "url": nu,
+                "kind": series_watch.watch_item_kind(None, nu),
                 "display_name": name_var.get().strip(),
                 "episodes": {},
                 "baseline_done": False,
@@ -2557,47 +2785,60 @@ class DeezerDownloaderGUI:
                 series_watch.save_state(self.base_download_path, data)
             refresh_list()
 
+        def toggle_auto_download():
+            sel = lb.curselection()
+            if not sel:
+                messagebox.showinfo("Hinweis", "Bitte einen Eintrag wählen.", parent=win)
+                return
+            data = series_watch.load_state(self.base_download_path)
+            items = data.get("items") or []
+            idx = sel[0]
+            if not (0 <= idx < len(items)) or not isinstance(items[idx], dict):
+                return
+            it = items[idx]
+            # Zyklus: (global) → an → aus → (global)
+            if "auto_download" not in it:
+                it["auto_download"] = True
+            elif it.get("auto_download"):
+                it["auto_download"] = False
+            else:
+                it.pop("auto_download", None)
+            series_watch.save_state(self.base_download_path, data)
+            refresh_list()
+            lb.selection_set(idx)
+
         def run_check_now():
             def work():
-                try:
-                    _, notifications = series_watch.check_all(
-                        self.base_download_path,
-                        on_item_error=lambda n, e: self._write_to_log_file(f"[Serien-Wächter] {n}: {e}", "WARNING"),
-                    )
-                except Exception as e:
-                    self.root.after(0, lambda: messagebox.showerror("Serien-Wächter", str(e), parent=win))
-                    self.root.after(0, refresh_list)
-                    return
-                self._series_watch_last_run = time.time()
-                self.root.after(0, refresh_list)
-                if not notifications:
-                    self.root.after(0, lambda: messagebox.showinfo("Serien-Wächter", "Keine neuen Folgen (nach Ihren Besitz-Regeln).", parent=win))
-                    return
-
-                def show_results():
-                    all_new = []
-                    for n in notifications:
-                        title, body = series_watch.format_notification_text(n)
-                        try:
-                            series_watch.send_external_notifications(self.settings, title, body)
-                        except Exception:
-                            pass
-                        short = body[:500] + ("…" if len(body) > 500 else "")
-                        self._series_watch_desktop_notify(title, short)
-                        wn = (n.get("watch_name") or "").strip()
-                        for ep in n.get("new_episodes") or []:
-                            e = dict(ep)
-                            if wn and not e.get("series"):
-                                e["series"] = wn
-                            all_new.append(e)
-                    if messagebox.askyesno(
-                        "Neue Folgen",
-                        f"{len(notifications)} Meldung(en) gesendet. Neue Folgen zur Queue hinzufügen oder herunterladen?",
+                lock = series_watch.try_acquire_check_lock(self.base_download_path, "gui-manual")
+                if lock is None:
+                    self.root.after(0, lambda: messagebox.showinfo(
+                        "Serien-Wächter",
+                        "Prüfung läuft bereits (Haupt-App oder Tray-Helper). Bitte kurz warten.",
                         parent=win,
-                    ):
-                        self._series_watch_new_episodes_actions_dialog(win, all_new, "Neue Folgen — Aktion")
-
-                self.root.after(0, show_results)
+                    ))
+                    return
+                try:
+                    try:
+                        _, notifications = series_watch.check_all(
+                            self.base_download_path,
+                            on_item_error=lambda n, e: self._write_to_log_file(f"[Serien-Wächter] {n}: {e}", "WARNING"),
+                        )
+                    except Exception as e:
+                        self.root.after(0, lambda: messagebox.showerror("Serien-Wächter", str(e), parent=win))
+                        self.root.after(0, refresh_list)
+                        return
+                    self._series_watch_last_run = time.time()
+                    self.root.after(0, refresh_list)
+                    if not notifications:
+                        self.root.after(0, lambda: messagebox.showinfo(
+                            "Serien-Wächter",
+                            "Keine neuen Folgen (nach Ihren Besitz-Regeln).",
+                            parent=win,
+                        ))
+                        return
+                    self._series_watch_notify_and_maybe_download(notifications, interactive=True, parent=win)
+                finally:
+                    series_watch.release_check_lock(lock)
 
             threading.Thread(target=work, daemon=True).start()
 
@@ -2608,6 +2849,7 @@ class DeezerDownloaderGUI:
         ttk.Button(btn_fr, text="➕ Hinzufügen", command=add_item, style="Download.TButton").pack(side=tk.LEFT, padx=(0, 6))
         ttk.Button(btn_fr, text="🗑️ Entfernen", command=remove_item, style="Download.TButton").pack(side=tk.LEFT, padx=6)
         ttk.Button(btn_fr, text="🔄 Jetzt prüfen", command=run_check_now, style="Download.TButton").pack(side=tk.LEFT, padx=6)
+        ttk.Button(btn_fr, text="⬇ Auto-DL umschalten", command=toggle_auto_download, style="Download.TButton").pack(side=tk.LEFT, padx=6)
         ttk.Button(btn_fr, text="Schließen", command=win.destroy, style="Download.TButton").pack(side=tk.RIGHT, padx=6)
         btn_fr2 = ttk.Frame(main, style="Download.TFrame")
         btn_fr2.pack(fill=tk.X, pady=(0, 4))
@@ -4124,7 +4366,7 @@ class DeezerDownloaderGUI:
             self.music_log(f"Fehler bei Audiothek-Serien-Dialog: {e}")
             self.root.after(0, lambda: self.music_download_button.config(state=tk.NORMAL))
     
-    def _audiothek_episodes_download_thread(self, selected_episodes):
+    def _audiothek_episodes_download_thread(self, selected_episodes, silent=False):
         """Lädt ausgewählte ARD-Audiothek-Folgen als MP3 (Worker-Thread)."""
         import time
         try:
@@ -4194,6 +4436,7 @@ class DeezerDownloaderGUI:
                         time.sleep(3)
                 if success:
                     self.music_log(f"✓ {i}/{total}: {file_path.name if file_path else title}")
+                    self._series_watch_mark_downloaded(ep_url, episode_id=ep.get('id'))
                 else:
                     self.music_log(f"✗ {i}/{total}: {error}")
                 if getattr(self, 'music_download_cancel_current_only', False):
@@ -4201,11 +4444,13 @@ class DeezerDownloaderGUI:
                     break
             self.root.after(0, lambda: self.music_status_var.set(f"✓ Download abgeschlossen: {total} Folge(n)"))
             self.root.after(0, lambda: self.music_log(f"\n✓ ARD Audiothek: {total} Folge(n) verarbeitet."))
-            self.root.after(0, lambda: messagebox.showinfo("Erfolg", f"Download abgeschlossen!\n{total} Folge(n) verarbeitet. Details im Log."))
+            if not silent:
+                self.root.after(0, lambda: messagebox.showinfo("Erfolg", f"Download abgeschlossen!\n{total} Folge(n) verarbeitet. Details im Log."))
         except Exception as e:
             self.music_log(f"Fehler: {e}")
             self.root.after(0, lambda: self.music_status_var.set("✗ Fehler"))
-            self.root.after(0, lambda: messagebox.showerror("Fehler", str(e)))
+            if not silent:
+                self.root.after(0, lambda: messagebox.showerror("Fehler", str(e)))
         finally:
             self.root.after(0, lambda: setattr(self, 'music_audiothek_episodes_total', 0))
             self.root.after(0, lambda: self.music_progress_bar.stop())
@@ -5700,6 +5945,14 @@ class DeezerDownloaderGUI:
                     self._add_to_history(url, file_path.name, "Erfolgreich")
                     # Download-Archiv: URL als heruntergeladen markieren
                     self._add_to_download_archive(url)
+                    # Serien-Wächter: Folge als „habe ich“ markieren
+                    ep_id = None
+                    q_mark = qi if qi else getattr(self, '_current_queue_item_for_batch', None)
+                    if isinstance(q_mark, dict):
+                        epi = q_mark.get('episode_info') or {}
+                        if isinstance(epi, dict):
+                            ep_id = epi.get('id')
+                    self._series_watch_mark_downloaded(url, episode_id=ep_id)
                     
                     # Batch-Zähler (URL-Liste aus Datei oder Serien-Folgen aus Queue)
                     qitem = qi if qi else getattr(self, '_current_queue_item_for_batch', None)
@@ -6890,7 +7143,8 @@ class DeezerDownloaderGUI:
                                 'playlist_index': remaining_episode.get('playlist_index'),
                                 'broadcast_date': remaining_episode.get('broadcast_date') or '',
                                 'upload_date': remaining_episode.get('upload_date') or '',
-                                'url': remaining_url
+                                'url': remaining_url,
+                                'id': remaining_episode.get('id'),
                             }
                             # Füge zur Queue hinzu ohne Dialog
                             self._add_to_download_queue(remaining_url, episode_info=remaining_episode_info, show_dialog=False)
@@ -6909,6 +7163,28 @@ class DeezerDownloaderGUI:
                 # Fortschritt für diese Episode (0–100%), Anzeige mit Episoden-Zähler
                 def progress_callback(percent, status_line):
                     """Callback für Fortschritts-Updates (Download und Konvertierung) – Main-Thread"""
+                    if series_watch is not None:
+                        try:
+                            pending_rest = [
+                                {
+                                    "title": (x.get("title") or "")[:80],
+                                    "series": (x.get("series") or x.get("series_name") or series_name or "")[:60],
+                                }
+                                for x in episodes[i:]
+                            ]
+                            series_watch.set_download_progress(
+                                self.base_download_path,
+                                title=title,
+                                series=series_name or "",
+                                percent=percent,
+                                index=i,
+                                total=len(episodes),
+                                pending=pending_rest,
+                            )
+                            if series_watch.is_download_cancel_requested(self.base_download_path):
+                                self.video_download_cancelled = True
+                        except Exception:
+                            pass
                     def _update():
                         try:
                             # Fortschrittsbalken zeigt immer den Fortschritt der aktuellen Episode (0–100%)
@@ -7054,6 +7330,7 @@ class DeezerDownloaderGUI:
                     else:
                         self.video_log(f"  ⚠ Download scheint erfolgreich, aber Datei nicht gefunden")
                         success_count += 1
+                    self._series_watch_mark_downloaded(url, episode_id=episode.get('id'))
                 else:
                     self.video_log(f"  ✗ Fehlgeschlagen: {error}")
                     failed_count += 1
@@ -7120,6 +7397,11 @@ class DeezerDownloaderGUI:
             # NICHT zurücksetzen während des Downloads, sonst funktioniert der Dialog nicht!
             # self.video_download_episodes_total = 0  # Wird später zurückgesetzt
             # self.video_download_cancel_current_only = False  # Wird später zurückgesetzt
+            if series_watch is not None:
+                try:
+                    series_watch.clear_download_status(self.base_download_path)
+                except Exception:
+                    pass
             
             # UI wieder aktivieren
             self.video_download_button.config(state=tk.NORMAL)
@@ -9799,6 +10081,7 @@ Copyright (c) 2025 Universal Downloader Contributors
             # Serien-Wächter (Mediathek-Playlist, yt-dlp)
             'series_watch_enabled': False,
             'series_watch_interval_hours': 6,
+            'series_watch_auto_download': False,
             'series_notify_desktop': True,
             'series_notify_email_enabled': False,
             'series_smtp_host': '',
@@ -10304,8 +10587,29 @@ Copyright (c) 2025 Universal Downloader Contributors
         ttk.Label(sw_int_row, text="Prüf-Intervall (Stunden):", style="Download.TLabel").pack(side=tk.LEFT, padx=(0, 6))
         series_watch_interval_var = tk.StringVar(value=str(int(self.settings.get('series_watch_interval_hours', 6) or 6)))
         ttk.Spinbox(sw_int_row, from_=1, to=168, textvariable=series_watch_interval_var, width=6, style="Download.TEntry").pack(side=tk.LEFT)
+        series_watch_auto_dl_var = tk.BooleanVar(value=self.settings.get('series_watch_auto_download', False))
+        ttk.Checkbutton(
+            sw_frame,
+            text="Neue Folgen automatisch herunterladen (global; pro Serie im Serien-Wächter umschaltbar)",
+            variable=series_watch_auto_dl_var,
+            style="Download.TCheckbutton",
+        ).pack(anchor=tk.W, pady=(6, 2))
+        series_watch_tray_autostart_var = tk.BooleanVar(value=self.settings.get('series_watch_tray_autostart', True))
+        ttk.Checkbutton(
+            sw_frame,
+            text="Serien-Wächter nach der Anmeldung starten (Windows-Infobereich, macOS-Menüleiste, Linux-Tray)",
+            variable=series_watch_tray_autostart_var,
+            style="Download.TCheckbutton",
+        ).pack(anchor=tk.W, pady=(6, 2))
         series_notify_desktop_var = tk.BooleanVar(value=self.settings.get('series_notify_desktop', True))
         ttk.Checkbutton(sw_frame, text="Desktop-Benachrichtigung (Serien-Wächter)", variable=series_notify_desktop_var, style="Download.TCheckbutton").pack(anchor=tk.W, pady=(6, 2))
+        ttk.Label(
+            sw_frame,
+            text="Tray-Helper: Icon in der Taskleiste (Windows), Menüleiste (macOS) bzw. System-Tray (Linux). Startet mit der App und – wenn aktiviert – nach der Anmeldung.",
+            font=("Arial", 8),
+            wraplength=700,
+            style="Download.TLabel",
+        ).pack(anchor=tk.W, pady=(4, 2))
 
         series_notify_email_var = tk.BooleanVar(value=self.settings.get('series_notify_email_enabled', False))
         ttk.Checkbutton(sw_frame, text="E-Mail senden (SMTP)", variable=series_notify_email_var, style="Download.TCheckbutton").pack(anchor=tk.W, pady=(8, 2))
@@ -10500,6 +10804,16 @@ Copyright (c) 2025 Universal Downloader Contributors
                 self.settings['series_watch_interval_hours'] = min(168, max(1, int(series_watch_interval_var.get() or 6)))
             except (TypeError, ValueError):
                 self.settings['series_watch_interval_hours'] = 6
+            self.settings['series_watch_auto_download'] = series_watch_auto_dl_var.get()
+            self.settings['series_watch_tray_autostart'] = series_watch_tray_autostart_var.get()
+            try:
+                import series_watch_tray as _swt
+                if self.settings['series_watch_tray_autostart']:
+                    _swt.install_login_autostart()
+                else:
+                    _swt.remove_login_autostart()
+            except Exception:
+                pass
             self.settings['series_notify_desktop'] = series_notify_desktop_var.get()
             self.settings['series_notify_email_enabled'] = series_notify_email_var.get()
             self.settings['series_smtp_host'] = series_smtp_host_var.get().strip()

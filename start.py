@@ -138,6 +138,12 @@ def install_ffmpeg_if_missing():
     return False
 
 if __name__ == "__main__":
+    # Eigenständiger Serien-Wächter (System-Tray / Menüleiste), auch aus der gepackten .exe
+    if "--series-watch-tray" in sys.argv:
+        _tray_argv = [a for a in sys.argv[1:] if a != "--series-watch-tray"]
+        from series_watch_tray import main as tray_main
+        raise SystemExit(tray_main(_tray_argv))
+
     # macOS: Sofort Single-Instance-Lock (vor allen anderen Imports), reduziert Doppelstart
     _lock_handle = None
     if sys.platform == "darwin":

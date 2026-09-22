@@ -45,7 +45,67 @@
     <keyword>orf</keyword>
   </keywords>
   <content_rating type="oars-1.1"/>
+  <!-- Release-Historie für GNOME/Cinnamon „Software“ (neueste zuerst, aus changelog.py) -->
   <releases>
-    <release version="2.1.18" date="2026-09-21"/>
+    <release version="2.1.19" date="2026-09-22">
+      <description>
+        <p xml:lang="de">Serien-Wächter: Auto-Abhaken, Auto-Download für Video und Hörbücher, Tray-Icon mit Autostart (Windows/macOS/Linux).</p>
+        <p>Series watcher: auto-mark, auto-download for video and audiobooks, tray icon with login autostart.</p>
+      </description>
+    </release>
+    <release version="2.1.18" date="2026-09-21">
+      <description>
+        <p xml:lang="de">Linux: GNOME/Ubuntu „Software“ zeigt Paket mit Icon und Beschreibung (AppStream).</p>
+        <p>Linux: AppStream metadata for GNOME/Ubuntu Software.</p>
+      </description>
+    </release>
+    <release version="2.1.17" date="2026-09-21">
+      <description>
+        <p xml:lang="de">Linux: Paket erscheint in GNOME/Cinnamon „Software“ (AppStream/DEP-11).</p>
+        <p>Linux: Package visible in GNOME/Cinnamon Software.</p>
+      </description>
+    </release>
+    <release version="2.1.16" date="2026-09-21">
+      <description>
+        <p xml:lang="de">Linux: In-App-Update über APT-Repo und pkexec statt GitHub-.exe.</p>
+        <p>Linux: In-app updates via APT repo and pkexec.</p>
+      </description>
+    </release>
+    <release version="2.1.15" date="2026-09-21">
+      <description>
+        <p xml:lang="de">ARD Sounds: komplette Folgenlisten, Sortierung (n/m), Sendedatum Europe/Berlin; APT-Install-Skript.</p>
+        <p>ARD Sounds: full episode lists, (n/m) sort, Berlin timezone dates; APT install script.</p>
+      </description>
+    </release>
+    <release version="2.1.14" date="2026-09-03">
+      <description>
+        <p xml:lang="de">Dateinamen: Platzhalter {date}/{sendedatum} und {date_de}; ARD Sounds/Audiothek Sendedatum.</p>
+        <p>Filename placeholders for broadcast dates; ARD Sounds/Audiothek dates.</p>
+      </description>
+    </release>
+    <release version="2.1.13" date="2026-03-21">
+      <description>
+        <p xml:lang="de">Linux .deb: Changelog-Modul und pip/venv-Fixes; PyInstaller hiddenimports; macOS Build-venv.</p>
+        <p>Linux .deb changelog/pip fixes; PyInstaller hiddenimports; macOS build venv.</p>
+      </description>
+    </release>
+    <release version="2.1.12" date="2026-03-21">
+      <description>
+        <p xml:lang="de">ARD Sounds: komplette Folgenliste über API, Titel/Dauer, stabilerer Download.</p>
+        <p>ARD Sounds: full API episode lists, titles/duration, more reliable downloads.</p>
+      </description>
+    </release>
+    <release version="2.1.11" date="2026-02-08">
+      <description>
+        <p xml:lang="de">„Was ist neu?“-Dialog nach Updates und in den Einstellungen.</p>
+        <p>Changelog dialog after updates and in settings.</p>
+      </description>
+    </release>
+    <release version="2.1.10" date="2026-02-08">
+      <description>
+        <p xml:lang="de">Parallele Video-Downloads, stabilere YouTube-MP4s, Abbruch paralleler Jobs.</p>
+        <p>Parallel video downloads, more stable YouTube MP4s, cancel parallel jobs.</p>
+      </description>
+    </release>
   </releases>
 </component>

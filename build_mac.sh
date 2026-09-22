@@ -140,7 +140,7 @@ else
         --hidden-import=tkinter --hidden-import=PIL --hidden-import=mutagen \
         --hidden-import=deezer --hidden-import=yt_dlp --hidden-import=yt_dlp_helper \
         --hidden-import=path_helper --hidden-import=video_downloader --hidden-import=audible_integration \
-        --hidden-import=mac_platform --hidden-import=series_watch \
+        --hidden-import=mac_platform --hidden-import=series_watch --hidden-import=series_watch_tray --hidden-import=pystray \
         start.py
 fi
 

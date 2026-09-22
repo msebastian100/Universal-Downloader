@@ -15,6 +15,8 @@ browser-cookie3>=0.19.1
 python-docx>=1.1.0
 odfpy>=1.4.1
 striprtf>=0.0.26
+# Optional: Serien-Wächter Tray-Helper (series_watch_tray.py)
+pystray>=0.19.0
 # Optional für alte .doc-Dateien (Word 97-2003):
 # textract>=1.6.5  # Benötigt systemabhängige Abhängigkeiten (antiword, etc.)
 # docx2txt>=0.8  # Alternative für .doc
