@@ -183,11 +183,13 @@ def steal_tray_instance(base: Path) -> None:
                 _log(f"Beende alte Tray-Instanz PID {old}")
                 try:
                     if sys.platform == "win32":
+                        from path_helper import win_hidden_kwargs
                         subprocess.run(
                             ["taskkill", "/PID", str(old), "/F"],
                             capture_output=True,
                             timeout=8,
                             check=False,
+                            **win_hidden_kwargs(),
                         )
                     else:
                         os.kill(old, 15)
@@ -342,6 +344,7 @@ _WM_APP_SHOW_MENU = 0x8000 + 22
 _NIF_MESSAGE = 0x00000001
 _NIF_ICON = 0x00000002
 _NIF_TIP = 0x00000004
+_NIF_INFO = 0x00000010
 _NIF_GUID = 0x00000020
 _NIF_SHOWTIP = 0x00000080
 _NIM_ADD = 0x00000000
@@ -407,6 +410,8 @@ class WinNotifyIcon:
         self._uid = 1
         self._menu_open = False
         self._guid = None
+        self._stopping = False
+        self._last_menu_at = 0.0
 
     def create(self) -> bool:
         if sys.platform != "win32":
@@ -494,7 +499,7 @@ class WinNotifyIcon:
             wintypes.HWND,
             ctypes.c_void_p,
         ]
-        user32.TrackPopupMenu.restype = wintypes.BOOL
+        user32.TrackPopupMenu.restype = ctypes.c_uint
         user32.DestroyMenu.argtypes = [wintypes.HMENU]
         user32.DestroyMenu.restype = wintypes.BOOL
         user32.PostQuitMessage.argtypes = [ctypes.c_int]
@@ -534,6 +539,9 @@ class WinNotifyIcon:
 
         def _wndproc(hwnd, msg, wparam, lparam):
             try:
+                if msg == 0x0010:  # WM_CLOSE: kein Taskleisten-„X“ darf den Wächter beenden
+                    if not self._stopping:
+                        return 0
                 if msg == _WM_TRAYICON:
                     event = int(lparam) & 0xFFFF
                     if event in (
@@ -544,6 +552,10 @@ class WinNotifyIcon:
                         _NIN_SELECT,
                         _NIN_KEYSELECT,
                     ):
+                        now = time.monotonic()
+                        if now - self._last_menu_at < 0.45:
+                            return 0
+                        self._last_menu_at = now
                         user32.PostMessageW(hwnd, _WM_APP_SHOW_MENU, 0, 0)
                         return 0
                 if msg == _WM_APP_SHOW_MENU:
@@ -553,7 +565,8 @@ class WinNotifyIcon:
                         _log(f"Tray-Menü: {e}")
                     return 0
                 if msg == _WM_DESTROY:
-                    user32.PostQuitMessage(0)
+                    if self._stopping:
+                        user32.PostQuitMessage(0)
                     return 0
             except Exception:
                 pass
@@ -581,8 +594,9 @@ class WinNotifyIcon:
                 return False
         self._class_atom = atom
         WS_POPUP = 0x80000000
+        WS_EX_TOOLWINDOW = 0x00000080
         hwnd = user32.CreateWindowExW(
-            0,
+            WS_EX_TOOLWINDOW,
             cls_name,
             "UD Series Watch",
             WS_POPUP,
@@ -682,10 +696,14 @@ class WinNotifyIcon:
             user32.AppendMenuW(hmenu, MF_STRING, _ID_VIDEO, "Video-Ordner öffnen")
             user32.AppendMenuW(hmenu, MF_STRING, _ID_MUSIC, "Hörbuch-/Musik-Ordner öffnen")
             user32.AppendMenuW(hmenu, MF_SEPARATOR, 0, None)
-            user32.AppendMenuW(hmenu, MF_STRING, _ID_QUIT, "Beenden")
+            user32.AppendMenuW(hmenu, MF_STRING, _ID_QUIT, "Wächter beenden")
+            # Leerer letzter Eintrag: Maus-Loslassen trifft nicht mehr „Beenden“
+            user32.AppendMenuW(hmenu, MF_SEPARATOR, 0, None)
+            user32.AppendMenuW(hmenu, MF_STRING | MF_GRAYED, 0, " ")
             pt = self._POINT()
             user32.GetCursorPos(ctypes.byref(pt))
             user32.SetForegroundWindow(self.hwnd)
+            shown_at = time.monotonic()
             cmd = int(
                 user32.TrackPopupMenu(
                     hmenu,
@@ -698,6 +716,9 @@ class WinNotifyIcon:
                 )
             )
             user32.PostMessageW(self.hwnd, 0, 0, 0)  # WM_NULL, Menü zuverlässig schließen
+            if cmd == _ID_QUIT and (time.monotonic() - shown_at) < 0.4:
+                _log("Beenden ignoriert (zu schneller Klick).")
+                cmd = 0
             if cmd:
                 _log(f"Tray-Menü Befehl {cmd}")
                 self._dispatch(cmd)
@@ -735,6 +756,29 @@ class WinNotifyIcon:
             except Exception:
                 pass
 
+    def show_balloon(self, title: str, message: str) -> bool:
+        """Hinweis am Tray-Icon, ohne PowerShell."""
+        if not self._added or not self.hwnd:
+            return False
+        import ctypes
+
+        nid = self._NOTIFYICONDATAW()
+        nid.cbSize = ctypes.sizeof(self._NOTIFYICONDATAW)
+        nid.hWnd = self.hwnd
+        nid.uID = self._uid
+        flags = _NIF_INFO | _NIF_TIP | _NIF_SHOWTIP
+        if self._guid is not None:
+            flags |= _NIF_GUID
+            nid.guidItem = self._guid
+        nid.uFlags = flags
+        nid.uCallbackMessage = _WM_TRAYICON
+        nid.hIcon = self.hicon
+        nid.szTip = "Serien-Wächter"
+        nid.szInfoTitle = (title or "Serien-Wächter")[:63]
+        nid.szInfo = (message or "")[:255]
+        nid.dwInfoFlags = 0x00000001  # NIIF_INFO
+        return bool(self._shell32.Shell_NotifyIconW(_NIM_MODIFY, ctypes.byref(nid)))
+
     def run_loop(self) -> None:
         """Message-Pump im Tray-Prozess (Hauptthread, ohne Tk)."""
         import ctypes
@@ -751,6 +795,7 @@ class WinNotifyIcon:
             user32.DispatchMessageW(ctypes.byref(msg))
 
     def stop(self) -> None:
+        self._stopping = True
         try:
             self._notify(_NIM_DELETE, "")
         except Exception:
@@ -1629,6 +1674,10 @@ class TrayApp:
         if not icon.create():
             return False
         self._win_notify = icon
+        try:
+            series_watch.set_desktop_notify_impl(icon.show_balloon)
+        except Exception:
+            pass
         return True
 
     def _create_linux_status_icon(self) -> bool:

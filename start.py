@@ -58,8 +58,15 @@ def _safe_print(text: str) -> None:
 def check_ffmpeg():
     """Prüft ob ffmpeg verfügbar ist"""
     import subprocess
+    from path_helper import win_hidden_kwargs
     try:
-        result = subprocess.run(['ffmpeg', '-version'], capture_output=True, timeout=2, check=True)
+        result = subprocess.run(
+            ['ffmpeg', '-version'],
+            capture_output=True,
+            timeout=2,
+            check=True,
+            **win_hidden_kwargs(),
+        )
         if result.returncode == 0:
             return True, result.stdout.decode('utf-8', errors='ignore').split('\n')[0]
     except Exception:
@@ -94,8 +101,9 @@ def install_ffmpeg_if_missing():
     import platform
     
     # Prüfe ob ffmpeg vorhanden ist
+    from path_helper import win_hidden_kwargs
     try:
-        subprocess.run(['ffmpeg', '-version'], capture_output=True, timeout=2, check=True)
+        subprocess.run(['ffmpeg', '-version'], capture_output=True, timeout=2, check=True, **win_hidden_kwargs())
         return True  # Bereits installiert
     except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError):
         pass
@@ -294,8 +302,14 @@ if __name__ == "__main__":
                 if sys.platform == "win32":
                     import subprocess
                     try:
-                        result = subprocess.run(['tasklist', '/FI', f'PID eq {old_pid}'], 
-                                              capture_output=True, text=True, timeout=2)
+                        from path_helper import win_hidden_kwargs
+                        result = subprocess.run(
+                            ['tasklist', '/FI', f'PID eq {old_pid}'],
+                            capture_output=True,
+                            text=True,
+                            timeout=2,
+                            **win_hidden_kwargs(),
+                        )
                         if str(old_pid) in result.stdout:
                             # Prozess läuft noch - beende diese Instanz
                             print(f"[INFO] Eine andere Instanz läuft bereits (PID: {old_pid})")

@@ -68,35 +68,31 @@ def find_iscc():
 
 def ensure_exe():
     """
-    Stellt sicher, dass dist/UniversalDownloader.exe existiert.
-    Entweder durch Build (build_windows.py) oder durch Kopie der versionierten exe.
+    Stellt sicher, dass dist/UniversalDownloader/UniversalDownloader.exe (Onedir) existiert.
     """
     dist = Path("dist")
+    onedir_exe = dist / "UniversalDownloader" / "UniversalDownloader.exe"
+    if onedir_exe.exists():
+        print("[OK] dist/UniversalDownloader/UniversalDownloader.exe vorhanden.")
+        return True
     universal = dist / "UniversalDownloader.exe"
     if universal.exists():
         print("[OK] dist/UniversalDownloader.exe vorhanden.")
         return True
-    # Suche versionierte exe (z. B. universal-downloader_v2.1.7.exe)
     versioned = list(dist.glob("universal-downloader_v*.exe"))
     if versioned:
         shutil.copy2(versioned[0], universal)
         print(f"[OK] {versioned[0].name} -> UniversalDownloader.exe kopiert.")
         return True
-    # Exe bauen
     print("Keine .exe gefunden. Starte build_windows.py ...")
     r = subprocess.run([sys.executable, "build_windows.py"], cwd=Path(__file__).parent)
     if r.returncode != 0:
         print("[FEHLER] build_windows.py ist fehlgeschlagen.")
         return False
-    if not universal.exists():
-        # build_windows benennt in universal-downloader_vX.exe um
-        versioned = list(dist.glob("universal-downloader_v*.exe"))
-        if versioned:
-            shutil.copy2(versioned[0], universal)
-        else:
-            print("[FEHLER] Nach dem Build wurde keine .exe in dist/ gefunden.")
-            return False
-    return True
+    if onedir_exe.exists() or universal.exists() or list(dist.glob("universal-downloader_v*.exe")):
+        return True
+    print("[FEHLER] Nach dem Build wurde keine .exe in dist/ gefunden.")
+    return False
 
 
 # Python-Version für gebündeltes Embeddable (Windows)

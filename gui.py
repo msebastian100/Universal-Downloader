@@ -2066,6 +2066,8 @@ class DeezerDownloaderGUI:
                         flags |= subprocess.DETACHED_PROCESS
                     if hasattr(subprocess, "CREATE_NEW_PROCESS_GROUP"):
                         flags |= subprocess.CREATE_NEW_PROCESS_GROUP
+                    if hasattr(subprocess, "CREATE_NO_WINDOW"):
+                        flags |= subprocess.CREATE_NO_WINDOW
                     popen_kw["creationflags"] = flags
                 else:
                     popen_kw["start_new_session"] = True
@@ -9902,7 +9904,9 @@ Historie-Einträge: {len(self.video_download_history)}
                         # Verwende CREATE_NEW_CONSOLE um sicherzustellen, dass es ein separater Prozess ist
                         subprocess.Popen(
                             [str(current_exe)],
-                            creationflags=subprocess.CREATE_NEW_CONSOLE,
+                            creationflags=getattr(subprocess, "DETACHED_PROCESS", 0)
+                            | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+                            | getattr(subprocess, "CREATE_NO_WINDOW", 0),
                             close_fds=True
                         )
                         self._write_to_log_file("[DEBUG] Neue Instanz gestartet", "DEBUG")
@@ -9920,7 +9924,9 @@ Historie-Einträge: {len(self.video_download_history)}
                         # Verwende CREATE_NEW_CONSOLE für Windows
                         subprocess.Popen(
                             [str(python_exe), str(start_script)],
-                            creationflags=subprocess.CREATE_NEW_CONSOLE,
+                            creationflags=getattr(subprocess, "DETACHED_PROCESS", 0)
+                            | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+                            | getattr(subprocess, "CREATE_NO_WINDOW", 0),
                             close_fds=True,
                             cwd=str(script_dir)
                         )

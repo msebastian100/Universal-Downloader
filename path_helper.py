@@ -222,6 +222,23 @@ def get_app_base_path():
         return app_path
 
 
+def win_hidden_kwargs() -> dict:
+    """Windows: Subprozesse ohne CMD-/PowerShell-Fenster."""
+    import subprocess
+
+    if sys.platform != "win32":
+        return {}
+    kw: dict = {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)}
+    try:
+        si = subprocess.STARTUPINFO()
+        si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        si.wShowWindow = 0
+        kw["startupinfo"] = si
+    except Exception:
+        pass
+    return kw
+
+
 if __name__ == "__main__":
     # Test
     print("Download-Ordner:", get_downloads_folder())

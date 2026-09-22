@@ -11,6 +11,15 @@ from typing import List, Optional, Dict, Any
 # Neueste Version zuerst – wird für „Erster Start“ und Upgrade-Anzeige genutzt
 RELEASE_NOTES: List[Dict[str, Any]] = [
     {
+        "version": "2.1.24",
+        "date": "2026-09-22",
+        "items": [
+            "Windows: Tray-Menü beendet die App nicht mehr durch Fehlklick auf „Beenden“.",
+            "Windows: kein CMD-/PowerShell-Fenster mehr beim Start oder „Jetzt prüfen“.",
+            "Windows: schnellerer Start (Onedir statt Entpacken bei jedem Öffnen).",
+        ],
+    },
+    {
         "version": "2.1.23",
         "date": "2026-09-22",
         "items": [

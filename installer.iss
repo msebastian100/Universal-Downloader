@@ -43,8 +43,12 @@ Name: "desktopicon"; Description: "Verknüpfung auf dem &Desktop erstellen"; Gro
 Name: "taskbarpin"; Description: "An &Taskleiste anheften (Verknüpfung anheften)"; GroupDescription: "Zusätzliche Verknüpfungen:"
 
 [Files]
-; Hauptprogramm (wird von build_installer.py aus dist/ kopiert)
+; Onedir-Build (schneller Start, kein Entpacken bei jedem Start)
+#ifexist "dist\UniversalDownloader\UniversalDownloader.exe"
+Source: "dist\UniversalDownloader\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+#else
 Source: "dist\UniversalDownloader.exe"; DestDir: "{app}"; Flags: ignoreversion
+#endif
 ; yt-dlp Standalone-EXE (damit Download auch ohne System-Python läuft, z. B. Sandbox)
 #ifexist "dist\yt-dlp.exe"
 Source: "dist\yt-dlp.exe"; DestDir: "{app}"; Flags: ignoreversion

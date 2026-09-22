@@ -879,6 +879,15 @@ def load_app_settings(base: Path) -> Dict[str, Any]:
         return {}
 
 
+_desktop_notify_impl = None
+
+
+def set_desktop_notify_impl(fn) -> None:
+    """Tray kann eine native Balloon-Funktion setzen (kein PowerShell-Fenster)."""
+    global _desktop_notify_impl
+    _desktop_notify_impl = fn
+
+
 def desktop_notify(title: str, message: str) -> None:
     """Plattform-Benachrichtigung ohne Tk (macOS/Linux/Windows Fallback)."""
     import subprocess
@@ -897,21 +906,27 @@ def desktop_notify(title: str, message: str) -> None:
         elif sys.platform.startswith("linux"):
             subprocess.run(["notify-send", t, m], check=False, timeout=3, capture_output=True)
         elif sys.platform == "win32":
-            # PowerShell Balloon (ohne Extra-Deps)
+            impl = globals().get("_desktop_notify_impl")
+            if callable(impl):
+                impl(t, m)
+                return
+            from path_helper import win_hidden_kwargs
+
             ps = (
                 "Add-Type -AssemblyName System.Windows.Forms; "
                 "$n = New-Object System.Windows.Forms.NotifyIcon; "
                 "$n.Icon = [System.Drawing.SystemIcons]::Information; "
                 "$n.Visible = $true; "
-                f"$n.ShowBalloonTip(5000, '{t.replace(chr(39), '')}', '{m.replace(chr(39), '')}', "
+                f"$n.ShowBalloonTip(4000, '{t.replace(chr(39), '')}', '{m.replace(chr(39), '')}', "
                 "[System.Windows.Forms.ToolTipIcon]::Info); "
-                "Start-Sleep -Seconds 6; $n.Dispose()"
+                "Start-Sleep -Seconds 4; $n.Dispose()"
             )
-            subprocess.run(
-                ["powershell", "-NoProfile", "-Command", ps],
-                check=False,
-                timeout=15,
-                capture_output=True,
+            # Versteckt, nicht warten – sonst bleibt ein PowerShell-Fenster mehrere Sekunden offen
+            subprocess.Popen(
+                ["powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command", ps],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                **win_hidden_kwargs(),
             )
     except Exception:
         pass
@@ -1171,7 +1186,11 @@ def open_main_app() -> bool:
         if sys.platform == "darwin" and cmd[0] == "open":
             subprocess.Popen(cmd)
         elif sys.platform == "win32":
-            subprocess.Popen(cmd, creationflags=getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
+            from path_helper import win_hidden_kwargs
+            flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+            extra = win_hidden_kwargs()
+            extra["creationflags"] = extra.get("creationflags", 0) | flags
+            subprocess.Popen(cmd, **extra)
         else:
             subprocess.Popen(cmd, start_new_session=True)
         return True

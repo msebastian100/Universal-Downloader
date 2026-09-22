@@ -112,8 +112,8 @@ def build_exe():
         pyinstaller_cmd = [
             sys.executable, "-m", "PyInstaller",
             "--name=UniversalDownloader",
-            "--onefile",
-            "--windowed",  # Kein Konsolen-Fenster
+            "--onedir",
+            "--noconsole",  # Kein Konsolen-Fenster
             "--icon=icon.png" if Path("icon.png").exists() else "",
             "--add-data=icon.png;." if Path("icon.png").exists() else "",
             "--hidden-import=tkinter",
@@ -172,19 +172,31 @@ def build_exe():
         print("=" * 70)
         
         # Pruefe ob .exe erstellt wurde
+        # Onedir: dist/UniversalDownloader/UniversalDownloader.exe
+        onedir_exe = dist_dir / "UniversalDownloader" / "UniversalDownloader.exe"
         exe_path = dist_dir / "UniversalDownloader.exe"
+        if onedir_exe.exists():
+            exe_path = onedir_exe
         if exe_path.exists():
-            # Lese Versionsnummer und benenne Datei um
             version = get_version()
-            new_exe_name = f"universal-downloader_v{version}.exe"
-            new_exe_path = dist_dir / new_exe_name
-            
-            # Benenne um
-            exe_path.rename(new_exe_path)
-            
-            print(f"\nDie .exe Datei befindet sich in: {dist_dir.absolute()}")
-            print(f"Dateiname: {new_exe_name}")
-            print(f"Groesse: {new_exe_path.stat().st_size / (1024*1024):.2f} MB")
+            zip_base = dist_dir / f"universal-downloader_v{version}"
+            if onedir_exe.exists():
+                archive = shutil.make_archive(
+                    str(zip_base),
+                    "zip",
+                    root_dir=str(dist_dir),
+                    base_dir="UniversalDownloader",
+                )
+                print(f"\nDie App liegt in: {onedir_exe}")
+                print(f"Portables ZIP: {archive}")
+                print(f"Groesse ZIP: {Path(archive).stat().st_size / (1024*1024):.2f} MB")
+            else:
+                new_exe_name = f"universal-downloader_v{version}.exe"
+                new_exe_path = dist_dir / new_exe_name
+                exe_path.rename(new_exe_path)
+                print(f"\nDie .exe Datei befindet sich in: {dist_dir.absolute()}")
+                print(f"Dateiname: {new_exe_name}")
+                print(f"Groesse: {new_exe_path.stat().st_size / (1024*1024):.2f} MB")
             return True
         else:
             print(f"\n[WARNING] .exe Datei nicht gefunden in {dist_dir}")
