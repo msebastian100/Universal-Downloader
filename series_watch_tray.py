@@ -157,6 +157,18 @@ def try_become_tray_instance(base: Path) -> bool:
         return True
 
 
+def tray_instance_running(base: Path) -> bool:
+    """True, wenn bereits ein anderer Serien-Wächter-Tray läuft."""
+    path = Path(base) / "series_watch_tray.pid"
+    try:
+        if not path.exists():
+            return False
+        old = int((path.read_text(encoding="utf-8") or "0").strip().split()[0])
+    except (ValueError, OSError):
+        return False
+    return bool(old and old != os.getpid() and _pid_running(old))
+
+
 def steal_tray_instance(base: Path) -> None:
     """Beendet eine andere Tray-Instanz und übernimmt die PID-Datei."""
     path = Path(base) / "series_watch_tray.pid"
@@ -326,9 +338,11 @@ def windows_promote_notify_icon() -> None:
 
 # --- Native Windows-Notify-Icon (Win11 zeigt pystray oft nicht an) ---
 _WM_TRAYICON = 0x8000 + 21  # WM_APP + 21
+_WM_APP_SHOW_MENU = 0x8000 + 22
 _NIF_MESSAGE = 0x00000001
 _NIF_ICON = 0x00000002
 _NIF_TIP = 0x00000004
+_NIF_GUID = 0x00000020
 _NIF_SHOWTIP = 0x00000080
 _NIM_ADD = 0x00000000
 _NIM_MODIFY = 0x00000001
@@ -339,9 +353,18 @@ _WM_LBUTTONUP = 0x0202
 _WM_RBUTTONUP = 0x0205
 _WM_LBUTTONDBLCLK = 0x0203
 _WM_CONTEXTMENU = 0x007B
+_WM_COMMAND = 0x0111
+_WM_DESTROY = 0x0002
 _NIN_SELECT = 0x0400
 _NIN_KEYSELECT = 0x0401
 _HWND_MESSAGE = -3
+_ID_CANCEL = 10
+_ID_CHECK = 11
+_ID_OPEN = 12
+_ID_VIDEO = 13
+_ID_MUSIC = 14
+_ID_QUIT = 15
+_ID_CLEAR = 16
 
 
 def _win_nid_class():
@@ -371,11 +394,10 @@ def _win_nid_class():
 
 
 class WinNotifyIcon:
-    """Shell_NotifyIcon auf eigenem Message-only-Fenster (ctypes 64-bit-sicher)."""
+    """Shell_NotifyIcon + natives TrackPopupMenu (kein Tk im WNDPROC)."""
 
-    def __init__(self, on_left_click, on_right_click):
-        self.on_left_click = on_left_click
-        self.on_right_click = on_right_click
+    def __init__(self, app: "TrayApp"):
+        self.app = app
         self.hwnd = None
         self.hicon = None
         self._wndproc = None
@@ -383,12 +405,15 @@ class WinNotifyIcon:
         self._hinstance = None
         self._added = False
         self._uid = 1
+        self._menu_open = False
+        self._guid = None
 
     def create(self) -> bool:
         if sys.platform != "win32":
             return False
         import ctypes
         from ctypes import wintypes
+        import uuid as _uuid
 
         user32 = ctypes.WinDLL("user32", use_last_error=True)
         kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
@@ -410,6 +435,9 @@ class WinNotifyIcon:
                 ("lpszMenuName", wintypes.LPCWSTR),
                 ("lpszClassName", wintypes.LPCWSTR),
             ]
+
+        class POINT(ctypes.Structure):
+            _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
 
         user32.DefWindowProcW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
         user32.DefWindowProcW.restype = LRESULT
@@ -447,11 +475,37 @@ class WinNotifyIcon:
         user32.DestroyIcon.restype = wintypes.BOOL
         user32.DestroyWindow.argtypes = [wintypes.HWND]
         user32.DestroyWindow.restype = wintypes.BOOL
+        user32.PostMessageW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
+        user32.PostMessageW.restype = wintypes.BOOL
+        user32.GetCursorPos.argtypes = [ctypes.POINTER(POINT)]
+        user32.GetCursorPos.restype = wintypes.BOOL
+        user32.SetForegroundWindow.argtypes = [wintypes.HWND]
+        user32.SetForegroundWindow.restype = wintypes.BOOL
+        user32.CreatePopupMenu.argtypes = []
+        user32.CreatePopupMenu.restype = wintypes.HMENU
+        user32.AppendMenuW.argtypes = [wintypes.HMENU, wintypes.UINT, ctypes.c_size_t, wintypes.LPCWSTR]
+        user32.AppendMenuW.restype = wintypes.BOOL
+        user32.TrackPopupMenu.argtypes = [
+            wintypes.HMENU,
+            wintypes.UINT,
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_int,
+            wintypes.HWND,
+            ctypes.c_void_p,
+        ]
+        user32.TrackPopupMenu.restype = wintypes.BOOL
+        user32.DestroyMenu.argtypes = [wintypes.HMENU]
+        user32.DestroyMenu.restype = wintypes.BOOL
+        user32.PostQuitMessage.argtypes = [ctypes.c_int]
+        user32.PostQuitMessage.restype = None
 
         self._user32 = user32
         self._shell32 = shell32
         self._kernel32 = kernel32
         self._NOTIFYICONDATAW = _win_nid_class()
+        self._POINT = POINT
+        self._guid = (ctypes.c_ubyte * 16)(*_uuid.UUID("8e7c1f3a-2d94-4b61-9c0e-5a17f8b4d2c1").bytes_le)
 
         IMAGE_ICON = 1
         LR_LOADFROMFILE = 0x0010
@@ -482,18 +536,25 @@ class WinNotifyIcon:
             try:
                 if msg == _WM_TRAYICON:
                     event = int(lparam) & 0xFFFF
-                    if event in (_WM_RBUTTONUP, _WM_CONTEXTMENU):
-                        try:
-                            self.on_right_click()
-                        except Exception as e:
-                            _log(f"Tray Rechtsklick: {e}")
+                    if event in (
+                        _WM_LBUTTONUP,
+                        _WM_RBUTTONUP,
+                        _WM_LBUTTONDBLCLK,
+                        _WM_CONTEXTMENU,
+                        _NIN_SELECT,
+                        _NIN_KEYSELECT,
+                    ):
+                        user32.PostMessageW(hwnd, _WM_APP_SHOW_MENU, 0, 0)
                         return 0
-                    if event in (_WM_LBUTTONUP, _WM_LBUTTONDBLCLK, _NIN_SELECT, _NIN_KEYSELECT):
-                        try:
-                            self.on_left_click()
-                        except Exception as e:
-                            _log(f"Tray Linksklick: {e}")
-                        return 0
+                if msg == _WM_APP_SHOW_MENU:
+                    try:
+                        self._show_menu()
+                    except Exception as e:
+                        _log(f"Tray-Menü: {e}")
+                    return 0
+                if msg == _WM_DESTROY:
+                    user32.PostQuitMessage(0)
+                    return 0
             except Exception:
                 pass
             return user32.DefWindowProcW(hwnd, msg, wparam, lparam)
@@ -544,8 +605,19 @@ class WinNotifyIcon:
         except Exception:
             pass
         self.hwnd = hwnd
+        # Geister-Icon aus abgestürztem Prozess entfernen, dann neu anlegen
+        self._notify(_NIM_DELETE, "")
         ok_add = self._notify(_NIM_ADD, "Serien-Wächter")
         err = ctypes.get_last_error()
+        if not ok_add:
+            time.sleep(0.25)
+            self._notify(_NIM_DELETE, "")
+            ok_add = self._notify(_NIM_ADD, "Serien-Wächter")
+            err = ctypes.get_last_error()
+        if not ok_add:
+            self._notify(_NIM_DELETE, "", use_guid=False)
+            ok_add = self._notify(_NIM_ADD, "Serien-Wächter", use_guid=False)
+            err = ctypes.get_last_error()
         if not ok_add:
             _log(f"NIM_ADD fehlgeschlagen GetLastError={err}.")
             return False
@@ -555,24 +627,106 @@ class WinNotifyIcon:
         nid.hWnd = self.hwnd
         nid.uID = self._uid
         nid.uVersion = _NOTIFYICON_VERSION_4
+        if self._guid is not None:
+            nid.guidItem = self._guid
         self._shell32.Shell_NotifyIconW(_NIM_SETVERSION, ctypes.byref(nid))
         time.sleep(0.3)
         windows_promote_notify_icon()
         _log(f"Natives Windows-Tray-Icon hinzugefügt (GetLastError={err}).")
         return True
 
-    def _notify(self, action: int, tip: str) -> bool:
+    def _notify(self, action: int, tip: str, use_guid: bool = True) -> bool:
         import ctypes
 
         nid = self._NOTIFYICONDATAW()
         nid.cbSize = ctypes.sizeof(self._NOTIFYICONDATAW)
         nid.hWnd = self.hwnd
         nid.uID = self._uid
-        nid.uFlags = _NIF_MESSAGE | _NIF_ICON | _NIF_TIP | _NIF_SHOWTIP
+        flags = _NIF_MESSAGE | _NIF_ICON | _NIF_TIP | _NIF_SHOWTIP
+        if use_guid and self._guid is not None:
+            flags |= _NIF_GUID
+            nid.guidItem = self._guid
+        nid.uFlags = flags
         nid.uCallbackMessage = _WM_TRAYICON
         nid.hIcon = self.hicon
         nid.szTip = (tip or "Serien-Wächter")[:127]
         return bool(self._shell32.Shell_NotifyIconW(action, ctypes.byref(nid)))
+
+    def _show_menu(self) -> None:
+        if self._menu_open or not self.hwnd:
+            return
+        import ctypes
+
+        user32 = self._user32
+        MF_STRING = 0x00000000
+        MF_GRAYED = 0x00000001
+        MF_SEPARATOR = 0x00000800
+        TPM_RIGHTBUTTON = 0x0002
+        TPM_BOTTOMALIGN = 0x0020
+        TPM_RETURNCMD = 0x0100
+        hmenu = user32.CreatePopupMenu()
+        if not hmenu:
+            return
+        self._menu_open = True
+        try:
+            app = self.app
+            rt = series_watch.read_runtime_status(app.base)
+            status = app._tooltip(rt) or "Serien-Wächter"
+            user32.AppendMenuW(hmenu, MF_STRING | MF_GRAYED, 0, status[:80])
+            user32.AppendMenuW(hmenu, MF_SEPARATOR, 0, None)
+            if rt.get("phase") == "downloading":
+                user32.AppendMenuW(hmenu, MF_STRING, _ID_CANCEL, "Download abbrechen")
+                user32.AppendMenuW(hmenu, MF_SEPARATOR, 0, None)
+            user32.AppendMenuW(hmenu, MF_STRING, _ID_CHECK, "Jetzt prüfen")
+            user32.AppendMenuW(hmenu, MF_STRING, _ID_OPEN, "Hauptprogramm öffnen")
+            user32.AppendMenuW(hmenu, MF_STRING, _ID_VIDEO, "Video-Ordner öffnen")
+            user32.AppendMenuW(hmenu, MF_STRING, _ID_MUSIC, "Hörbuch-/Musik-Ordner öffnen")
+            user32.AppendMenuW(hmenu, MF_SEPARATOR, 0, None)
+            user32.AppendMenuW(hmenu, MF_STRING, _ID_QUIT, "Beenden")
+            pt = self._POINT()
+            user32.GetCursorPos(ctypes.byref(pt))
+            user32.SetForegroundWindow(self.hwnd)
+            cmd = int(
+                user32.TrackPopupMenu(
+                    hmenu,
+                    TPM_RIGHTBUTTON | TPM_BOTTOMALIGN | TPM_RETURNCMD,
+                    int(pt.x),
+                    int(pt.y),
+                    0,
+                    self.hwnd,
+                    None,
+                )
+            )
+            user32.PostMessageW(self.hwnd, 0, 0, 0)  # WM_NULL, Menü zuverlässig schließen
+            if cmd:
+                _log(f"Tray-Menü Befehl {cmd}")
+                self._dispatch(cmd)
+        finally:
+            try:
+                user32.DestroyMenu(hmenu)
+            except Exception:
+                pass
+            self._menu_open = False
+
+    def _dispatch(self, cmd: int) -> None:
+        app = self.app
+        try:
+            if cmd == _ID_CANCEL:
+                app.cancel_download()
+            elif cmd == _ID_CHECK:
+                app.do_check_now()
+            elif cmd == _ID_OPEN:
+                app.open_main()
+            elif cmd == _ID_VIDEO:
+                app._open_video_folder()
+            elif cmd == _ID_MUSIC:
+                app._open_music_folder()
+            elif cmd == _ID_CLEAR:
+                app.clear_new_alerts()
+            elif cmd == _ID_QUIT:
+                app.quit_app()
+        except Exception as e:
+            _log(f"Tray-Menü Aktion {cmd}: {e}")
 
     def set_tooltip(self, tip: str) -> None:
         if self._added:
@@ -581,7 +735,8 @@ class WinNotifyIcon:
             except Exception:
                 pass
 
-    def start_message_loop_background(self) -> None:
+    def run_loop(self) -> None:
+        """Message-Pump im Tray-Prozess (Hauptthread, ohne Tk)."""
         import ctypes
         from ctypes import wintypes
 
@@ -590,18 +745,12 @@ class WinNotifyIcon:
         user32.GetMessageW.restype = ctypes.c_int
         user32.TranslateMessage.argtypes = [ctypes.POINTER(wintypes.MSG)]
         user32.DispatchMessageW.argtypes = [ctypes.POINTER(wintypes.MSG)]
-
-        def loop():
-            msg = wintypes.MSG()
-            while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
-                user32.TranslateMessage(ctypes.byref(msg))
-                user32.DispatchMessageW(ctypes.byref(msg))
-
-        threading.Thread(target=loop, name="ud-tray-msg", daemon=True).start()
+        msg = wintypes.MSG()
+        while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
+            user32.TranslateMessage(ctypes.byref(msg))
+            user32.DispatchMessageW(ctypes.byref(msg))
 
     def stop(self) -> None:
-        if not self._added:
-            return
         try:
             self._notify(_NIM_DELETE, "")
         except Exception:
@@ -612,9 +761,14 @@ class WinNotifyIcon:
                 self._user32.DestroyWindow(self.hwnd)
         except Exception:
             pass
+        self.hwnd = None
         try:
             if self.hicon:
                 self._user32.DestroyIcon(self.hicon)
+        except Exception:
+            pass
+        try:
+            self._user32.PostQuitMessage(0)
         except Exception:
             pass
 
@@ -1471,11 +1625,7 @@ class TrayApp:
             )
         except Exception:
             pass
-        try:
-            self._ensure_tk()
-        except Exception as e:
-            _log(f"Tk für Tray-Menü: {e}")
-        icon = WinNotifyIcon(self._on_win_left, self._on_win_right)
+        icon = WinNotifyIcon(self)
         if not icon.create():
             return False
         self._win_notify = icon
@@ -1567,15 +1717,8 @@ class TrayApp:
         threading.Thread(target=self._loop, daemon=True).start()
         _log(f"Tray gestartet (Menüleiste/System-Tray). Basis: {self.base}")
         if self._win_notify is not None:
-            if self._owns_tk and self._tk_root is not None:
-                try:
-                    self._tk_root.mainloop()
-                except KeyboardInterrupt:
-                    pass
-                return 0
             try:
-                while not self._stop.is_set():
-                    time.sleep(0.5)
+                self._win_notify.run_loop()
             except KeyboardInterrupt:
                 pass
             return 0

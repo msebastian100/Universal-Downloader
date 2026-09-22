@@ -47,6 +47,12 @@
   <content_rating type="oars-1.1"/>
   <!-- Release-Historie für GNOME/Cinnamon „Software“ (neueste zuerst, aus changelog.py) -->
   <releases>
+    <release version="2.1.23" date="2026-09-22">
+      <description>
+        <p xml:lang="de">Windows: Tray-Menü in der Taskleiste öffnet sich wieder (Klick beendet die App nicht mehr).</p>
+        <p>Windows: tray menu in the taskbar opens again (click no longer quits the app).</p>
+      </description>
+    </release>
     <release version="2.1.22" date="2026-09-22">
       <description>
         <p xml:lang="de">Serien-Wächter in den Einstellungen abschaltbar (kein Tray, kein Autostart).</p>

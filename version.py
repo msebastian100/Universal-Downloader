@@ -7,8 +7,8 @@ Release: immer gemeinsam pflegen:
   __version__, __version_info__, __build_date__ (YYYY-MM-DD = Tag des Releases)
 """
 
-__version__ = "2.1.22"
-__version_info__ = (2, 1, 22)
+__version__ = "2.1.23"
+__version_info__ = (2, 1, 23)
 __build_date__ = "2026-09-22"
 
 # GitHub Repository URL (für Links und Updates)

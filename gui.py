@@ -2047,8 +2047,11 @@ class DeezerDownloaderGUI:
                     pass
                 return
         try:
-            swt.steal_tray_instance(self.base_download_path)
-            if sys.platform == "win32" or sys.platform.startswith("linux"):
+            if swt.tray_instance_running(self.base_download_path):
+                self._series_watch_tray_app = True
+                self._write_to_log_file("[Serien-Wächter] Tray-Prozess läuft bereits — Icon bleibt.", "INFO")
+            elif sys.platform == "win32" or sys.platform.startswith("linux"):
+                swt.steal_tray_instance(self.base_download_path)
                 argv = swt.get_tray_launch_argv()
                 popen_kw = {
                     "close_fds": True,
@@ -2071,6 +2074,7 @@ class DeezerDownloaderGUI:
                 self._series_watch_tray_app = True
                 self._write_to_log_file("[Serien-Wächter] Tray-Prozess gestartet.", "INFO")
             else:
+                swt.steal_tray_instance(self.base_download_path)
                 app = swt.TrayApp(self.base_download_path, tk_root=self.root)
                 rc = app.run_tray_detached()
                 if rc == 0:

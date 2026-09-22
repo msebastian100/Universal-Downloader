@@ -11,6 +11,13 @@ from typing import List, Optional, Dict, Any
 # Neueste Version zuerst – wird für „Erster Start“ und Upgrade-Anzeige genutzt
 RELEASE_NOTES: List[Dict[str, Any]] = [
     {
+        "version": "2.1.23",
+        "date": "2026-09-22",
+        "items": [
+            "Windows: Klick auf das Serien-Wächter-Icon in der Taskleiste öffnet wieder das Menü (beendet die App nicht mehr).",
+        ],
+    },
+    {
         "version": "2.1.22",
         "date": "2026-09-22",
         "items": [
