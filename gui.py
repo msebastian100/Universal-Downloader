@@ -2019,6 +2019,14 @@ class DeezerDownloaderGUI:
         """Serien-Wächter-Icon: unter Windows eigener Prozess (sonst stürzt die GUI ab)."""
         if os.environ.get("SERIES_WATCH_NO_TRAY"):
             return
+        if not self.settings.get("series_watch_tray_enabled", True):
+            try:
+                import series_watch_tray as swt
+                swt.remove_login_autostart()
+                swt.steal_tray_instance(self.base_download_path)
+            except Exception:
+                pass
+            return
         if getattr(self, "_series_watch_tray_app", None) is not None:
             return
         try:
@@ -2070,7 +2078,7 @@ class DeezerDownloaderGUI:
                     self._write_to_log_file("[Serien-Wächter] Tray-Icon im Infobereich gestartet.", "INFO")
                 else:
                     self._write_to_log_file("[Serien-Wächter] Tray-Icon konnte nicht erstellt werden.", "WARNING")
-            if self.settings.get("series_watch_tray_autostart", True):
+            if self.settings.get("series_watch_tray_enabled", True) and self.settings.get("series_watch_tray_autostart", True):
                 if swt.install_login_autostart():
                     self._write_to_log_file("[Serien-Wächter] Autostart nach Anmeldung eingerichtet.", "INFO")
         except Exception as e:
@@ -10105,6 +10113,8 @@ Copyright (c) 2025 Universal Downloader Contributors
             'series_watch_enabled': False,
             'series_watch_interval_hours': 6,
             'series_watch_auto_download': False,
+            'series_watch_tray_enabled': True,
+            'series_watch_tray_autostart': True,
             'series_notify_desktop': True,
             'series_notify_email_enabled': False,
             'series_smtp_host': '',
@@ -10603,6 +10613,13 @@ Copyright (c) 2025 Universal Downloader Contributors
             wraplength=700,
             style="Download.TLabel",
         ).pack(anchor=tk.W, pady=(0, 8))
+        series_watch_tray_enabled_var = tk.BooleanVar(value=self.settings.get('series_watch_tray_enabled', True))
+        ttk.Checkbutton(
+            sw_frame,
+            text="Serien-Wächter verwenden (Icon im Infobereich / Menüleiste). Aus = kein Tray, kein Autostart.",
+            variable=series_watch_tray_enabled_var,
+            style="Download.TCheckbutton",
+        ).pack(anchor=tk.W, pady=2)
         series_watch_enabled_var = tk.BooleanVar(value=self.settings.get('series_watch_enabled', False))
         ttk.Checkbutton(sw_frame, text="Automatische Prüfung aktivieren (Hintergrund)", variable=series_watch_enabled_var, style="Download.TCheckbutton").pack(anchor=tk.W, pady=2)
         sw_int_row = ttk.Frame(sw_frame, style="Download.TFrame")
@@ -10828,13 +10845,25 @@ Copyright (c) 2025 Universal Downloader Contributors
             except (TypeError, ValueError):
                 self.settings['series_watch_interval_hours'] = 6
             self.settings['series_watch_auto_download'] = series_watch_auto_dl_var.get()
+            self.settings['series_watch_tray_enabled'] = series_watch_tray_enabled_var.get()
             self.settings['series_watch_tray_autostart'] = series_watch_tray_autostart_var.get()
             try:
                 import series_watch_tray as _swt
-                if self.settings['series_watch_tray_autostart']:
-                    _swt.install_login_autostart()
-                else:
+                if not self.settings['series_watch_tray_enabled']:
                     _swt.remove_login_autostart()
+                    _swt.steal_tray_instance(self.base_download_path)
+                    self._series_watch_tray_app = None
+                    try:
+                        self._write_to_log_file("[Serien-Wächter] Deaktiviert (kein Tray, kein Autostart).", "INFO")
+                    except Exception:
+                        pass
+                else:
+                    if self.settings['series_watch_tray_autostart']:
+                        _swt.install_login_autostart()
+                    else:
+                        _swt.remove_login_autostart()
+                    self._series_watch_tray_app = None
+                    self._start_series_watch_tray()
             except Exception:
                 pass
             self.settings['series_notify_desktop'] = series_notify_desktop_var.get()

@@ -47,6 +47,12 @@
   <content_rating type="oars-1.1"/>
   <!-- Release-Historie für GNOME/Cinnamon „Software“ (neueste zuerst, aus changelog.py) -->
   <releases>
+    <release version="2.1.22" date="2026-09-22">
+      <description>
+        <p xml:lang="de">Serien-Wächter in den Einstellungen abschaltbar (kein Tray, kein Autostart).</p>
+        <p>Series watcher can be disabled in settings (no tray, no autostart).</p>
+      </description>
+    </release>
     <release version="2.1.21" date="2026-09-22">
       <description>
         <p xml:lang="de">Linux Mint/Cinnamon: Serien-Wächter in der Infoleiste; Windows: Tray startet zuverlässig neben der GUI.</p>

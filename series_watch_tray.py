@@ -1651,6 +1651,10 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     base = Path(args.base) if args.base else get_app_base_path()
     settings = series_watch.load_app_settings(base)
+    if not settings.get("series_watch_tray_enabled", True):
+        _log("Serien-Wächter in den Einstellungen deaktiviert – kein Tray.")
+        remove_login_autostart()
+        return 0
 
     if args.once:
         notifications = run_check(base, settings)
