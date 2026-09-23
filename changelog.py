@@ -11,6 +11,13 @@ from typing import List, Optional, Dict, Any
 # Neueste Version zuerst – wird für „Erster Start“ und Upgrade-Anzeige genutzt
 RELEASE_NOTES: List[Dict[str, Any]] = [
     {
+        "version": "2.1.52",
+        "date": "2026-09-23",
+        "items": [
+            "Windows: das Tray-Menü lässt sich wieder schließen. Der laufende Download zeigt darin Prozent und Balken, auch wenn das Menü schon offen war.",
+        ],
+    },
+    {
         "version": "2.1.51",
         "date": "2026-09-23",
         "items": [

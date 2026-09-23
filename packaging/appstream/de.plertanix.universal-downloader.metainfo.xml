@@ -47,6 +47,12 @@
   <content_rating type="oars-1.1"/>
   <!-- Release-Historie für GNOME/Cinnamon „Software“ (neueste zuerst, aus changelog.py) -->
   <releases>
+    <release version="2.1.52" date="2026-09-23">
+      <description>
+        <p xml:lang="de">Windows: das Tray-Menü lässt sich wieder schließen. Der laufende Download zeigt darin Prozent und Balken, auch wenn das Menü schon offen war.</p>
+        <p>Windows: the tray menu can be closed again. A running download shows percent and a bar in the menu, even if the menu was already open.</p>
+      </description>
+    </release>
     <release version="2.1.51" date="2026-09-23">
       <description>
         <p xml:lang="de">Windows: der Serien-Wächter zeigt die offenen Folgen im Tray-Menü, wie auf dem Mac und unter Linux. Ein Klick startet den Download.</p>

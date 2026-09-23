@@ -786,6 +786,12 @@ class WinNotifyIcon:
                     except Exception as e:
                         _log(f"Tray-Menü: {e}")
                     return 0
+                if msg == 0x0113 and self._menu_open:  # WM_TIMER
+                    try:
+                        self._refresh_open_menu()
+                    except Exception as e:
+                        _log(f"Tray-Menü Fortschritt: {e}")
+                    return 0
                 if msg == _WM_DESTROY:
                     if self._stopping:
                         user32.PostQuitMessage(0)
@@ -834,10 +840,28 @@ class WinNotifyIcon:
         if not hwnd:
             _log(f"CreateWindowExW fehlgeschlagen: {ctypes.get_last_error()}")
             return False
+        # Verstecktes Fenster: TrackPopupMenu schließt dann nicht beim Klick daneben.
         try:
-            user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
-            user32.ShowWindow.restype = wintypes.BOOL
-            user32.ShowWindow(hwnd, 0)
+            HWND_TOPMOST = -1
+            SWP_NOACTIVATE = 0x0010
+            SWP_SHOWWINDOW = 0x0040
+            user32.SetWindowPos.argtypes = [
+                wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int,
+                ctypes.c_int, ctypes.c_int, wintypes.UINT,
+            ]
+            user32.SetWindowPos.restype = wintypes.BOOL
+            user32.SetWindowPos(hwnd, HWND_TOPMOST, -32000, -32000, 1, 1, SWP_NOACTIVATE | SWP_SHOWWINDOW)
+        except Exception:
+            pass
+        try:
+            user32.SetTimer.argtypes = [wintypes.HWND, ctypes.c_size_t, wintypes.UINT, ctypes.c_void_p]
+            user32.SetTimer.restype = ctypes.c_size_t
+            user32.KillTimer.argtypes = [wintypes.HWND, ctypes.c_size_t]
+            user32.KillTimer.restype = wintypes.BOOL
+            user32.ModifyMenuW.argtypes = [
+                wintypes.HMENU, wintypes.UINT, wintypes.UINT, ctypes.c_size_t, wintypes.LPCWSTR,
+            ]
+            user32.ModifyMenuW.restype = wintypes.BOOL
         except Exception:
             pass
         self.hwnd = hwnd
@@ -888,6 +912,61 @@ class WinNotifyIcon:
         nid.szTip = (tip or "Serien-Wächter")[:127]
         return bool(self._shell32.Shell_NotifyIconW(action, ctypes.byref(nid)))
 
+    def _menu_status_rows(self, rt: Dict[str, Any]) -> list:
+        """Drei feste Kopfzeilen: Abbrechen/Status, Titel, Balken mit Prozent."""
+        MF_STRING = 0x00000000
+        MF_GRAYED = 0x00000001
+        blank = (MF_STRING | MF_GRAYED, 0, " ")
+        phase = rt.get("phase") or "idle"
+        downloads = rt.get("downloads") if isinstance(rt.get("downloads"), list) else []
+        one = rt.get("download") if isinstance(rt.get("download"), dict) else {}
+        if not downloads and one:
+            downloads = [one]
+        downloads = [s for s in downloads if isinstance(s, dict)]
+        if phase == "downloading" and downloads:
+            slot = downloads[0]
+            title = _truncate(slot.get("title") or "Download", 36)
+            pct = float(slot.get("percent") or 0)
+            phase_slot = slot.get("phase") or "download"
+            if phase_slot == "convert":
+                mid = f"⟳ {title}  {pct:.0f}%"
+                bar = f"   {_progress_bar(pct)}  konvertiert"
+            elif phase_slot == "convert_wait":
+                mid = f"⏳ {title}"
+                bar = "   Download fertig, wartet auf Konvertierung"
+            elif phase_slot == "exists":
+                mid = f"✓ {title}"
+                bar = "   bereits vorhanden"
+            else:
+                mid = f"⬇ {title}  {pct:.0f}%"
+                bar = f"   {_progress_bar(pct)}  lädt"
+            if len(downloads) > 1:
+                extra = downloads[1]
+                extra_pct = float(extra.get("percent") or 0)
+                bar = f"{bar}  ·  {_truncate(extra.get('title') or '', 18)} {extra_pct:.0f}%"
+            return [
+                (MF_STRING, _ID_CANCEL, "Download abbrechen"),
+                (MF_STRING | MF_GRAYED, 0, mid),
+                (MF_STRING | MF_GRAYED, 0, bar),
+            ]
+        if phase == "checking":
+            return [(MF_STRING | MF_GRAYED, 0, "Prüfe Serien…"), blank, blank]
+        tip = (self.app._tooltip(rt) or "Serien-Wächter")[:80]
+        return [(MF_STRING | MF_GRAYED, 0, tip), blank, blank]
+
+    def _refresh_open_menu(self) -> None:
+        hmenu = getattr(self, "_open_hmenu", None)
+        user32 = getattr(self, "_user32", None)
+        if not hmenu or user32 is None or not self._menu_open:
+            return
+        MF_BYPOSITION = 0x00000400
+        try:
+            rt = series_watch.read_runtime_status(self.app.base)
+        except Exception:
+            return
+        for pos, (flags, cid, text) in enumerate(self._menu_status_rows(rt)):
+            user32.ModifyMenuW(hmenu, pos, MF_BYPOSITION | flags, cid, (text or " ")[:120])
+
     def _show_menu(self) -> None:
         if self._menu_open or not self.hwnd:
             return
@@ -923,40 +1002,13 @@ class WinNotifyIcon:
         try:
             app = self.app
             rt = series_watch.read_runtime_status(app.base)
-            phase = rt.get("phase") or "idle"
-            dl = rt.get("download") if isinstance(rt.get("download"), dict) else {}
-            downloads = rt.get("downloads") if isinstance(rt.get("downloads"), list) else []
-            pending = rt.get("pending") if isinstance(rt.get("pending"), list) else []
-            if phase == "downloading" and (downloads or dl):
-                if not downloads and dl:
-                    downloads = [dl]
-                user32.AppendMenuW(hmenu, MF_STRING, _ID_CANCEL, "Download abbrechen")
-                for slot in downloads[:4]:
-                    if not isinstance(slot, dict):
-                        continue
-                    title = _truncate(slot.get("title") or "Download", 36)
-                    phase_slot = slot.get("phase") or "download"
-                    pct = float(slot.get("percent") or 0)
-                    if phase_slot == "convert":
-                        add_label(f"⟳ {title}")
-                        add_label(f"   {_progress_bar(pct)}  konvertiert")
-                    elif phase_slot == "convert_wait":
-                        add_label(f"⏳ {title}")
-                        add_label("   Download fertig, wartet auf Konvertierung")
-                    elif phase_slot == "exists":
-                        add_label(f"✓ {title}")
-                        add_label("   bereits vorhanden")
-                    else:
-                        add_label(f"⬇ {title}")
-                        add_label(f"   {_progress_bar(pct)}  lädt")
-                if pending:
-                    add_sep()
-                    add_label(f"Queue ({len(pending)} wartend)")
-            elif phase == "checking":
-                add_label("Prüfe Serien…")
-            else:
-                add_label(app._tooltip(rt) or "Serien-Wächter")
+            for flags, cid, text in self._menu_status_rows(rt):
+                user32.AppendMenuW(hmenu, flags, cid, (text or " ")[:120])
             add_sep()
+            pending = rt.get("pending") if isinstance(rt.get("pending"), list) else []
+            if (rt.get("phase") or "") == "downloading" and pending:
+                add_label(f"Queue ({len(pending)} wartend)")
+                add_sep()
 
             try:
                 state = series_watch.load_state(app.base)
@@ -1029,6 +1081,11 @@ class WinNotifyIcon:
             pt = self._POINT()
             user32.GetCursorPos(ctypes.byref(pt))
             user32.SetForegroundWindow(self.hwnd)
+            self._open_hmenu = hmenu
+            try:
+                user32.SetTimer(self.hwnd, 1, 400, None)
+            except Exception:
+                pass
             shown_at = time.monotonic()
             cmd = int(
                 user32.TrackPopupMenu(
@@ -1041,6 +1098,11 @@ class WinNotifyIcon:
                     None,
                 )
             )
+            try:
+                user32.KillTimer(self.hwnd, 1)
+            except Exception:
+                pass
+            self._open_hmenu = None
             user32.PostMessageW(self.hwnd, 0, 0, 0)  # WM_NULL, Menü zuverlässig schließen
             if cmd == _ID_QUIT and (time.monotonic() - shown_at) < 0.4:
                 _log("Beenden ignoriert (zu schneller Klick).")
@@ -1049,6 +1111,11 @@ class WinNotifyIcon:
                 _log(f"Tray-Menü Befehl {cmd}")
                 self._dispatch(cmd)
         finally:
+            self._open_hmenu = None
+            try:
+                user32.KillTimer(self.hwnd, 1)
+            except Exception:
+                pass
             try:
                 user32.DestroyMenu(hmenu)
             except Exception:
