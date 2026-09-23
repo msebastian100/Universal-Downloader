@@ -28,6 +28,23 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 import series_watch
+
+
+def _series_watch_label() -> str:
+    """Sichtbare Versionszeile, damit Wächter und Hauptprogramm zusammenpassen."""
+    try:
+        from version import get_version
+        return f"Serien-Wächter {get_version()}"
+    except Exception:
+        return "Serien-Wächter"
+
+
+def _series_watch_aumid() -> str:
+    try:
+        from version import get_version
+        return f"UniversalDownloader.SeriesWatch.{get_version()}"
+    except Exception:
+        return "UniversalDownloader.SeriesWatch"
 from path_helper import get_app_base_path
 
 
@@ -1004,6 +1021,7 @@ class WinNotifyIcon:
             rt = series_watch.read_runtime_status(app.base)
             for flags, cid, text in self._menu_status_rows(rt):
                 user32.AppendMenuW(hmenu, flags, cid, (text or " ")[:120])
+            add_label(_series_watch_label())
             add_sep()
             pending = rt.get("pending") if isinstance(rt.get("pending"), list) else []
             if (rt.get("phase") or "") == "downloading" and pending:
@@ -1951,27 +1969,27 @@ class TrayApp:
                     extra = f" · {speed}" if speed else ""
                     bits.append(f"{name} {float(slot.get('percent') or 0):.0f}%{extra}")
             extra = " · ".join(bits) if bits else "…"
-            return f"Serien-Wächter: {extra}"
+            return f"{_series_watch_label()}: {extra}"
         if phase == "checking":
-            return "Serien-Wächter: prüft…"
+            return f"{_series_watch_label()}: prüft…"
         try:
             n_avail = series_watch.count_available_episodes(series_watch.load_state(self.base))
         except Exception:
             n_avail = 0
         if n_avail:
-            return f"Serien-Wächter: {n_avail} verfügbare Folge(n)"
+            return f"{_series_watch_label()}: {n_avail} verfügbare Folge(n)"
         if self._last_notifications:
             n = sum(len(x.get("new_episodes") or []) for x in self._last_notifications)
             gap = all(x.get("gap") for x in self._last_notifications)
             word = "fehlende" if gap else "neue"
-            return f"Serien-Wächter: {n} {word} Folge(n)"
+            return f"{_series_watch_label()}: {n} {word} Folge(n)"
         alerts = rt.get("new_alerts") if isinstance(rt.get("new_alerts"), list) else []
         if alerts:
             n = sum(int(a.get("count") or 0) for a in alerts if isinstance(a, dict))
             gap = all(a.get("gap") for a in alerts if isinstance(a, dict))
             word = "fehlende" if gap else "neue"
-            return f"Serien-Wächter: {n} {word} Folge(n)"
-        return "Serien-Wächter"
+            return f"{_series_watch_label()}: {n} {word} Folge(n)"
+        return _series_watch_label()
 
     def _open_folder(self, folder: Path) -> None:
         try:
@@ -2410,7 +2428,7 @@ class TrayApp:
         n_found = len(flat_eps)
         found_word = "verfügbare" if groups else "neue"
 
-        entries = []
+        entries = [Item(_series_watch_label(), None, enabled=False)]
 
         # Statuszeile
         downloads = rt.get("downloads") if isinstance(rt.get("downloads"), list) else []
@@ -2546,7 +2564,7 @@ class TrayApp:
             try:
                 import ctypes
                 ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
-                    "UniversalDownloader.SeriesWatch.1.0"
+                    _series_watch_aumid()
                 )
             except Exception:
                 pass
@@ -2577,7 +2595,7 @@ class TrayApp:
         try:
             import ctypes
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
-                "UniversalDownloader.SeriesWatch.1.0"
+                _series_watch_aumid()
             )
         except Exception:
             pass

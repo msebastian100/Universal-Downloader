@@ -320,6 +320,20 @@ if __name__ == "__main__":
     
     # Prüfe ob bereits eine Instanz läuft (unter macOS ggf. schon oben geholt)
     if lock_file_handle is None and not acquire_lock():
+        # Fenster der laufenden Instanz nach vorn, statt still zu enden.
+        try:
+            from path_helper import get_app_base_path
+            (Path(get_app_base_path()) / "series_watch_show_window").write_text("1", encoding="utf-8")
+        except Exception:
+            pass
+        if sys.platform == "win32":
+            try:
+                import series_watch as _sw_show
+                _shown_pid = _sw_show._gui_lock_pid()
+                if _shown_pid:
+                    _sw_show._windows_activate_pid(_shown_pid)
+            except Exception:
+                pass
         # Prüfe ob die andere Instanz noch läuft
         try:
             if lock_file.exists():

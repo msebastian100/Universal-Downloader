@@ -47,6 +47,12 @@
   <content_rating type="oars-1.1"/>
   <!-- Release-Historie für GNOME/Cinnamon „Software“ (neueste zuerst, aus changelog.py) -->
   <releases>
+    <release version="2.1.54" date="2026-09-23">
+      <description>
+        <p xml:lang="de">Windows: der Serien-Wächter findet das Hauptprogramm auch unter „Programme (x86)“ und holt ein schon offenes Fenster nach vorn. Menü und Meldung zeigen die Versionsnummer.</p>
+        <p>Windows: the series watcher finds the main program under Program Files (x86) as well and brings an already open window forward. The menu and notifications show the version number.</p>
+      </description>
+    </release>
     <release version="2.1.53" date="2026-09-23">
       <description>
         <p xml:lang="de">Windows: das Update zeigt die installierte Version und den Download-Fortschritt. Ersetzt wird genau diese Installation, danach startet dieselbe Programmdatei. Liegt sie unter „Programme“, fragt Windows nach der Bestätigung; ohne Zustimmung bleibt die alte Version.</p>

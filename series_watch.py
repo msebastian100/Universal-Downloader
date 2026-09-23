@@ -1868,12 +1868,21 @@ def find_main_app_command() -> List[str]:
         if start_py.exists():
             return [sys.executable, str(start_py)]
     elif sys.platform == "win32":
-        for exe in (
-            root / "dist" / "UniversalDownloader" / "UniversalDownloader.exe",
+        candidates = []
+        if getattr(sys, "frozen", False):
+            candidates.append(Path(sys.executable))
+        local = os.environ.get("LOCALAPPDATA", "")
+        pf = os.environ.get("ProgramFiles", "")
+        pf86 = os.environ.get("ProgramFiles(x86)", "")
+        candidates.extend([
             root / "UniversalDownloader.exe",
-            Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Universal Downloader" / "UniversalDownloader.exe",
-        ):
-            if exe and Path(exe).exists():
+            root / "dist" / "UniversalDownloader" / "UniversalDownloader.exe",
+            Path(local) / "Programs" / "Universal Downloader" / "UniversalDownloader.exe" if local else None,
+            Path(pf) / "Universal Downloader" / "UniversalDownloader.exe" if pf else None,
+            Path(pf86) / "Universal Downloader" / "UniversalDownloader.exe" if pf86 else None,
+        ])
+        for exe in candidates:
+            if exe and Path(exe).is_file():
                 return [str(exe)]
         if start_py.exists():
             return [sys.executable, str(start_py)]
@@ -1887,6 +1896,41 @@ def find_main_app_command() -> List[str]:
     if start_py.exists():
         return [sys.executable, str(start_py)]
     return []
+
+
+def _windows_activate_pid(pid: int) -> bool:
+    """Holt das Fenster dieser Prozess-ID nach vorn."""
+    if sys.platform != "win32" or not pid:
+        return False
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        user32 = ctypes.windll.user32
+        SW_RESTORE = 9
+        found: List[int] = []
+
+        @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+        def _enum(hwnd, _lparam):
+            proc = wintypes.DWORD()
+            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(proc))
+            if int(proc.value) == int(pid) and user32.IsWindowVisible(hwnd):
+                found.append(hwnd)
+            return True
+
+        user32.EnumWindows(_enum, 0)
+        if not found:
+            return False
+        hwnd = found[0]
+        try:
+            user32.AllowSetForegroundWindow(int(pid))
+        except Exception:
+            pass
+        user32.ShowWindow(hwnd, SW_RESTORE)
+        user32.SetForegroundWindow(hwnd)
+        return True
+    except Exception:
+        return False
 
 
 def _request_show_main_window() -> None:
@@ -1943,10 +1987,14 @@ def open_main_app() -> bool:
 
     now = time.time()
     if now - _last_open_main_ts < 2.5:
+        _request_show_main_window()
         return True
-    if _gui_lock_pid() or _other_main_pids():
+    running = _gui_lock_pid() or (_other_main_pids()[:1] or [None])[0]
+    if running:
         _last_open_main_ts = now
         _request_show_main_window()
+        if sys.platform == "win32":
+            _windows_activate_pid(int(running))
         return True
 
     cmd = find_main_app_command()
@@ -1954,12 +2002,18 @@ def open_main_app() -> bool:
         return False
     try:
         _last_open_main_ts = now
+        _request_show_main_window()
         if sys.platform == "win32":
-            from path_helper import win_hidden_kwargs
+            # Nicht verstecken: sonst startet das Hauptfenster unsichtbar.
             flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
-            extra = win_hidden_kwargs()
-            extra["creationflags"] = extra.get("creationflags", 0) | flags
-            subprocess.Popen(cmd, **extra)
+            subprocess.Popen(
+                cmd,
+                creationflags=flags,
+                close_fds=True,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
         else:
             subprocess.Popen(cmd, start_new_session=True)
         return True

@@ -11,6 +11,13 @@ from typing import List, Optional, Dict, Any
 # Neueste Version zuerst – wird für „Erster Start“ und Upgrade-Anzeige genutzt
 RELEASE_NOTES: List[Dict[str, Any]] = [
     {
+        "version": "2.1.54",
+        "date": "2026-09-23",
+        "items": [
+            "Windows: der Serien-Wächter findet das Hauptprogramm auch unter „Programme (x86)“ und holt ein schon offenes Fenster nach vorn. Menü und Meldung zeigen die Versionsnummer.",
+        ],
+    },
+    {
         "version": "2.1.53",
         "date": "2026-09-23",
         "items": [
