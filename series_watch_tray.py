@@ -993,7 +993,6 @@ class WinNotifyIcon:
         MF_STRING = 0x00000000
         MF_GRAYED = 0x00000001
         MF_SEPARATOR = 0x00000800
-        TPM_RIGHTBUTTON = 0x0002
         TPM_BOTTOMALIGN = 0x0020
         TPM_RETURNCMD = 0x0100
         hmenu = user32.CreatePopupMenu()
@@ -1108,7 +1107,7 @@ class WinNotifyIcon:
             cmd = int(
                 user32.TrackPopupMenu(
                     hmenu,
-                    TPM_RIGHTBUTTON | TPM_BOTTOMALIGN | TPM_RETURNCMD,
+                    TPM_BOTTOMALIGN | TPM_RETURNCMD,
                     int(pt.x),
                     int(pt.y),
                     0,
@@ -1122,8 +1121,8 @@ class WinNotifyIcon:
                 pass
             self._open_hmenu = None
             user32.PostMessageW(self.hwnd, 0, 0, 0)  # WM_NULL, Menü zuverlässig schließen
-            if cmd == _ID_QUIT and (time.monotonic() - shown_at) < 0.4:
-                _log("Beenden ignoriert (zu schneller Klick).")
+            if cmd and (time.monotonic() - shown_at) < 0.5:
+                _log("Menü-Klick ignoriert (Loslassen beim Öffnen).")
                 cmd = 0
             if cmd:
                 _log(f"Tray-Menü Befehl {cmd}")
@@ -2165,13 +2164,15 @@ class TrayApp:
             series_watch.desktop_notify("Serien-Wächter", "Nichts für die Queue.")
 
     def open_main(self, *_args) -> None:
+        already = series_watch.main_window_is_running()
         ok = series_watch.open_main_app()
         if ok:
             _log("Hauptprogramm gestartet/aktiviert.")
-            series_watch.desktop_notify("Serien-Wächter", "Hauptprogramm wird geöffnet…")
+            if not already:
+                series_watch.desktop_notify(_series_watch_label(), "Hauptprogramm wird geöffnet…")
         else:
             _log("Hauptprogramm nicht gefunden.")
-            series_watch.desktop_notify("Serien-Wächter", "Hauptprogramm nicht gefunden.")
+            series_watch.desktop_notify(_series_watch_label(), "Hauptprogramm nicht gefunden.")
 
     def cancel_download(self, *_args) -> None:
         series_watch.request_download_cancel(self.base)
@@ -2308,6 +2309,21 @@ class TrayApp:
             if phase == "downloading" or phase != last_phase or pruned:
                 self._refresh_icon_and_menu()
             last_phase = phase
+            try:
+                notice = series_watch.take_user_notice(self.base)
+            except Exception:
+                notice = None
+            if notice:
+                title = notice.get("title") or _series_watch_label()
+                message = notice.get("message") or ""
+                shown = False
+                if self._win_notify is not None:
+                    try:
+                        shown = bool(self._win_notify.show_balloon(title, message))
+                    except Exception:
+                        shown = False
+                if not shown:
+                    series_watch.desktop_notify(title, message)
 
             if settings.get("series_watch_enabled", False):
                 st = series_watch.load_state(self.base)

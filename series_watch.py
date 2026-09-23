@@ -1433,6 +1433,45 @@ def load_app_settings(base: Path) -> Dict[str, Any]:
 _desktop_notify_impl = None
 
 
+def user_notice_file(base: Path) -> Path:
+    return Path(base) / "series_watch_user_notice.json"
+
+
+def queue_user_notice(base: Path, title: str, message: str) -> None:
+    """Hinweis für den Tray: echte Systemmeldung, kein Extra-Fenster."""
+    try:
+        user_notice_file(base).write_text(
+            json.dumps({"title": title or "", "message": message or ""}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+    except Exception:
+        pass
+
+
+def take_user_notice(base: Path) -> Optional[Dict[str, str]]:
+    path = user_notice_file(base)
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        data = None
+    try:
+        path.unlink()
+    except Exception:
+        pass
+    if isinstance(data, dict) and (data.get("title") or data.get("message")):
+        return {"title": str(data.get("title") or ""), "message": str(data.get("message") or "")}
+    return None
+
+
+def main_window_is_running() -> bool:
+    """True, wenn das Hauptfenster schon läuft."""
+    if _gui_lock_pid():
+        return True
+    return bool(_other_main_pids())
+
+
 def set_desktop_notify_impl(fn) -> None:
     """Tray kann eine native Balloon-Funktion setzen (kein PowerShell-Fenster)."""
     global _desktop_notify_impl

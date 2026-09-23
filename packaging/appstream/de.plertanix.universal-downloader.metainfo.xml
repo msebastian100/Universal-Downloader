@@ -47,6 +47,12 @@
   <content_rating type="oars-1.1"/>
   <!-- Release-Historie für GNOME/Cinnamon „Software“ (neueste zuerst, aus changelog.py) -->
   <releases>
+    <release version="2.1.55" date="2026-09-23">
+      <description>
+        <p xml:lang="de">Windows: „Queue abgeschlossen“ kommt als Systemmeldung, nicht als Extra-Fenster. Das Tray-Menü meldet „Hauptprogramm wird geöffnet“ nicht mehr, wenn das Fenster schon da ist.</p>
+        <p>Windows: “queue finished” is a system notification, not an extra window. The tray menu no longer says the main window is opening when it is already open.</p>
+      </description>
+    </release>
     <release version="2.1.54" date="2026-09-23">
       <description>
         <p xml:lang="de">Windows: der Serien-Wächter findet das Hauptprogramm auch unter „Programme (x86)“ und holt ein schon offenes Fenster nach vorn. Menü und Meldung zeigen die Versionsnummer.</p>

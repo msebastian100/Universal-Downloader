@@ -2127,7 +2127,7 @@ class DeezerDownloaderGUI:
         self._write_to_log_file(f"[MUSIK] {message}", level)
     
     def _show_system_notification(self, title: str, message: str, *, require_global_notifications: bool = True):
-        """Zeigt eine System-Benachrichtigung (macOS/Linux nativ, Windows: kleines Toast-Fenster)."""
+        """Zeigt eine System-Benachrichtigung, unter Windows ohne Extra-Fenster."""
         if require_global_notifications and not self.settings.get('show_notifications', True):
             return
         try:
@@ -2142,21 +2142,16 @@ class DeezerDownloaderGUI:
                     check=False, timeout=2, capture_output=True
                 )
             else:
-                # Windows / andere: kleines Toast-Fenster (Toplevel), verschwindet nach ein paar Sekunden
-                def _toast():
-                    w = tk.Toplevel(self.root)
-                    w.title(title)
-                    w.attributes('-topmost', True)
-                    w.resizable(False, False)
-                    w.configure(padx=12, pady=10)
-                    ttk.Label(w, text=title, font=('Segoe UI', 10, 'bold')).pack(anchor=tk.W)
-                    ttk.Label(w, text=message[:200] + ('…' if len(message) > 200 else ''), font=('Segoe UI', 9), wraplength=320).pack(anchor=tk.W)
-                    w.update_idletasks()
-                    x = self.root.winfo_screenwidth() - w.winfo_reqwidth() - 20
-                    y = 60
-                    w.geometry(f'+{x}+{y}')
-                    w.after(4000, w.destroy)
-                self.root.after(0, _toast)
+                # Windows: Systemmeldung über den Serien-Wächter, kein Extra-Fenster.
+                try:
+                    import series_watch as _sw
+                    import series_watch_tray as _swt
+                    if _swt.tray_instance_running(self.base_download_path):
+                        _sw.queue_user_notice(self.base_download_path, title, message)
+                    else:
+                        _sw.desktop_notify(title, message)
+                except Exception:
+                    pass
         except Exception:
             pass
 
@@ -4279,7 +4274,6 @@ class DeezerDownloaderGUI:
                 self._show_system_notification("Universal Downloader", f"{failed} Download(s) fehlgeschlagen.")
             else:
                 self._show_system_notification("Universal Downloader", "Alle Downloads der Queue sind abgeschlossen.")
-            messagebox.showinfo("Queue", "Alle Downloads der Queue sind abgeschlossen." + (f"\n\n{failed} Download(s) fehlgeschlagen." if failed > 0 else ""))
             return
         url = queue.pop(0)
         self._update_music_queue_status()

@@ -11,6 +11,13 @@ from typing import List, Optional, Dict, Any
 # Neueste Version zuerst – wird für „Erster Start“ und Upgrade-Anzeige genutzt
 RELEASE_NOTES: List[Dict[str, Any]] = [
     {
+        "version": "2.1.55",
+        "date": "2026-09-23",
+        "items": [
+            "Windows: „Queue abgeschlossen“ kommt als Systemmeldung, nicht als Extra-Fenster. Das Tray-Menü meldet „Hauptprogramm wird geöffnet“ nicht mehr, wenn das Fenster schon da ist.",
+        ],
+    },
+    {
         "version": "2.1.54",
         "date": "2026-09-23",
         "items": [
