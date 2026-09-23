@@ -47,6 +47,18 @@
   <content_rating type="oars-1.1"/>
   <!-- Release-Historie für GNOME/Cinnamon „Software“ (neueste zuerst, aus changelog.py) -->
   <releases>
+    <release version="2.1.51" date="2026-09-23">
+      <description>
+        <p xml:lang="de">Windows: der Serien-Wächter zeigt die offenen Folgen im Tray-Menü, wie auf dem Mac und unter Linux. Ein Klick startet den Download.</p>
+        <p>Windows: the series watcher lists open episodes in the tray menu, as on Mac and Linux. A click starts the download.</p>
+      </description>
+    </release>
+    <release version="2.1.50" date="2026-09-23">
+      <description>
+        <p xml:lang="de">Windows: das Update wartet, bis das Programm zu ist, und startet dann den Installer. Die laufende Programmdatei wird nicht mehr überschrieben.</p>
+        <p>Windows: the update waits until the program has quit, then starts the installer. The running program file is no longer overwritten.</p>
+      </description>
+    </release>
     <release version="2.1.24" date="2026-09-22">
       <description>
         <p xml:lang="de">Windows: Tray-Menü ohne Fehlklick-Beenden, keine CMD/PowerShell-Fenster, schnellerer Start.</p>

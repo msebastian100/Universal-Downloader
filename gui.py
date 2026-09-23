@@ -2939,84 +2939,53 @@ class DeezerDownloaderGUI:
         ttk.Label(
             mf,
             text=(
-                f"{lead} ({len(flat_eps)}) — anhaken, was geladen werden soll. "
-                "Der Rest bleibt für später, oder die angehakten Folgen ignorieren."
+                f"{lead} ({len(flat_eps)}) — markieren, was geladen werden soll. "
+                "Doppelklick lädt diese eine Folge. Der Rest bleibt für später."
             ),
             style="Download.TLabel",
             wraplength=700,
         ).pack(anchor=tk.W, side=tk.TOP)
 
-        vars_map = {}
         list_fr = ttk.Frame(mf, style="Download.TFrame")
-        list_fr.pack(fill=tk.BOTH, expand=True, pady=8, side=tk.TOP)
-        canvas = tk.Canvas(list_fr, highlightthickness=0, bd=0)
-        scroll = ttk.Scrollbar(list_fr, orient=tk.VERTICAL, command=canvas.yview)
-        inner = ttk.Frame(canvas, style="Download.TFrame")
-        inner.bind("<Configure>", lambda _e: canvas.configure(scrollregion=canvas.bbox("all")))
-        win_id = canvas.create_window((0, 0), window=inner, anchor="nw")
-        canvas.configure(yscrollcommand=scroll.set)
-        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        lb = tk.Listbox(
+            list_fr,
+            selectmode=tk.EXTENDED,
+            activestyle="none",
+            font=("Arial", 10),
+            bg=getattr(self, "_tk_bg_card", "#424242"),
+            fg=getattr(self, "_tk_fg_text", "#e8e8e8"),
+            selectbackground=getattr(self, "_tk_btn_bg", "#4a4a4a"),
+            highlightthickness=0,
+        )
+        scroll = ttk.Scrollbar(list_fr, orient=tk.VERTICAL, command=lb.yview)
+        lb.configure(yscrollcommand=scroll.set)
+        lb.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scroll.pack(side=tk.RIGHT, fill=tk.Y)
-
-        def _canvas_width(event):
-            canvas.itemconfigure(win_id, width=event.width)
-
-        canvas.bind("<Configure>", _canvas_width)
-
-        def _on_wheel(event):
-            if sys.platform == "darwin":
-                canvas.yview_scroll(int(-1 * event.delta), "units")
-            else:
-                step = int(-1 * (getattr(event, "delta", 0) or 0) / 120) or (-1 if getattr(event, "delta", 0) > 0 else 1)
-                canvas.yview_scroll(step, "units")
-
-        def _on_linux_btn(event):
-            canvas.yview_scroll(-3 if getattr(event, "num", 5) == 4 else 3, "units")
-
-        def _wheel_on(_event=None):
-            canvas.bind_all("<MouseWheel>", _on_wheel)
-            canvas.bind_all("<Button-4>", _on_linux_btn)
-            canvas.bind_all("<Button-5>", _on_linux_btn)
-
-        def _wheel_off(_event=None):
-            for seq in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
-                try:
-                    canvas.unbind_all(seq)
-                except Exception:
-                    pass
-
-        canvas.bind("<Enter>", _wheel_on)
-        canvas.bind("<Leave>", _wheel_off)
-        d.bind("<Destroy>", _wheel_off)
 
         series_names = {
             (ep.get("series") or ep.get("series_name") or "").strip()
             for ep in flat_eps
         }
         one_series = len([s for s in series_names if s]) <= 1
-        precheck = len(flat_eps) <= 10
-        for i, ep in enumerate(flat_eps):
-            eid = ep.get("id") or ep.get("url") or str(i)
-            v = tk.BooleanVar(value=precheck)
-            vars_map[str(eid)] = (v, ep)
+        for ep in flat_eps:
             t = ep.get("title") or ep.get("url") or "?"
             series = (ep.get("series") or ep.get("series_name") or "").strip()
             if series and series not in t and not one_series:
                 t = f"{series}: {t}"
-            if len(t) > 110:
-                t = t[:107] + "…"
-            ttk.Checkbutton(inner, text=t, variable=v).pack(anchor=tk.W, padx=4, pady=2)
+            if len(t) > 140:
+                t = t[:137] + "…"
+            lb.insert(tk.END, t)
+        if len(flat_eps) <= 10:
+            lb.selection_set(0, tk.END)
 
         def set_all(value: bool) -> None:
-            for var, _ep in vars_map.values():
-                var.set(value)
+            if value and flat_eps:
+                lb.selection_set(0, tk.END)
+            else:
+                lb.selection_clear(0, tk.END)
 
         def collect_selected() -> List[Dict]:
-            out = []
-            for _k, (v, ep) in vars_map.items():
-                if v.get():
-                    out.append(ep)
-            return out
+            return [flat_eps[i] for i in lb.curselection() if 0 <= i < len(flat_eps)]
 
         def to_queue():
             eps = collect_selected()
@@ -3056,14 +3025,30 @@ class DeezerDownloaderGUI:
                         break
             except Exception:
                 pass
-            self._series_watch_get_video_downloader()
-            self.video_download_button.config(state=tk.DISABLED)
-            threading.Thread(target=self.video_download_episodes_thread, args=(norm_eps,), daemon=True).start()
-            messagebox.showinfo("Serien-Wächter", f"Download von {len(norm_eps)} Folge(n) gestartet (Video-Tab).", parent=parent)
+            self._series_watch_add_episodes_to_video_queue(norm_eps)
+            self._video_queue_hold = False
+            self.video_download_cancelled = False
+            self._process_download_queue()
+            self._update_queue_status()
+            messagebox.showinfo(
+                "Serien-Wächter",
+                f"Download von {len(norm_eps)} Folge(n) gestartet.",
+                parent=parent,
+            )
+
+        def on_double(event):
+            idx = lb.nearest(event.y)
+            if idx < 0 or idx >= len(flat_eps):
+                return
+            lb.selection_clear(0, tk.END)
+            lb.selection_set(idx)
+            download_now()
+
+        lb.bind("<Double-Button-1>", on_double)
 
         pick_row = ttk.Frame(mf, style="Download.TFrame")
         pick_row.pack(fill=tk.X, side=tk.BOTTOM, pady=(0, 4))
-        ttk.Button(pick_row, text="Alle anhaken", command=lambda: set_all(True), style="Download.TButton").pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(pick_row, text="Alle markieren", command=lambda: set_all(True), style="Download.TButton").pack(side=tk.LEFT, padx=(0, 6))
         ttk.Button(pick_row, text="Keine", command=lambda: set_all(False), style="Download.TButton").pack(side=tk.LEFT)
 
         bf = ttk.Frame(mf, style="Download.TFrame")
@@ -3094,6 +3079,7 @@ class DeezerDownloaderGUI:
 
         ttk.Button(bf, text="Ignorieren", command=ignore_selected, style="Download.TButton").pack(side=tk.LEFT, padx=6)
         ttk.Button(bf, text="Später", command=d.destroy, style="Download.TButton").pack(side=tk.RIGHT)
+        list_fr.pack(fill=tk.BOTH, expand=True, pady=8)
 
     def _series_watch_add_episodes_to_video_queue(self, episodes: List[Dict]):
         """Fügt Episoden-Dicts (url, title, series, season_number, …) zur Video-Queue hinzu."""

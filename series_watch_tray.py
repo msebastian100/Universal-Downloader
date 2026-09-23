@@ -904,24 +904,128 @@ class WinNotifyIcon:
         if not hmenu:
             return
         self._menu_open = True
+        self._menu_cmds = {}
+        next_id = 100
+
+        def add_label(text: str) -> None:
+            user32.AppendMenuW(hmenu, MF_STRING | MF_GRAYED, 0, (text or " ")[:120])
+
+        def add_sep() -> None:
+            user32.AppendMenuW(hmenu, MF_SEPARATOR, 0, None)
+
+        def add_action(text: str, fn) -> None:
+            nonlocal next_id
+            cid = next_id
+            next_id += 1
+            self._menu_cmds[cid] = fn
+            user32.AppendMenuW(hmenu, MF_STRING, cid, (text or "")[:120])
+
         try:
             app = self.app
             rt = series_watch.read_runtime_status(app.base)
-            status = app._tooltip(rt) or "Serien-Wächter"
-            user32.AppendMenuW(hmenu, MF_STRING | MF_GRAYED, 0, status[:80])
-            user32.AppendMenuW(hmenu, MF_SEPARATOR, 0, None)
-            if rt.get("phase") == "downloading":
+            phase = rt.get("phase") or "idle"
+            dl = rt.get("download") if isinstance(rt.get("download"), dict) else {}
+            downloads = rt.get("downloads") if isinstance(rt.get("downloads"), list) else []
+            pending = rt.get("pending") if isinstance(rt.get("pending"), list) else []
+            if phase == "downloading" and (downloads or dl):
+                if not downloads and dl:
+                    downloads = [dl]
                 user32.AppendMenuW(hmenu, MF_STRING, _ID_CANCEL, "Download abbrechen")
-                user32.AppendMenuW(hmenu, MF_SEPARATOR, 0, None)
+                for slot in downloads[:4]:
+                    if not isinstance(slot, dict):
+                        continue
+                    title = _truncate(slot.get("title") or "Download", 36)
+                    phase_slot = slot.get("phase") or "download"
+                    pct = float(slot.get("percent") or 0)
+                    if phase_slot == "convert":
+                        add_label(f"⟳ {title}")
+                        add_label(f"   {_progress_bar(pct)}  konvertiert")
+                    elif phase_slot == "convert_wait":
+                        add_label(f"⏳ {title}")
+                        add_label("   Download fertig, wartet auf Konvertierung")
+                    elif phase_slot == "exists":
+                        add_label(f"✓ {title}")
+                        add_label("   bereits vorhanden")
+                    else:
+                        add_label(f"⬇ {title}")
+                        add_label(f"   {_progress_bar(pct)}  lädt")
+                if pending:
+                    add_sep()
+                    add_label(f"Queue ({len(pending)} wartend)")
+            elif phase == "checking":
+                add_label("Prüfe Serien…")
+            else:
+                add_label(app._tooltip(rt) or "Serien-Wächter")
+            add_sep()
+
+            try:
+                state = series_watch.load_state(app.base)
+            except Exception:
+                state = {}
+            try:
+                groups = series_watch.available_groups(state)
+            except Exception:
+                groups = []
+            preview_limit = 8
+            n_found = 0
+            for group in groups:
+                n_found += len([ep for ep in (group.get("episodes") or []) if isinstance(ep, dict)])
+            if groups and 1 < n_found <= preview_limit:
+                add_action(f"▶ Alle {n_found} jetzt laden", app.download_all_found)
+            if groups:
+                for group in groups:
+                    eps = [ep for ep in (group.get("episodes") or []) if isinstance(ep, dict)]
+                    if not eps:
+                        continue
+                    name = _truncate(group.get("name") or "Serie", 40)
+                    add_label(f"{name} ({len(eps)})")
+                    for ep in eps[:preview_limit]:
+                        eid = str(ep.get("id") or "")
+                        label = _truncate(ep.get("title") or "Folge", 48)
+                        add_action(
+                            f"▶ {label}",
+                            lambda episode_id=eid: app._start_found_download(only_id=episode_id),
+                        )
+                    rest = len(eps) - preview_limit
+                    if rest > 0:
+                        add_label(f"  … +{rest} weitere")
+                    series_url = group.get("series_url") or ""
+                    add_action(
+                        "Folgenliste öffnen…",
+                        lambda surl=series_url: app.open_episode_picker(surl),
+                    )
+                add_sep()
+            else:
+                add_label("Keine fehlenden Folgen")
+                add_sep()
+
+            watched = [it for it in (state.get("items") or []) if isinstance(it, dict)]
+            if watched:
+                add_label(f"Überwacht: {len(watched)} Serie(n)")
+                settings = app._settings()
+                for it in watched[:8]:
+                    nm = _truncate(
+                        (it.get("display_name") or it.get("playlist_title") or it.get("url") or "?"),
+                        40,
+                    )
+                    if "auto_download" in it:
+                        ad = " · Auto" if it.get("auto_download") else ""
+                    elif settings.get("series_watch_auto_download"):
+                        ad = " · Auto"
+                    else:
+                        ad = ""
+                    add_label(f"  ○ {nm}{ad}")
+                add_sep()
+
             user32.AppendMenuW(hmenu, MF_STRING, _ID_CHECK, "Jetzt prüfen")
             user32.AppendMenuW(hmenu, MF_STRING, _ID_OPEN, "Hauptprogramm öffnen")
             user32.AppendMenuW(hmenu, MF_STRING, _ID_VIDEO, "Video-Ordner öffnen")
             user32.AppendMenuW(hmenu, MF_STRING, _ID_MUSIC, "Hörbuch-/Musik-Ordner öffnen")
-            user32.AppendMenuW(hmenu, MF_SEPARATOR, 0, None)
+            add_sep()
             user32.AppendMenuW(hmenu, MF_STRING, _ID_QUIT, "Wächter beenden")
             # Leerer letzter Eintrag: Maus-Loslassen trifft nicht mehr „Beenden“
-            user32.AppendMenuW(hmenu, MF_SEPARATOR, 0, None)
-            user32.AppendMenuW(hmenu, MF_STRING | MF_GRAYED, 0, " ")
+            add_sep()
+            add_label(" ")
             pt = self._POINT()
             user32.GetCursorPos(ctypes.byref(pt))
             user32.SetForegroundWindow(self.hwnd)
@@ -954,6 +1058,10 @@ class WinNotifyIcon:
     def _dispatch(self, cmd: int) -> None:
         app = self.app
         try:
+            dyn = getattr(self, "_menu_cmds", {}).get(cmd)
+            if dyn is not None:
+                dyn()
+                return
             if cmd == _ID_CANCEL:
                 app.cancel_download()
             elif cmd == _ID_CHECK:
