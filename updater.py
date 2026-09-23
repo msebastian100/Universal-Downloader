@@ -7,12 +7,13 @@ Prüft auf Updates und ermöglicht automatische Installation
 
 import json
 import os
+import time
 import requests
 import sys
 import platform
 import subprocess
 from pathlib import Path
-from typing import Optional, Dict, Tuple
+from typing import Callable, Optional, Dict, Tuple
 from version import get_version, compare_versions
 
 APT_PACKAGE = "universal-downloader"
@@ -155,19 +156,26 @@ class UpdateChecker:
                 system = platform.system().lower()
                 
                 if system == 'windows':
-                    # Suche nach .exe (priorisiere UniversalDownloader.exe)
+                    # Zuerst den Installer, danach eine Programm-.exe.
                     download_url = None
-                    # Zuerst nach UniversalDownloader.exe suchen
+                    plain_exe = None
+                    any_exe = None
                     for asset in assets:
-                        if 'UniversalDownloader' in asset['name'] and asset['name'].endswith('.exe'):
-                            download_url = asset['browser_download_url']
+                        name = asset['name']
+                        if not name.endswith('.exe'):
+                            continue
+                        url = asset['browser_download_url']
+                        if any_exe is None:
+                            any_exe = url
+                        if 'UniversalDownloader' not in name:
+                            continue
+                        if 'setup' in name.lower():
+                            download_url = url
                             break
-                    # Fallback: Irgendeine .exe Datei
+                        if plain_exe is None:
+                            plain_exe = url
                     if not download_url:
-                        for asset in assets:
-                            if asset['name'].endswith('.exe'):
-                                download_url = asset['browser_download_url']
-                                break
+                        download_url = plain_exe or any_exe
                 elif system == 'linux':
                     # Nur echte .deb-Dateien – niemals Windows-.exe als Linux-Update
                     for asset in assets:
@@ -240,16 +248,17 @@ class UpdateChecker:
             # Ungültiges Format
             return False, None
     
-    def download_update(self, download_url: str, save_path: Optional[Path] = None) -> bool:
+    def download_update(
+        self,
+        download_url: str,
+        save_path: Optional[Path] = None,
+        progress_callback: Optional[Callable[[int, int], None]] = None,
+    ) -> bool:
         """
-        Lädt ein Update herunter
-        
-        Args:
-            download_url: URL zum Download
-            save_path: Pfad zum Speichern (optional)
-        
-        Returns:
-            True wenn erfolgreich, False sonst
+        Lädt ein Update herunter.
+
+        progress_callback(bereits_bytes, gesamt_bytes) wird während des Ladens
+        aufgerufen. gesamt_bytes ist 0, wenn der Server keine Größe nennt.
         """
         if not download_url:
             return False
@@ -261,18 +270,27 @@ class UpdateChecker:
                 # Standard-Pfad: Downloads-Ordner
                 save_path = Path.home() / "Downloads" / f"UniversalDownloader_Update_{self.current_version}.exe"
             
-            response = self.session.get(download_url, timeout=300, stream=True)
+            response = self.session.get(download_url, timeout=(20, 120), stream=True)
             response.raise_for_status()
             
             total_size = int(response.headers.get('content-length', 0))
             downloaded = 0
+            last_report = 0.0
             
             with open(save_path, 'wb') as f:
-                for chunk in response.iter_content(chunk_size=8192):
+                for chunk in response.iter_content(chunk_size=256 * 1024):
                     if chunk:
                         f.write(chunk)
                         downloaded += len(chunk)
-            
+                        now = time.monotonic()
+                        if progress_callback and (now - last_report >= 0.3 or downloaded == total_size):
+                            last_report = now
+                            progress_callback(downloaded, total_size)
+            if downloaded < 1024:
+                return False
+            with open(save_path, 'rb') as fh:
+                if fh.read(2) != b'MZ':
+                    return False
             return True
             
         except requests.exceptions.RequestException:

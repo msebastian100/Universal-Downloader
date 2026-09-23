@@ -11,6 +11,13 @@ from typing import List, Optional, Dict, Any
 # Neueste Version zuerst – wird für „Erster Start“ und Upgrade-Anzeige genutzt
 RELEASE_NOTES: List[Dict[str, Any]] = [
     {
+        "version": "2.1.53",
+        "date": "2026-09-23",
+        "items": [
+            "Windows: das Update zeigt die installierte Version und den Download-Fortschritt. Ersetzt wird genau diese Installation, danach startet dieselbe Programmdatei. Liegt sie unter „Programme“, fragt Windows nach der Bestätigung; ohne Zustimmung bleibt die alte Version.",
+        ],
+    },
+    {
         "version": "2.1.52",
         "date": "2026-09-23",
         "items": [

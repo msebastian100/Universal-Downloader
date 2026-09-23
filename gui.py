@@ -358,7 +358,7 @@ class DeezerDownloaderGUI:
     
     def __init__(self, root):
         self.root = root
-        self.root.title("Universal Downloader")
+        self.root.title(f"Universal Downloader {get_version()}")
         
         # Setze WM_CLASS für Linux erneut (falls es in main() nicht funktioniert hat)
         if sys.platform.startswith("linux"):
@@ -10450,9 +10450,15 @@ Historie-Einträge: {len(self.video_download_history)}
     
     def _show_update_notification(self, update_info):
         """Zeigt Benachrichtigung über verfügbares Update"""
+        running = get_version()
+        install_dir = ""
+        if sys.platform == "win32" and getattr(sys, "frozen", False):
+            install_dir = str(Path(sys.executable).resolve().parent)
+        where = f"\nOrdner: {install_dir}\n" if install_dir else "\n"
         response = messagebox.askyesno(
             "Update verfügbar",
-            f"Eine neue Version ({update_info['version']}) ist verfügbar!\n\n"
+            f"Installiert ist Version {running}.{where}\n"
+            f"Eine neue Version ({update_info['version']}) ist verfügbar.\n"
             f"Möchten Sie das Update jetzt herunterladen?",
             icon='question'
         )
@@ -10494,21 +10500,41 @@ Historie-Einträge: {len(self.video_download_history)}
         
         # Download-Dialog
         download_window = tk.Toplevel(parent_window or self.root)
-        download_window.title("Update herunterladen")
-        download_window.geometry("400x150")
+        download_window.title(f"Update auf {update_info['version']}")
+        download_window.geometry("560x260")
         download_window.transient(parent_window or self.root)
         
         frame = ttk.Frame(download_window, padding="20")
         frame.pack(fill=tk.BOTH, expand=True)
         
-        ttk.Label(frame, text="Bereite Update vor...").pack(pady=10)
+        headline = ttk.Label(
+            frame,
+            text=f"Lade Version {update_info['version']} …\nInstalliert ist {get_version()}.",
+            wraplength=520,
+            justify=tk.LEFT,
+        )
+        headline.pack(pady=(0, 10), anchor=tk.W)
         
-        progress = ttk.Progressbar(frame, mode='indeterminate')
+        progress = ttk.Progressbar(frame, mode='determinate', maximum=100)
         progress.pack(fill=tk.X, pady=10)
-        progress.start()
         
-        status_label = ttk.Label(frame, text="")
-        status_label.pack()
+        status_label = ttk.Label(frame, text="Verbindung …", wraplength=520, justify=tk.LEFT)
+        status_label.pack(anchor=tk.W)
+        
+        def on_download_progress(done: int, total: int):
+            def apply():
+                if total > 0:
+                    pct = min(100, int(done * 100 / total))
+                    progress.configure(value=pct)
+                    status_label.config(
+                        text=f"{done / 1048576:.0f} von {total / 1048576:.0f} MB ({pct} %)"
+                    )
+                else:
+                    status_label.config(text=f"{done / 1048576:.0f} MB geladen")
+            try:
+                self.root.after(0, apply)
+            except Exception:
+                pass
         
         def download_thread():
             try:
@@ -10517,12 +10543,15 @@ Historie-Einträge: {len(self.video_download_history)}
                 if use_apt:
                     success = True
                 else:
-                    success = checker.download_update(update_info['download_url'], Path(save_path))
+                    success = checker.download_update(
+                        update_info['download_url'],
+                        Path(save_path),
+                        progress_callback=on_download_progress,
+                    )
                 
                 def update_ui():
-                    progress.stop()
                     if success:
-                        status_label.config(text="Installiere Update (Passwort-Dialog)...")
+                        status_label.config(text="Installiere Update …")
                         self.root.update()
                         
                         install_success, install_msg = self._install_update(
@@ -10531,11 +10560,23 @@ Historie-Einträge: {len(self.video_download_history)}
                         )
                         
                         if install_success and install_msg == "handoff":
-                            status_label.config(
-                                text="Das Programm schließt sich. Die neue Version startet danach von selbst."
+                            install_dir = str(Path(sys.executable).resolve().parent)
+                            needs_admin = "\\program files" in install_dir.lower()
+                            note = (
+                                f"Version {update_info['version']} ersetzt die Installation in:\n{install_dir}\n\n"
+                                "Das Programm schließt sich jetzt. "
                             )
+                            if needs_admin:
+                                note += (
+                                    "Windows fragt nach der Administrator-Bestätigung. "
+                                    "Ohne Zustimmung bleibt die bisherige Version, und es erscheint ein Hinweis."
+                                )
+                            else:
+                                note += "Danach startet dieselbe Programmdatei in der neuen Version."
+                            headline.config(text=note)
+                            status_label.config(text="")
                             self.root.update()
-                            self.root.after(1200, self._exit_for_windows_update)
+                            self.root.after(2500, self._exit_for_windows_update)
                         elif install_success:
                             status_label.config(text="✓ Update installiert! Starte Programm neu...")
                             self.root.update()
@@ -10564,7 +10605,6 @@ Historie-Einträge: {len(self.video_download_history)}
                 self.root.after(0, update_ui)
             except Exception as e:
                 def show_error():
-                    progress.stop()
                     status_label.config(text="✗ Fehler")
                     messagebox.showerror("Fehler", f"Fehler beim Download: {str(e)}")
                 self.root.after(0, show_error)
@@ -10610,37 +10650,70 @@ Historie-Einträge: {len(self.video_download_history)}
             return "setup" in path.name.lower()
 
     def _windows_handoff_update(self, update_file: Path):
-        """Installer oder neue .exe erst starten, wenn dieses Programm beendet ist."""
+        """Installer erst starten, wenn dieses Programm beendet ist.
+
+        Ersetzt genau den Ordner der laufenden Programmdatei und startet
+        danach dieselbe Datei. Eine andere, ältere Kopie wird nicht geöffnet.
+        """
         pid = os.getpid()
-        setup = str(update_file)
+        setup = str(Path(update_file).resolve())
+        install_dir = str(Path(sys.executable).resolve().parent)
+        app_exe = str(Path(install_dir) / "UniversalDownloader.exe")
+        elevate = "\\program files" in install_dir.lower()
         is_setup = self._is_inno_setup(update_file)
-        bat = Path(tempfile.gettempdir()) / "ud_apply_update.cmd"
-        if is_setup:
-            install_lines = (
-                f'"{setup}" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS\r\n'
-                'set "APP=%LOCALAPPDATA%\\Programs\\Universal Downloader\\UniversalDownloader.exe"\r\n'
-                'if not exist "%APP%" set "APP=%ProgramFiles%\\Universal Downloader\\UniversalDownloader.exe"\r\n'
-                'if exist "%APP%" start "" "%APP%"\r\n'
-            )
-        else:
-            current = str(Path(sys.executable))
-            install_lines = (
-                f'copy /Y "{setup}" "{current}"\r\n'
-                f'if exist "{current}" start "" "{current}"\r\n'
-            )
-        bat.write_text(
-            "@echo off\r\n"
-            f":wait\r\n"
-            f'tasklist /FI "PID eq {pid}" | find "{pid}" >nul\r\n'
-            "if not errorlevel 1 (\r\n"
-            "  timeout /t 1 /nobreak >nul\r\n"
-            "  goto wait\r\n"
-            ")\r\n"
-            + install_lines
-            + f'del /F /Q "{setup}"\r\n'
-            'del /F /Q "%~f0"\r\n',
-            encoding="utf-8",
+        ps1 = Path(tempfile.gettempdir()) / "ud_apply_update.ps1"
+
+        def ps_quote(value: str) -> str:
+            return value.replace("'", "''")
+
+        script = (
+            "$ErrorActionPreference = 'Continue'\n"
+            "$log = Join-Path $env:TEMP 'ud_apply_update.log'\n"
+            "function Log([string]$m) {\n"
+            "  Add-Content -LiteralPath $log -Value ((Get-Date -Format 'HH:mm:ss') + ' ' + $m)\n"
+            "}\n"
+            f"$pidWait = {int(pid)}\n"
+            f"$setup = '{ps_quote(setup)}'\n"
+            f"$dir = '{ps_quote(install_dir)}'\n"
+            f"$app = '{ps_quote(app_exe)}'\n"
+            f"$elevate = ${'true' if elevate else 'false'}\n"
+            f"$isSetup = ${'true' if is_setup else 'false'}\n"
+            "Log ('start dir=' + $dir + ' elevate=' + $elevate)\n"
+            "while (Get-Process -Id $pidWait -ErrorAction SilentlyContinue) { Start-Sleep -Seconds 1 }\n"
+            "Get-Process -Name UniversalDownloader -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue\n"
+            "Start-Sleep -Seconds 2\n"
+            "$code = 1\n"
+            "try {\n"
+            "  if ($isSetup) {\n"
+            "    $setupLog = Join-Path $env:TEMP 'ud_setup.log'\n"
+            "    $mode = if ($elevate) { '/ALLUSERS' } else { '/CURRENTUSER' }\n"
+            "    $arg = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS ' + $mode + ' /LOG=\"' + $setupLog + '\" /DIR=\"' + $dir + '\"'\n"
+            "    if ($elevate) {\n"
+            "      $p = Start-Process -FilePath $setup -ArgumentList $arg -Verb RunAs -PassThru -Wait\n"
+            "    } else {\n"
+            "      $p = Start-Process -FilePath $setup -ArgumentList $arg -PassThru -Wait\n"
+            "    }\n"
+            "    if ($null -ne $p -and $null -ne $p.ExitCode) { $code = [int]$p.ExitCode }\n"
+            "  } else {\n"
+            "    Copy-Item -LiteralPath $setup -Destination $app -Force\n"
+            "    $code = 0\n"
+            "  }\n"
+            "} catch {\n"
+            "  Log $_.Exception.Message\n"
+            "  $code = 1\n"
+            "}\n"
+            "Log ('exit ' + $code)\n"
+            "if ($code -ne 0) {\n"
+            "  Add-Type -AssemblyName System.Windows.Forms\n"
+            "  [void][System.Windows.Forms.MessageBox]::Show(\n"
+            "    (\"Das Update wurde nicht installiert (Code $code). Es bleibt die bisherige Version.`n`nOrdner: $dir\"),\n"
+            "    'Universal Downloader')\n"
+            "}\n"
+            "if (Test-Path -LiteralPath $app) { Start-Process -FilePath $app }\n"
+            "if ($code -eq 0) { Remove-Item -LiteralPath $setup -Force -ErrorAction SilentlyContinue }\n"
+            "Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue\n"
         )
+        ps1.write_text(script, encoding="utf-8-sig")
         flags = 0
         if hasattr(subprocess, "DETACHED_PROCESS"):
             flags |= subprocess.DETACHED_PROCESS
@@ -10649,7 +10722,16 @@ Historie-Einträge: {len(self.video_download_history)}
         if hasattr(subprocess, "CREATE_NO_WINDOW"):
             flags |= subprocess.CREATE_NO_WINDOW
         subprocess.Popen(
-            ["cmd", "/c", "start", "", "/min", "cmd", "/c", str(bat)],
+            [
+                "powershell",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-WindowStyle",
+                "Hidden",
+                "-File",
+                str(ps1),
+            ],
             creationflags=flags,
             close_fds=True,
             stdin=subprocess.DEVNULL,
