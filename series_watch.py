@@ -15,6 +15,7 @@ import os
 import re
 import smtplib
 import ssl
+import threading
 import time
 from email.mime.text import MIMEText
 from pathlib import Path
@@ -181,6 +182,49 @@ def watch_item_kind(it: Optional[Dict[str, Any]], url: str = "") -> str:
     return "audio" if is_audio_watch_url(u) else "video"
 
 
+def is_youtube_watch_url(url: str) -> bool:
+    ul = (url or "").lower()
+    return "youtube.com" in ul or "youtu.be" in ul
+
+
+def format_choices_for_watch(it: Optional[Dict[str, Any]] = None, url: str = "") -> List[str]:
+    """Wählbare Ausgabeformate für eine überwachte Serie oder Playlist."""
+    u = url or ((it or {}).get("url") if isinstance(it, dict) else "") or ""
+    if watch_item_kind(it, u) == "audio" or is_audio_watch_url(u):
+        return ["mp3"]
+    if is_youtube_watch_url(u):
+        return ["mp4", "mkv", "mp3"]
+    return ["mp4", "mkv"]
+
+
+def effective_download_format(it: Optional[Dict[str, Any]] = None, url: str = "") -> str:
+    """Gespeichertes Format, sonst der Standard (Video MP4, Audio MP3)."""
+    choices = format_choices_for_watch(it, url)
+    raw = ""
+    if isinstance(it, dict):
+        raw = str(it.get("download_format") or "").lower().strip()
+    if raw in choices:
+        return raw
+    return choices[0]
+
+
+def download_format_for_series(state: Dict[str, Any], series_url: str = "", series_name: str = "") -> str:
+    """Format der passenden überwachten Serie."""
+    url = _normalize_url_key(series_url)
+    name = (series_name or "").strip()
+    for it in state.get("items") or []:
+        if not isinstance(it, dict):
+            continue
+        iu = _normalize_url_key(it.get("url") or "")
+        labels = {
+            (it.get("display_name") or "").strip(),
+            (it.get("playlist_title") or "").strip(),
+        }
+        if (url and iu and iu == url) or (name and name in labels):
+            return effective_download_format(it, it.get("url") or series_url)
+    return effective_download_format(None, series_url)
+
+
 def season_from_title(title: str) -> Optional[int]:
     m = re.search(r"\(S(\d+)/", title or "", re.IGNORECASE)
     if not m:
@@ -219,6 +263,49 @@ def _have_ids_as_set(it: Dict[str, Any]) -> Set[str]:
     return {str(x) for x in raw if x}
 
 
+def _ignore_ids_as_set(it: Dict[str, Any]) -> Set[str]:
+    raw = it.get("ignore_ids")
+    if not isinstance(raw, list):
+        return set()
+    return {str(x) for x in raw if x}
+
+
+_EXTRA_TITLE_RE = re.compile(
+    r"(?i)(?:"
+    r"trailer|teaser|\bvorschau\b|\bpreview\b|"
+    r"making[\s\-]?of|makingoff|"
+    r"behind[\s\-]?the[\s\-]?scenes|hinter den kulissen|"
+    r"\bblooper\b|\bbloopers\b|\bouttake\b|\bouttakes\b|"
+    r"\brecap\b|\brückblick\b|"
+    r"\bbonus(?:material)?\b|\bfeaturette\b"
+    r")"
+)
+
+
+def is_likely_extra_title(title: str) -> bool:
+    """Trailer, Making-of u. Ä. — standardmäßig ignorieren, kein Fehlend-Hinweis."""
+    t = (title or "").strip()
+    if not t:
+        return False
+    return bool(_EXTRA_TITLE_RE.search(t))
+
+
+def is_episode_ignored(ep: Dict[str, Any], it: Dict[str, Any]) -> bool:
+    eid = str(ep.get("id") or "")
+    return bool(eid) and eid in _ignore_ids_as_set(it)
+
+
+def item_has_ownership_marks(it: Dict[str, Any]) -> bool:
+    if _have_ids_as_set(it) or _ignore_ids_as_set(it):
+        return True
+    try:
+        if int(it.get("have_full_seasons_upto") or 0) > 0:
+            return True
+    except (TypeError, ValueError):
+        pass
+    return bool(it.get("have_partial_seasons"))
+
+
 def _normalize_url_key(url: str) -> str:
     u = (url or "").strip().lower().rstrip("/")
     return u
@@ -252,41 +339,68 @@ def mark_downloaded_episodes(
     for it in items:
         if not isinstance(it, dict):
             continue
-        hid = _have_ids_as_set(it)
-        before = len(hid)
         episodes = it.get("episodes")
         if not isinstance(episodes, dict):
             episodes = {}
             it["episodes"] = episodes
-
+        matched = set()
+        ep_ids = {str(k) for k in episodes}
         for eid in id_set:
-            if eid:
-                hid.add(eid)
-
-        for eid, meta in list(episodes.items()):
+            if eid in ep_ids:
+                matched.add(eid)
+        for eid, meta in episodes.items():
             if not isinstance(meta, dict):
                 continue
             eu = _normalize_url_key(meta.get("url") or "")
             if eu and eu in url_keys:
-                hid.add(str(eid))
-
-        # Falls URL bekannt, aber noch keine Episode-ID in episodes: ID aus URL-Ende ableiten
-        for u in urls:
-            uk = _normalize_url_key(u)
-            if not uk:
-                continue
-            # z. B. …/urn:ard:episode:xxx oder youtube id
-            m = re.search(r"(urn:ard:(?:episode|section|extra):[a-f0-9]+)", uk, re.I)
-            if m:
-                hid.add(m.group(1))
-            for eid, meta in episodes.items():
-                if isinstance(meta, dict) and _normalize_url_key(meta.get("url") or "") == uk:
-                    hid.add(str(eid))
-
+                matched.add(str(eid))
+        if not matched:
+            continue
+        hid = _have_ids_as_set(it)
+        before = len(hid)
+        hid |= matched
         if len(hid) > before:
             added += len(hid) - before
             it["have_ids"] = sorted(hid)
 
+    if added:
+        save_state(base, state)
+    return added
+
+
+def mark_ignored_episodes(
+    base: Path,
+    *,
+    episode_ids: Optional[List[str]] = None,
+    series_url: str = "",
+) -> int:
+    """Setzt ignore_ids (Trailer/Making-of o. Ä.) und nimmt die IDs aus have_ids."""
+    ids = [str(i) for i in (episode_ids or []) if i]
+    if not ids:
+        return 0
+    state = load_state(base)
+    items = state.get("items")
+    if not isinstance(items, list) or not items:
+        return 0
+    want_url = _normalize_url_key(series_url)
+    added = 0
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        if want_url:
+            iu = _normalize_url_key(it.get("url") or "")
+            if iu and iu != want_url:
+                continue
+        ign = _ignore_ids_as_set(it)
+        hid = _have_ids_as_set(it)
+        before = len(ign)
+        for eid in ids:
+            ign.add(eid)
+            hid.discard(eid)
+        if len(ign) > before:
+            added += len(ign) - before
+            it["ignore_ids"] = sorted(ign)
+            it["have_ids"] = sorted(hid)
     if added:
         save_state(base, state)
     return added
@@ -378,6 +492,7 @@ def episodes_for_video_download(
     *,
     kind: str = "video",
     series_url: str = "",
+    output_format: str = "",
 ) -> List[Dict[str, Any]]:
     """Formatiert New-Episodes für Video- oder Audiothek-Download/Queue."""
     out: List[Dict[str, Any]] = []
@@ -403,12 +518,15 @@ def episodes_for_video_download(
             "season_number": s if s is not None else 1,
             "episode_number": e,
             "playlist_index": e,
+            "output_format": (output_format or "").lower(),
         })
     return out
 
 
 def is_episode_had(ep: Dict[str, Any], it: Dict[str, Any]) -> bool:
     """True, wenn die Folge laut Nutzer-Angaben „schon vorhanden“ ist (kein Hinweis nötig)."""
+    if is_episode_ignored(ep, it):
+        return True
     eid = str(ep.get("id") or "")
     if eid and eid in _have_ids_as_set(it):
         return True
@@ -459,6 +577,157 @@ def filter_skip_audiodeskription(episodes: List[Dict[str, str]]) -> List[Dict[st
     return out
 
 
+_ARD_AUDIO_API = "https://api.ardaudiothek.de"
+_ARD_SHOW_PAGE_SIZE = 24
+_ARD_SHOW_EPISODE_QUERY = (
+    "query ProgramSetEpisodesQuery($id: ID!, $offset: Int!, $count: Int!) {"
+    " result: programSet(id: $id) {"
+    " id title numberOfElements"
+    " items(offset: $offset, first: $count, filter: {isPublished: {equalTo: true},"
+    " itemType: {notEqualTo: EVENT_LIVESTREAM}}) {"
+    " pageInfo { hasNextPage }"
+    " nodes { id assetId title path }"
+    " } } }"
+)
+
+
+def is_ard_audio_show_url(url: str) -> bool:
+    """Sendungsseite von ARD Sounds / Audiothek, nicht eine einzelne Folge."""
+    ul = (url or "").lower()
+    if "ardsounds.de" not in ul and "ardaudiothek.de" not in ul:
+        return False
+    return "/sendung/" in ul or "urn:ard:show:" in ul
+
+
+def _ard_audio_site_host(url: str) -> str:
+    if "ardaudiothek.de" in (url or "").lower():
+        return "www.ardaudiothek.de"
+    return "www.ardsounds.de"
+
+
+def _http_bytes(url: str, data: Optional[bytes] = None, headers: Optional[Dict[str, str]] = None, timeout: int = 30) -> bytes:
+    import urllib.request
+
+    hdrs = {"User-Agent": "Mozilla/5.0"}
+    if headers:
+        hdrs.update(headers)
+
+    def _open(context: Optional[ssl.SSLContext] = None) -> bytes:
+        req = urllib.request.Request(url, data=data, headers=hdrs)
+        with urllib.request.urlopen(req, timeout=timeout, context=context) as resp:
+            return resp.read()
+
+    try:
+        return _open()
+    except Exception as ex:
+        msg = str(ex).lower()
+        if "certificate verify failed" not in msg and "certificate_verify_failed" not in msg:
+            raise
+        return _open(ssl._create_unverified_context())
+
+
+def _episode_from_ard_node(node: Any, host: str) -> Optional[Dict[str, str]]:
+    if not isinstance(node, dict):
+        return None
+    asset = str(node.get("assetId") or "").strip()
+    eid = asset or str(node.get("id") or "").strip()
+    if not eid:
+        return None
+    title = (node.get("title") or "").strip() or eid
+    path = str(node.get("path") or "").strip()
+    if path.startswith("/"):
+        eurl = f"https://{host}{path}"
+    elif asset.lower().startswith("urn:ard:episode:"):
+        eurl = f"https://{host}/episode/{asset}"
+    else:
+        return None
+    return {"id": eid, "title": title, "url": eurl.rstrip("/")}
+
+
+def fetch_ard_audio_show_episodes(url: str, timeout: int = 180) -> Tuple[str, str, List[Dict[str, str]]]:
+    """
+    Folgen einer ARD-Sounds-/Audiothek-Sendung.
+    yt-dlp kennt die Sendungsseite nicht; die Seite und die Audiothek-API schon.
+    """
+    u = normalize_ard_audio_watch_url((url or "").strip())
+    raw_html = _http_bytes(u, timeout=min(40, timeout))
+    html = raw_html.decode("utf-8", "replace")
+    match = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', html)
+    if not match:
+        raise RuntimeError("ARD Sounds: Sendungsseite ohne Folgenliste")
+    try:
+        page = json.loads(match.group(1))
+    except json.JSONDecodeError as ex:
+        raise RuntimeError("ARD Sounds: Folgenliste nicht lesbar") from ex
+    result = (
+        ((page.get("props") or {}).get("pageProps") or {}).get("initialData") or {}
+    ).get("data", {}).get("result") or {}
+    if not isinstance(result, dict) or not result.get("id"):
+        raise RuntimeError("ARD Sounds: keine Sendung in der Seite")
+    pid = str(result.get("id") or "")
+    ptitle = (result.get("title") or "ARD Sounds").strip()
+    try:
+        total = int(result.get("numberOfElements") or 0)
+    except (TypeError, ValueError):
+        total = 0
+    host = _ard_audio_site_host(u)
+    items = result.get("items") if isinstance(result.get("items"), dict) else {}
+    out: List[Dict[str, str]] = []
+    seen: Set[str] = set()
+
+    def add_nodes(nodes: Any) -> int:
+        added = 0
+        if not isinstance(nodes, list):
+            return 0
+        for node in nodes:
+            ep = _episode_from_ard_node(node, host)
+            if not ep or ep["id"] in seen:
+                continue
+            seen.add(ep["id"])
+            out.append(ep)
+            added += 1
+        return added
+
+    first_nodes = items.get("nodes") if isinstance(items.get("nodes"), list) else []
+    add_nodes(first_nodes)
+    page_info = items.get("pageInfo") if isinstance(items.get("pageInfo"), dict) else {}
+    has_next = bool(page_info.get("hasNextPage"))
+    offset = len(first_nodes) or _ARD_SHOW_PAGE_SIZE
+    pages = 0
+    while has_next and pages < 40 and (total <= 0 or len(out) < total):
+        pages += 1
+        body = json.dumps({
+            "query": _ARD_SHOW_EPISODE_QUERY,
+            "variables": {"id": pid, "offset": offset, "count": _ARD_SHOW_PAGE_SIZE},
+        }).encode("utf-8")
+        payload_raw = _http_bytes(
+            _ARD_AUDIO_API + "/graphql",
+            data=body,
+            headers={
+                "Content-Type": "application/json",
+                "User-Agent": "Mozilla/5.0",
+                "Origin": f"https://{host}",
+                "Referer": u,
+            },
+            timeout=min(40, timeout),
+        )
+        try:
+            payload = json.loads(payload_raw.decode("utf-8", "replace"))
+        except json.JSONDecodeError as ex:
+            raise RuntimeError("ARD Sounds: weitere Folgen nicht lesbar") from ex
+        block = ((payload.get("data") or {}).get("result") or {}).get("items") or {}
+        if not isinstance(block, dict):
+            break
+        new_nodes = block.get("nodes") if isinstance(block.get("nodes"), list) else []
+        added = add_nodes(new_nodes)
+        info = block.get("pageInfo") if isinstance(block.get("pageInfo"), dict) else {}
+        has_next = bool(info.get("hasNextPage")) and added > 0 and bool(new_nodes)
+        offset += len(new_nodes) or _ARD_SHOW_PAGE_SIZE
+    if not out:
+        raise RuntimeError("ARD Sounds: keine Folgen gefunden")
+    return pid, ptitle, filter_skip_audiodeskription(out)
+
+
 def _parse_json_stdout(stdout: str) -> Optional[dict]:
     if not stdout or not stdout.strip():
         return None
@@ -487,6 +756,8 @@ def fetch_playlist_episodes(url: str, timeout: int = 180) -> Tuple[str, str, Lis
     u = normalize_watch_url((url or "").strip())
     if not u:
         raise ValueError("Leere URL")
+    if is_ard_audio_show_url(u):
+        return fetch_ard_audio_show_episodes(u, timeout=timeout)
 
     r = run_ytdlp(
         [
@@ -568,6 +839,7 @@ def merge_have_ids_from_current(it: Dict[str, Any], current: List[Dict[str, Any]
 def check_all(
     base: Path,
     on_item_error: Optional[Callable[[str, str], None]] = None,
+    report_unowned: bool = False,
 ) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
     """
     Prüft alle gespeicherten Serien-Einträge, aktualisiert Zustand.
@@ -600,6 +872,10 @@ def check_all(
             it["episodes"] = episodes
         if not isinstance(it.get("have_ids"), list):
             it["have_ids"] = []
+        if not isinstance(it.get("ignore_ids"), list):
+            it["ignore_ids"] = []
+        if not isinstance(it.get("alerted_ids"), list):
+            it["alerted_ids"] = []
         if not isinstance(it.get("have_partial_seasons"), list):
             it["have_partial_seasons"] = []
 
@@ -613,45 +889,100 @@ def check_all(
                 on_item_error(name, str(ex))
             continue
 
+        ign = _ignore_ids_as_set(it)
+        hid = _have_ids_as_set(it)
+        old_ids = set(episodes.keys())
+        seed_extras = not ign
+        for ep in current:
+            eid = str(ep.get("id") or "")
+            if not eid:
+                continue
+            if is_likely_extra_title(ep.get("title") or "") and eid not in hid:
+                if seed_extras or eid not in old_ids:
+                    ign.add(eid)
+        it["ignore_ids"] = sorted(ign)
+
         merge_have_ids_from_current(it, current)
 
         it["playlist_title"] = ptitle
         it["last_check"] = time.strftime("%Y-%m-%d %H:%M:%S")
+        for ep in current:
+            eid = str(ep.get("id") or "")
+            if eid:
+                episodes[eid] = {"title": ep.get("title") or "", "url": ep.get("url") or ""}
 
         if not baseline:
-            for ep in current:
-                episodes[ep["id"]] = {"title": ep["title"], "url": ep.get("url") or ""}
             it["baseline_done"] = True
             it["max_season_seen"] = max_season_in_episodes(episodes)
+            if item_has_ownership_marks(it):
+                continue
+            reported = [ep for ep in current if not is_episode_had(ep, it)]
+            if not reported:
+                continue
+            alerted = {str(x) for x in (it.get("alerted_ids") or []) if x}
+            for ep in reported:
+                eid = str(ep.get("id") or "")
+                if eid:
+                    alerted.add(eid)
+            it["alerted_ids"] = sorted(alerted)
+            notifications.append(
+                {
+                    "watch_name": (it.get("display_name") or "").strip() or ptitle or name,
+                    "series_url": url,
+                    "playlist_title": ptitle,
+                    "is_new_season": False,
+                    "gap": True,
+                    "catalog": True,
+                    "new_episodes": [
+                        {"title": ep["title"], "url": ep.get("url") or "", "id": ep.get("id")}
+                        for ep in reported
+                    ],
+                }
+            )
             continue
 
-        old_ids = set(episodes.keys())
-        new_eps = [ep for ep in current if ep["id"] not in old_ids]
+        alerted = {str(x) for x in (it.get("alerted_ids") or []) if x}
         for ep in current:
             if ep["id"] in episodes:
                 episodes[ep["id"]] = {"title": ep["title"], "url": ep.get("url") or ""}
 
-        new_eps = [ep for ep in new_eps if not is_episode_had(ep, it)]
+        fresh = [ep for ep in current if ep["id"] not in old_ids and not is_episode_had(ep, it)]
+        gaps = []
+        if item_has_ownership_marks(it):
+            for ep in current:
+                eid = str(ep.get("id") or "")
+                if not eid or eid not in old_ids or is_episode_had(ep, it):
+                    continue
+                if report_unowned or eid not in alerted:
+                    gaps.append(ep)
 
-        if not new_eps:
+        if not fresh and not gaps:
             it["max_season_seen"] = max(max_seen, max_season_in_episodes(episodes))
             continue
 
-        seasons_new = [season_from_title(ep["title"]) for ep in new_eps]
+        seasons_new = [season_from_title(ep["title"]) for ep in fresh]
         seasons_new_n = [s for s in seasons_new if s is not None]
-        is_new_season = bool(seasons_new_n) and max(seasons_new_n) > max_seen
+        is_new_season = bool(fresh) and bool(seasons_new_n) and max(seasons_new_n) > max_seen
+        reported = fresh + gaps
+        catalog = (not item_has_ownership_marks(it)) and not old_ids and bool(fresh)
 
-        for ep in new_eps:
+        for ep in reported:
             episodes[ep["id"]] = {"title": ep["title"], "url": ep.get("url") or ""}
+            eid = str(ep.get("id") or "")
+            if eid:
+                alerted.add(eid)
+        it["alerted_ids"] = sorted(alerted)
         it["max_season_seen"] = max(max_seen, max_season_in_episodes(episodes))
 
         notifications.append(
             {
-                "watch_name": name,
+                "watch_name": (it.get("display_name") or "").strip() or ptitle or name,
                 "series_url": url,
                 "playlist_title": ptitle,
-                "is_new_season": is_new_season,
-                "new_episodes": [{"title": ep["title"], "url": ep.get("url") or "", "id": ep.get("id")} for ep in new_eps],
+                "is_new_season": False if catalog else is_new_season,
+                "gap": True if catalog else (bool(gaps) and not fresh),
+                "catalog": catalog,
+                "new_episodes": [{"title": ep["title"], "url": ep.get("url") or "", "id": ep.get("id")} for ep in reported],
             }
         )
 
@@ -661,26 +992,76 @@ def check_all(
 
 def format_notification_text(n: Dict[str, Any]) -> Tuple[str, str]:
     """Titel und mehrzeiliger Text für Desktop/Mail/Telegram/Discord."""
-    if n.get("is_new_season"):
+    episodes = [ep for ep in (n.get("new_episodes") or []) if isinstance(ep, dict)]
+    if n.get("catalog"):
+        title = f"Verfügbare Folgen: {n.get('watch_name')}"
+        lead = "Noch nichts als „habe ich“ markiert. Im Menü auswählen, was geladen werden soll:"
+    elif n.get("gap"):
+        title = f"Fehlende Folgen: {n.get('watch_name')}"
+        lead = "Noch nicht als „habe ich“ markiert:"
+    elif n.get("is_new_season"):
         title = f"Neue Staffel: {n.get('watch_name')}"
+        lead = "Neu:"
     else:
         title = f"Neue Folgen: {n.get('watch_name')}"
+        lead = "Neu:"
 
     lines = [
         f"Playlist: {n.get('playlist_title') or ''}",
         f"Link: {n.get('series_url') or ''}",
         "",
-        "Neu:",
+        lead,
     ]
-    for ep in n.get("new_episodes") or []:
+    shown = episodes[:8]
+    for ep in shown:
         t = ep.get("title") or ""
         u = ep.get("url") or ""
-        if u:
+        if u and len(episodes) <= 8:
             lines.append(f"• {t}\n  {u}")
         else:
             lines.append(f"• {t}")
+    rest = len(episodes) - len(shown)
+    if rest > 0:
+        lines.append(f"… und {rest} weitere. Folgenliste im Menü öffnen.")
     body = "\n".join(lines)
     return title, body
+
+
+def available_groups(state: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Folgen, die weder vorhanden noch ignoriert sind, gruppiert nach Serie."""
+    groups: List[Dict[str, Any]] = []
+    for it in state.get("items") or []:
+        if not isinstance(it, dict):
+            continue
+        episodes = it.get("episodes")
+        if not isinstance(episodes, dict) or not episodes:
+            continue
+        rows: List[Dict[str, str]] = []
+        for eid, meta in episodes.items():
+            if not isinstance(meta, dict):
+                meta = {}
+            ep = {
+                "id": str(eid),
+                "title": str(meta.get("title") or ""),
+                "url": str(meta.get("url") or ""),
+            }
+            if is_episode_had(ep, it):
+                continue
+            rows.append(ep)
+        if not rows:
+            continue
+        name = (it.get("display_name") or it.get("playlist_title") or "").strip() or "Serie"
+        groups.append({
+            "name": name,
+            "series_url": it.get("url") or "",
+            "count": len(rows),
+            "episodes": rows,
+        })
+    return groups
+
+
+def count_available_episodes(state: Dict[str, Any]) -> int:
+    return sum(int(g.get("count") or 0) for g in available_groups(state))
 
 
 def send_external_notifications(settings: Dict[str, Any], title: str, body: str) -> None:
@@ -804,20 +1185,24 @@ def read_runtime_status(base: Path) -> Dict[str, Any]:
         return {"phase": "idle"}
 
 
+_status_lock = threading.Lock()
+
+
 def write_runtime_status(base: Path, **fields: Any) -> None:
     """Aktualisiert den gemeinsamen Runtime-Status (GUI + Tray)."""
-    cur = read_runtime_status(base)
-    cur.update(fields)
-    cur["updated_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
-    p = runtime_status_path(base)
-    tmp = p.with_suffix(".json.tmp")
-    try:
-        p.parent.mkdir(parents=True, exist_ok=True)
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(cur, f, indent=2, ensure_ascii=False)
-        tmp.replace(p)
-    except Exception:
-        pass
+    with _status_lock:
+        cur = read_runtime_status(base)
+        cur.update(fields)
+        cur["updated_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+        p = runtime_status_path(base)
+        tmp = p.with_suffix(".json.tmp")
+        try:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(cur, f, indent=2, ensure_ascii=False)
+            tmp.replace(p)
+        except Exception:
+            pass
 
 
 def set_download_progress(
@@ -861,9 +1246,175 @@ def clear_download_status(base: Path, *, phase: str = "idle") -> None:
         base,
         phase=phase,
         download=None,
+        downloads=[],
         pending=[],
         cancel_requested=False,
     )
+
+
+def have_ids_for_series(state: Dict[str, Any], series_url: str = "", series_name: str = "") -> Set[str]:
+    """have_ids nur der Serie, zu der der Hinweis gehört. Andere Serien zählen nicht."""
+    items = [it for it in (state.get("items") or []) if isinstance(it, dict)]
+    url = _normalize_url_key(series_url)
+    name = (series_name or "").strip()
+    matched = []
+    for it in items:
+        iu = _normalize_url_key(it.get("url") or "")
+        labels = {
+            (it.get("display_name") or "").strip(),
+            (it.get("playlist_title") or "").strip(),
+        }
+        if url and iu and iu == url:
+            matched.append(it)
+        elif name and name in labels:
+            matched.append(it)
+    if not matched:
+        return set()
+    had: Set[str] = set()
+    for it in matched:
+        had |= _have_ids_as_set(it)
+    return had
+
+
+def remove_cross_series_have_ids(state: Dict[str, Any]) -> bool:
+    """Nimmt Folgen-IDs aus have_ids, die nur zu einer anderen Serie gehören."""
+    items = [it for it in (state.get("items") or []) if isinstance(it, dict)]
+    owners: Dict[str, Set[int]] = {}
+    for i, it in enumerate(items):
+        episodes = it.get("episodes")
+        if not isinstance(episodes, dict):
+            continue
+        for eid in episodes:
+            owners.setdefault(str(eid), set()).add(i)
+    changed = False
+    for i, it in enumerate(items):
+        hid = _have_ids_as_set(it)
+        drop = [eid for eid in hid if owners.get(eid) and i not in owners[eid]]
+        if not drop:
+            continue
+        for eid in drop:
+            hid.discard(eid)
+        it["have_ids"] = sorted(hid)
+        changed = True
+    return changed
+
+
+def prune_owned_alerts(base: Path) -> bool:
+    """Nimmt Folgen aus den Hinweisen, die in derselben Serie schon als „habe ich“ gelten.
+
+    Eine andere Serie mit derselben ID blendet den Hinweis nicht aus.
+    Lässt einen laufenden Download (phase) unangetastet.
+    """
+    state = load_state(base)
+    if remove_cross_series_have_ids(state):
+        save_state(base, state)
+    rt = read_runtime_status(base)
+    alerts = rt.get("new_alerts") if isinstance(rt.get("new_alerts"), list) else []
+    if not alerts:
+        return False
+    kept = []
+    changed = False
+    for alert in alerts:
+        if not isinstance(alert, dict):
+            changed = True
+            continue
+        had = have_ids_for_series(state, alert.get("series_url") or "", alert.get("name") or "")
+        eps = [
+            ep for ep in (alert.get("episodes") or [])
+            if isinstance(ep, dict) and str(ep.get("id") or "") not in had
+        ]
+        if len(eps) != len(alert.get("episodes") or []):
+            changed = True
+        if not eps:
+            changed = True
+            continue
+        row = dict(alert)
+        row["episodes"] = eps
+        row["count"] = len(eps)
+        kept.append(row)
+    if changed:
+        write_runtime_status(base, new_alerts=kept)
+    return changed
+
+
+class _HeadlessCancel:
+    """Sieht für yt-dlp wie die GUI aus: Abbruch-Flag aus der Tray-Datei, eigener Prozess."""
+
+    def __init__(self, base: Path):
+        self._base = base
+        self.video_download_process = None
+
+    @property
+    def video_download_cancelled(self) -> bool:
+        return is_download_cancel_requested(self._base)
+
+
+def gui_queue_file(base: Path) -> Path:
+    return Path(base) / "series_watch_gui_queue.json"
+
+
+def enqueue_gui_video_queue(base: Path, episodes: List[Dict[str, Any]]) -> int:
+    """Legt Folgen für die Video-Queue des Hauptprogramms ab."""
+    rows = []
+    for ep in episodes or []:
+        if not isinstance(ep, dict):
+            continue
+        url = (ep.get("url") or "").strip()
+        if not url:
+            continue
+        rows.append({
+            "url": url,
+            "title": ep.get("title") or "",
+            "series_name": ep.get("series") or ep.get("series_name") or "",
+            "series_url": ep.get("series_url") or "",
+            "id": ep.get("id"),
+            "season_number": ep.get("season_number"),
+            "episode_number": ep.get("episode_number"),
+            "kind": ep.get("kind") or "video",
+            "output_format": (ep.get("output_format") or "").lower(),
+        })
+    if not rows:
+        return 0
+    path = gui_queue_file(base)
+    existing: List[Any] = []
+    try:
+        if path.exists():
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, list):
+                existing = data
+    except Exception:
+        existing = []
+    existing.extend(rows)
+    tmp = path.with_suffix(".json.tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(existing, f, ensure_ascii=False, indent=2)
+    tmp.replace(path)
+    return len(rows)
+
+
+def take_gui_video_queue(base: Path) -> List[Dict[str, Any]]:
+    path = gui_queue_file(base)
+    if not path.exists():
+        return []
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception:
+        data = []
+    try:
+        path.unlink()
+    except Exception:
+        pass
+    return [x for x in data if isinstance(x, dict)] if isinstance(data, list) else []
+
+
+def _max_parallel_from_settings(settings: Dict[str, Any]) -> int:
+    try:
+        n = int(settings.get("max_concurrent_downloads", 1))
+    except (TypeError, ValueError):
+        n = 1
+    return max(1, min(8, n))
 
 
 def load_app_settings(base: Path) -> Dict[str, Any]:
@@ -949,12 +1500,15 @@ def collect_auto_download_episodes(
             continue
         url = (n.get("series_url") or "").strip()
         it = by_url.get(url) or {}
+        if n.get("catalog"):
+            continue
         if not item_wants_auto_download(it, settings):
             continue
         name = (n.get("watch_name") or "").strip()
         kind = watch_item_kind(it, url)
+        fmt = effective_download_format(it, url)
         for ep in episodes_for_video_download(
-            n.get("new_episodes") or [], name, kind=kind, series_url=url
+            n.get("new_episodes") or [], name, kind=kind, series_url=url, output_format=fmt
         ):
             u = (ep.get("url") or "").strip()
             if not u or u in seen:
@@ -971,12 +1525,12 @@ def download_episodes_headless(
     log: Optional[Callable[[str], None]] = None,
     progress_callback: Optional[Callable[[float, str, Dict[str, Any]], None]] = None,
     should_cancel: Optional[Callable[[], bool]] = None,
-) -> Tuple[int, int]:
+) -> Tuple[int, int, bool]:
     """
     Lädt Folgen ohne GUI (Tray-Helper). Markiert have_ids bei Erfolg.
     progress_callback(percent, status_line, meta) – meta: title/series/index/total
     should_cancel() -> True bricht ab.
-    Rückgabe: (success_count, fail_count)
+    Rückgabe: (success_count, fail_count, abgebrochen)
     """
     settings = settings or load_app_settings(base)
     _log = log or (lambda _m: None)
@@ -986,23 +1540,12 @@ def download_episodes_headless(
         from video_downloader import VideoDownloader
     except Exception as e:
         _log(f"VideoDownloader nicht ladbar: {e}")
-        return 0, len(episodes)
+        return 0, len(episodes), False
 
     video_path = Path(settings.get("default_video_path") or (Path(base) / "Video"))
     music_path = Path(settings.get("default_music_path") or (Path(base) / "Musik"))
     quality = settings.get("default_video_quality") or "best"
     output_format = settings.get("default_video_format") or "mp4"
-    try:
-        vd = VideoDownloader(
-            download_path=str(video_path),
-            quality=quality,
-            output_format=output_format,
-            gui_instance=None,
-        )
-    except Exception as e:
-        _log(f"VideoDownloader Init fehlgeschlagen: {e}")
-        return 0, len(episodes)
-
     ok = 0
     fail = 0
     speed_limit = None
@@ -1013,125 +1556,193 @@ def download_episodes_headless(
             speed_limit = None
 
     total = len(episodes)
-    write_runtime_status(base, cancel_requested=False, phase="downloading")
+    max_c = min(_max_parallel_from_settings(settings), total)
+    write_runtime_status(base, cancel_requested=False, phase="downloading", downloads=[], pending=[])
 
+    from queue import Empty, Queue
+
+    jobs: Queue = Queue()
     for i, ep in enumerate(episodes, 1):
-        if should_cancel and should_cancel():
-            _log("Download abgebrochen.")
-            break
-        if is_download_cancel_requested(base):
-            _log("Download abgebrochen (Tray).")
-            break
+        jobs.put((i, ep))
+    active: Dict[int, Dict[str, Any]] = {}
+    state_lock = threading.Lock()
+    count_lock = threading.Lock()
 
-        url = (ep.get("url") or "").strip()
-        if not url:
-            fail += 1
-            continue
-        is_audio = (ep.get("kind") == "audio") or is_audio_watch_url(url) or is_audio_watch_url(
-            ep.get("series_url") or ""
-        )
-        out_dir = music_path if is_audio else video_path
-        out_fmt = "mp3" if is_audio else output_format
-        title = ep.get("title") or url
-        series_name = ep.get("series") or ep.get("series_name") or ""
-        season_number = ep.get("season_number")
-        pending_rest = [
-            {
-                "title": (x.get("title") or "")[:80],
-                "series": (x.get("series") or x.get("series_name") or "")[:60],
-            }
-            for x in episodes[i:]
-        ]
-        set_download_progress(
-            base,
-            title=title,
-            series=series_name,
-            percent=0.0,
-            index=i,
-            total=total,
-            pending=pending_rest,
-        )
-        _log(f"Download [{i}/{total}]: {title}")
-
-        def _prog(percent, status_line, _title=title, _series=series_name, _i=i):
-            set_download_progress(
-                base,
-                title=_title,
-                series=_series,
-                percent=percent,
-                index=_i,
-                total=total,
-                pending=pending_rest,
-            )
-            if progress_callback:
-                try:
-                    progress_callback(
-                        percent,
-                        status_line or "",
-                        {"title": _title, "series": _series, "index": _i, "total": total},
-                    )
-                except Exception:
-                    pass
-
+    def _pending_rows() -> List[Dict[str, str]]:
+        waiting = []
         try:
-            info = vd.get_video_info(url) or {}
-            if ep.get("title"):
-                info["title"] = ep.get("title")
-            if series_name:
-                info["series"] = series_name
-            if season_number is not None:
-                info["season_number"] = season_number
-            if ep.get("episode_number") is not None:
-                info["episode_number"] = ep.get("episode_number")
+            snapshot = list(jobs.queue)
+        except Exception:
+            snapshot = []
+        for _i, ep in snapshot:
+            if isinstance(ep, dict):
+                waiting.append({
+                    "title": (ep.get("title") or "")[:80],
+                    "series": (ep.get("series") or ep.get("series_name") or "")[:60],
+                })
+        return waiting
 
-            if should_cancel and should_cancel():
-                break
-            if is_download_cancel_requested(base):
-                break
+    def _publish() -> None:
+        with state_lock:
+            items = [active[k] for k in sorted(active)]
+        first = items[0] if items else {"title": "", "series": "", "percent": 0.0, "index": 0, "total": total}
+        write_runtime_status(
+            base,
+            phase="downloading",
+            downloads=items,
+            download={
+                "title": first.get("title") or "",
+                "series": first.get("series") or "",
+                "percent": float(first.get("percent") or 0),
+                "index": int(first.get("index") or 0),
+                "total": total,
+            },
+            pending=_pending_rows(),
+        )
+        if progress_callback and items:
+            try:
+                top = items[0]
+                progress_callback(
+                    float(top.get("percent") or 0),
+                    top.get("title") or "",
+                    {"title": top.get("title"), "series": top.get("series"), "index": top.get("index"), "total": total},
+                )
+            except Exception:
+                pass
 
-            success, _fp, err = vd.download_video(
-                url,
-                output_dir=out_dir,
+    def _worker() -> None:
+        nonlocal ok, fail
+        try:
+            from video_downloader import VideoDownloader as _VD
+            vd = _VD(
+                download_path=str(video_path),
                 quality=quality,
-                output_format=out_fmt,
-                download_playlist=False,
-                progress_callback=_prog,
-                video_info=info,
-                is_series=bool(series_name),
-                series_name=series_name or None,
-                season_number=season_number,
-                playlist_index=ep.get("playlist_index") or ep.get("episode_number"),
-                speed_limit=speed_limit,
-                embed_metadata=True,
+                output_format=output_format,
                 gui_instance=None,
-                gpu_enabled=bool(settings.get("gpu_enabled", False)),
-                gpu_vendor=settings.get("gpu_vendor", "auto"),
             )
-            if success:
-                ok += 1
-                mark_downloaded_episodes(
-                    base,
-                    urls=[url],
-                    episode_ids=[str(ep["id"])] if ep.get("id") else None,
-                )
-                set_download_progress(
-                    base,
-                    title=title,
-                    series=series_name,
-                    percent=100.0,
-                    index=i,
-                    total=total,
-                    pending=pending_rest,
-                )
-            else:
-                fail += 1
-                _log(f"Fehlgeschlagen: {err}")
         except Exception as e:
-            fail += 1
-            _log(f"Fehler: {e}")
+            _log(f"VideoDownloader Init fehlgeschlagen: {e}")
+            return
+        while True:
+            if is_download_cancel_requested(base) or (should_cancel and should_cancel()):
+                break
+            try:
+                i, ep = jobs.get_nowait()
+            except Empty:
+                break
+            url = (ep.get("url") or "").strip()
+            title = ep.get("title") or url or "Folge"
+            series_name = ep.get("series") or ep.get("series_name") or ""
+            if not url:
+                with count_lock:
+                    fail += 1
+                continue
+            is_audio = (ep.get("kind") == "audio") or is_audio_watch_url(url) or is_audio_watch_url(
+                ep.get("series_url") or ""
+            )
+            out_fmt = (ep.get("output_format") or "").lower()
+            if out_fmt not in ("mp3", "mp4", "mkv"):
+                out_fmt = "mp3" if is_audio else output_format
+            if out_fmt == "mp3":
+                is_audio = True
+            out_dir = music_path if is_audio or out_fmt == "mp3" else video_path
+            season_number = ep.get("season_number")
+            with state_lock:
+                active[i] = {
+                    "title": title,
+                    "series": series_name,
+                    "percent": 0.0,
+                    "index": i,
+                    "total": total,
+                }
+            _publish()
+            _log(f"Download [{i}/{total}]: {title}")
+            cancel_bridge = _HeadlessCancel(base)
 
+            def _prog(percent, _status, _i=i, _title=title, _series=series_name):
+                try:
+                    pct = float(percent or 0)
+                except (TypeError, ValueError):
+                    pct = 0.0
+                with state_lock:
+                    slot = active.get(_i)
+                    if slot is not None:
+                        slot["percent"] = max(0.0, min(100.0, pct))
+                _publish()
+
+            try:
+                if is_download_cancel_requested(base):
+                    break
+                info = vd.get_video_info(url) or {}
+                if ep.get("title"):
+                    info["title"] = ep.get("title")
+                if series_name:
+                    info["series"] = series_name
+                if season_number is not None:
+                    info["season_number"] = season_number
+                if ep.get("episode_number") is not None:
+                    info["episode_number"] = ep.get("episode_number")
+                if is_download_cancel_requested(base):
+                    break
+                success, _fp, err = vd.download_video(
+                    url,
+                    output_dir=out_dir,
+                    quality=quality,
+                    output_format=out_fmt,
+                    download_playlist=False,
+                    progress_callback=_prog,
+                    video_info=info,
+                    is_series=bool(series_name),
+                    series_name=series_name or None,
+                    season_number=season_number,
+                    playlist_index=ep.get("playlist_index") or ep.get("episode_number"),
+                    speed_limit=speed_limit,
+                    embed_metadata=True,
+                    gui_instance=cancel_bridge,
+                    gpu_enabled=bool(settings.get("gpu_enabled", False)) and max_c == 1,
+                    gpu_vendor=settings.get("gpu_vendor", "auto"),
+                )
+                aborted_now = is_download_cancel_requested(base) or bool(getattr(cancel_bridge, "video_download_cancelled", False))
+                if aborted_now or (err and "abgebrochen" in str(err).lower()):
+                    _log(f"Abgebrochen: {title}")
+                    with state_lock:
+                        active.pop(i, None)
+                    _publish()
+                    break
+                if success:
+                    with count_lock:
+                        ok += 1
+                    mark_downloaded_episodes(
+                        base,
+                        urls=[url],
+                        episode_ids=[str(ep["id"])] if ep.get("id") else None,
+                    )
+                    with state_lock:
+                        if i in active:
+                            active[i]["percent"] = 100.0
+                    _publish()
+                else:
+                    with count_lock:
+                        fail += 1
+                    _log(f"Fehlgeschlagen: {err}")
+            except Exception as e:
+                with count_lock:
+                    fail += 1
+                _log(f"Fehler: {e}")
+            finally:
+                with state_lock:
+                    active.pop(i, None)
+                _publish()
+
+    threads = [threading.Thread(target=_worker, daemon=True) for _ in range(max_c)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    aborted = is_download_cancel_requested(base) or bool(should_cancel and should_cancel())
     clear_download_status(base, phase="idle")
-    return ok, fail
+    return ok, fail, aborted
 
 
 _last_open_main_ts = 0.0
@@ -1170,13 +1781,41 @@ def _gui_lock_pid() -> Optional[int]:
         pid = int((lock.read_text(encoding="utf-8") or "0").strip().split()[0])
     except Exception:
         return None
-    if pid <= 0:
+    if pid <= 0 or pid == os.getpid():
         return None
     try:
         os.kill(pid, 0)
     except OSError:
         return None
     return pid
+
+
+def _other_main_pids() -> List[int]:
+    """Laufende Hauptfenster, ohne den Tray-Helfer und ohne diesen Prozess."""
+    me = os.getpid()
+    found: List[int] = []
+    try:
+        import subprocess
+
+        out = subprocess.check_output(
+            ["ps", "-u", str(os.getuid()), "-o", "pid=,args="],
+            text=True,
+            timeout=2,
+        )
+    except Exception:
+        return found
+    for line in out.splitlines():
+        if "--series-watch-tray" in line:
+            continue
+        if "start.py" not in line and "universal-downloader" not in line and "UniversalDownloader" not in line:
+            continue
+        try:
+            pid = int(line.split(None, 1)[0])
+        except ValueError:
+            continue
+        if pid != me:
+            found.append(pid)
+    return found
 
 
 def _macos_activate_pid(pid: int) -> bool:
@@ -1250,6 +1889,16 @@ def find_main_app_command() -> List[str]:
     return []
 
 
+def _request_show_main_window() -> None:
+    """Bitten das versteckte Hauptfenster, sich wieder zu zeigen."""
+    try:
+        from path_helper import get_app_base_path
+        p = Path(get_app_base_path()) / "series_watch_show_window"
+        p.write_text("1", encoding="utf-8")
+    except Exception:
+        pass
+
+
 def open_main_app() -> bool:
     """Startet/aktiviert das Hauptprogramm. True bei Startversuch."""
     import subprocess
@@ -1264,10 +1913,12 @@ def open_main_app() -> bool:
             return True
         for pid in _macos_gui_pids():
             _last_open_main_ts = now
+            _request_show_main_window()
             return _macos_activate_pid(pid)
         gui_pid = _gui_lock_pid()
         if gui_pid and gui_pid != os.getpid():
             _last_open_main_ts = now
+            _request_show_main_window()
             if _macos_activate_pid(gui_pid):
                 return True
         # Nicht „open -a“: das aktiviert den Tray derselben .app.
@@ -1290,10 +1941,19 @@ def open_main_app() -> bool:
         except Exception:
             return False
 
+    now = time.time()
+    if now - _last_open_main_ts < 2.5:
+        return True
+    if _gui_lock_pid() or _other_main_pids():
+        _last_open_main_ts = now
+        _request_show_main_window()
+        return True
+
     cmd = find_main_app_command()
     if not cmd:
         return False
     try:
+        _last_open_main_ts = now
         if sys.platform == "win32":
             from path_helper import win_hidden_kwargs
             flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)

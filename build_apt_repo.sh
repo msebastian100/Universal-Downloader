@@ -257,7 +257,7 @@ Releases:
 # Unkomprimiert + .gz: apt matched den IndexTarget nur gegen den
 # MetaKey ohne Suffix (…/Components-arm64.yml, …/icons-64x64.tar).
 yml_bytes = yml.encode("utf-8")
-for arch in ("amd64", "arm64"):
+for arch in ("amd64", "arm64", "i386"):
     raw = dep11 / f"Components-{arch}.yml"
     raw.write_bytes(yml_bytes)
     with gzip.open(str(raw) + ".gz", "wb", compresslevel=9) as fh:
@@ -306,6 +306,7 @@ sha_line() {
   # Pfade wie apt sie für ein Flat-Repo mit Component „.“ erwartet
   for f in dep11/Components-amd64.yml dep11/Components-amd64.yml.gz \
            dep11/Components-arm64.yml dep11/Components-arm64.yml.gz \
+           dep11/Components-i386.yml dep11/Components-i386.yml.gz \
            dep11/icons-48x48.tar dep11/icons-48x48.tar.gz \
            dep11/icons-64x64.tar dep11/icons-64x64.tar.gz; do
     sha_line "$f" "./$f"
@@ -355,7 +356,7 @@ done
 DIST_PKGS="Packages.dists"
 sed "s|^Filename: |Filename: ${POOL_REL}/|" Packages > "$DIST_PKGS"
 gzip -9c "$DIST_PKGS" > "${DIST_PKGS}.gz"
-for arch in all amd64 arm64; do
+for arch in all amd64 arm64 i386; do
   bin_dir="dists/stable/main/binary-${arch}"
   mkdir -p "$bin_dir"
   cp "$DIST_PKGS" "$bin_dir/Packages"
@@ -370,7 +371,7 @@ rm -f "$DIST_PKGS" "${DIST_PKGS}.gz"
   echo "Label: Universal Downloader"
   echo "Suite: stable"
   echo "Codename: stable"
-  echo "Architectures: amd64 arm64"
+  echo "Architectures: amd64 arm64 i386"
   echo "Components: main"
   echo "Description: Universal Downloader - APT Repository"
   echo "Date: $(LC_ALL=C date -u +"%a, %d %b %Y %H:%M:%S UTC")"
@@ -380,8 +381,10 @@ rm -f "$DIST_PKGS" "${DIST_PKGS}.gz"
     for f in main/binary-all/Packages main/binary-all/Packages.gz \
              main/binary-amd64/Packages main/binary-amd64/Packages.gz \
              main/binary-arm64/Packages main/binary-arm64/Packages.gz \
+             main/binary-i386/Packages main/binary-i386/Packages.gz \
              main/dep11/Components-amd64.yml main/dep11/Components-amd64.yml.gz \
              main/dep11/Components-arm64.yml main/dep11/Components-arm64.yml.gz \
+             main/dep11/Components-i386.yml main/dep11/Components-i386.yml.gz \
              main/dep11/icons-48x48.tar main/dep11/icons-48x48.tar.gz \
              main/dep11/icons-64x64.tar main/dep11/icons-64x64.tar.gz; do
       [ -f "$f" ] || continue

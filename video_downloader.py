@@ -2687,7 +2687,9 @@ class VideoDownloader:
         return False, None, False
     
     def convert_existing_to_format(self, existing_path: Path, target_format: str,
-                                   progress_callback: Optional[Callable[[float, str], None]] = None) -> Tuple[bool, Optional[Path], str]:
+                                   progress_callback: Optional[Callable[[float, str], None]] = None,
+                                   gpu_enabled: bool = False,
+                                   gpu_vendor: str = 'auto') -> Tuple[bool, Optional[Path], str]:
         """
         Konvertiert eine vorhandene Video/Audio-Datei ins Zielformat (z. B. mp4, mp3).
         Returns: (success, new_path, error_message)
@@ -2723,25 +2725,74 @@ class VideoDownloader:
                 return False, None, str(e)
         # Video: umkodieren nach target_format (mp4, webm, etc.)
         out_path = existing_path.with_suffix(f'.{target_format}')
+        if out_path.resolve() == existing_path.resolve():
+            return True, existing_path, ""
         try:
             import subprocess as sp
-            ffmpeg_cmd = ['ffmpeg', '-y', '-i', str(existing_path), '-c:v', 'libx264', '-c:a', 'aac', str(out_path)]
-            if platform.system() == 'Windows':
-                proc = sp.Popen(ffmpeg_cmd, stdout=sp.PIPE, stderr=sp.STDOUT, text=True, creationflags=getattr(sp, 'CREATE_NO_WINDOW', 0))
-            else:
-                proc = sp.Popen(ffmpeg_cmd, stdout=sp.PIPE, stderr=sp.STDOUT, text=True)
+            ff = 'ffmpeg'
+            v_args = ['-c:v', 'libx264', '-c:a', 'aac']
+            if gpu_enabled and gpu_vendor != 'none':
+                vendor = gpu_vendor if gpu_vendor != 'auto' else (
+                    'apple' if sys.platform == 'darwin' else 'nvidia'
+                )
+                if vendor == 'nvidia':
+                    v_args = ['-c:v', 'h264_nvenc', '-c:a', 'aac']
+                elif vendor == 'amd':
+                    v_args = ['-c:v', 'h264_amf', '-c:a', 'aac'] if sys.platform == 'win32' else ['-c:v', 'h264_vaapi', '-c:a', 'aac']
+                elif vendor == 'apple':
+                    try:
+                        from mac_platform import videotoolbox_encoder_args, find_ffmpeg
+                        v_args = videotoolbox_encoder_args(prefer_hevc=False)
+                        found = find_ffmpeg()
+                        if found:
+                            ff = found
+                    except Exception:
+                        v_args = ['-c:v', 'h264_videotoolbox', '-allow_sw', '1', '-b:v', '0', '-q:v', '65', '-c:a', 'aac']
+            ffmpeg_cmd = [ff, '-y', '-nostats', '-progress', 'pipe:1', '-i', str(existing_path), *v_args, str(out_path)]
+            proc = sp.Popen(
+                ffmpeg_cmd,
+                stdout=sp.PIPE,
+                stderr=sp.PIPE,
+                text=True,
+                creationflags=getattr(sp, 'CREATE_NO_WINDOW', 0) if platform.system() == 'Windows' else 0,
+            )
+            duration_sec = [0.0]
+            import threading
+
+            def _read_err():
+                try:
+                    for line in proc.stderr:
+                        if duration_sec[0] <= 0 and 'Duration:' in line:
+                            dm = re.search(r'Duration:\s*(\d+):(\d+):(\d+)', line)
+                            if dm:
+                                duration_sec[0] = int(dm.group(1)) * 3600 + int(dm.group(2)) * 60 + int(dm.group(3))
+                except Exception:
+                    pass
+
+            threading.Thread(target=_read_err, daemon=True).start()
             for line in proc.stdout:
-                if progress_callback and 'time=' in line:
-                    m = re.search(r'time=(\d+):(\d+):(\d+)', line)
-                    if m:
-                        try:
-                            t = int(m.group(1)) * 3600 + int(m.group(2)) * 60 + int(m.group(3))
-                            progress_callback(min(100, t / 30), f"Konvertierung: {t}s")
-                        except Exception:
-                            pass
+                line = (line or "").strip()
+                if not line.startswith("out_time_ms="):
+                    continue
+                try:
+                    us = int(line.split("=", 1)[1])
+                except ValueError:
+                    continue
+                if duration_sec[0] > 0 and progress_callback:
+                    pct = min(100.0, (us / 1_000_000.0) / duration_sec[0] * 100.0)
+                    progress_callback(pct, f"Konvertierung: {pct:.0f}%")
             proc.wait()
-            if proc.returncode == 0 and out_path.exists():
+            if proc.returncode == 0 and out_path.exists() and out_path.stat().st_size > 0:
                 return True, out_path, ""
+            if gpu_enabled and out_path.exists():
+                try:
+                    out_path.unlink()
+                except Exception:
+                    pass
+            if gpu_enabled:
+                return self.convert_existing_to_format(
+                    existing_path, target_format, progress_callback, gpu_enabled=False
+                )
             return False, None, "FFmpeg Fehler bei Video-Konvertierung"
         except Exception as e:
             return False, None, str(e)
@@ -2767,6 +2818,7 @@ class VideoDownloader:
                       gpu_enabled: bool = False,
                       gpu_vendor: str = 'auto',
                       force_redownload: bool = False,
+                      defer_recode: bool = False,
                       cookies_from_browser: Optional[str] = None) -> Tuple[bool, Optional[Path], str]:
         """
         Lädt ein Video herunter
@@ -3152,22 +3204,31 @@ class VideoDownloader:
             # -P home:... setzt das Basis-Verzeichnis; -o dann relativ dazu → zuverlässiger als nur -o mit Pfad
             yt_args.extend(['-P', f'home:{actual_output_dir}'])
             self.log(f"yt-dlp Ausgabe-Verzeichnis (home): {actual_output_dir}")
+            # Eigenes Präfix pro Folge, damit parallele Downloads in demselben Ordner
+            # nicht dieselbe temporäre Datei beschreiben oder sich gegenseitig wegnehmen.
+            import hashlib
+            job_prefix = hashlib.sha1((url or "").encode("utf-8")).hexdigest()[:8]
             # Output-Template relativ zu "home"; bei Playlist/Serie mit Nummer: "E01 - Titel"
             use_index = is_series and playlist_index is not None
+            if use_index:
+                out_template = f'{job_prefix} {playlist_index:02d} - %(title)s.%(ext)s'
+            else:
+                out_template = f'{job_prefix} %(title)s.%(ext)s'
             if output_format == 'mp3':
-                if use_index:
-                    yt_args.extend(['-o', f'{playlist_index:02d} - %(title)s.%(ext)s'])
-                else:
-                    yt_args.extend(['-o', '%(title)s.%(ext)s'])
+                yt_args.extend(['-o', out_template])
                 yt_args.extend(['-x', '--audio-format', 'mp3', '--audio-quality', '0'])  # Beste Audio-Qualität
             else:
-                if use_index:
-                    yt_args.extend(['-o', f'{playlist_index:02d} - %(title)s.{output_format}'])
+                if defer_recode:
+                    # Nur laden und zusammenführen. Die MP4-Umwandlung macht die Queue
+                    # danach einzeln, damit die GPU nicht mehrere Jobs gleichzeitig kodiert.
+                    yt_args.extend(['-o', out_template])
+                    yt_args.extend(['--merge-output-format', 'mkv'])
+                    self.log("Parallele Queue: Download ohne Umwandlung, Konvertierung folgt einzeln.")
                 else:
-                    yt_args.extend(['-o', f'%(title)s.{output_format}'])
-                yt_args.extend(['--recode-video', output_format])
-                # GPU für Konvertierung (nur bei Video-Formaten)
-                if gpu_enabled and gpu_vendor != 'none':
+                    yt_args.extend(['-o', out_template])
+                    yt_args.extend(['--recode-video', output_format])
+                # GPU für Konvertierung (nur bei Video-Formaten, nicht bei aufgeschobener Umwandlung)
+                if (not defer_recode) and gpu_enabled and gpu_vendor != 'none':
                     vendor = gpu_vendor if gpu_vendor != 'auto' else (
                         'apple' if sys.platform == 'darwin' else 'nvidia'  # auto: Apple auf Mac, sonst NVIDIA als häufigster Fall
                     )
@@ -3376,7 +3437,7 @@ class VideoDownloader:
                         exts = [output_format] if output_format in ('mp4', 'mkv', 'webm', 'mp3', 'm4a', 'avi') else ['mp4', 'mkv', 'webm']
                         for ext in exts:
                             found = list(actual_output_dir.glob(f"*.{ext}")) + list(actual_output_dir.rglob(f"*.{ext}"))
-                            found = [p for p in found if p.is_file() and not p.name.endswith('.part')]
+                            found = [p for p in found if p.is_file() and not p.name.endswith('.part') and job_prefix in p.name]
                             if found:
                                 found.sort(key=lambda p: p.stat().st_mtime, reverse=True)
                                 downloaded_files = [found[0]]
@@ -3548,7 +3609,7 @@ class VideoDownloader:
                     if cancelled.is_set() or process_terminated.is_set():
                         self.log(f"[DEBUG] Abbruch erkannt in Zeile {line_count}, beende sofort")
                         # Räume Dateien/Ordner auf
-                        self._cleanup_after_cancel(actual_output_dir, dir_existed_before, video_info, output_format)
+                        self._cleanup_after_cancel(actual_output_dir, dir_existed_before, video_info, output_format, job_prefix)
                         return (False, None, "Download abgebrochen")
                     
                     # Prüfe auch direkt auf GUI-Abbruch - verwende getattr für Thread-Sicherheit
@@ -3559,7 +3620,7 @@ class VideoDownloader:
                                 cancelled.set()
                                 self.log(f"[DEBUG] GUI-Abbruch erkannt in Zeile {line_count}, beende sofort")
                                 terminate_process()
-                                self._cleanup_after_cancel(actual_output_dir, dir_existed_before, video_info, output_format)
+                                self._cleanup_after_cancel(actual_output_dir, dir_existed_before, video_info, output_format, job_prefix)
                                 return (False, None, "Download abgebrochen")
                     except Exception as e:
                         self.log(f"[DEBUG] Fehler beim Prüfen des GUI-Abbruch-Flags: {e}", "WARNING")
@@ -3587,7 +3648,7 @@ class VideoDownloader:
                                 if is_merge_convert or is_after_download:
                                     self._conversion_phase = True
                                     if progress_callback:
-                                        progress_callback(100, "Konvertierung läuft...")
+                                        progress_callback(0, "Konvertierung läuft...")
                             # Merken, dass Download 100% erreicht hat (für Fallback-Erkennung Konvertierung)
                             if '%' in line and re.search(r'\[download\]\s+100\.?0?%', line, re.IGNORECASE):
                                 self._download_100_seen = True
@@ -3601,7 +3662,7 @@ class VideoDownloader:
                                         duration_sec = float(video_info.get('duration') or 0)
                                         if duration_sec > 0 and current_sec <= duration_sec:
                                             pct = min(100.0, (current_sec / duration_sec) * 100.0)
-                                            progress_callback(100, f"Konvertierung: {pct:.0f}%")
+                                            progress_callback(pct, f"Konvertierung: {pct:.0f}%")
                                     except (ValueError, ZeroDivisionError):
                                         pass
                             # Parse Download-Fortschritt: yt-dlp-Prozent 1:1 anzeigen (0–100 %)
@@ -3627,7 +3688,7 @@ class VideoDownloader:
             except Exception as e:
                 # Falls Fehler beim Lesen (z.B. weil Prozess beendet wurde)
                 if cancelled.is_set() or process_terminated.is_set():
-                    self._cleanup_after_cancel(actual_output_dir, dir_existed_before, video_info, output_format)
+                    self._cleanup_after_cancel(actual_output_dir, dir_existed_before, video_info, output_format, job_prefix)
                     return (False, None, "Download abgebrochen")
                 self.log(f"[DEBUG] Fehler beim Lesen: {e}", "WARNING")
             
@@ -3649,7 +3710,7 @@ class VideoDownloader:
                 
                 if cancelled.is_set() or process_terminated.is_set() or cancelled_flag:
                     self.log(f"[DEBUG] Abbruch erkannt nach Timeout, räume auf")
-                    self._cleanup_after_cancel(actual_output_dir, dir_existed_before, video_info, output_format)
+                    self._cleanup_after_cancel(actual_output_dir, dir_existed_before, video_info, output_format, job_prefix)
                     return (False, None, "Download abgebrochen")
                 self.log(f"[DEBUG] Warte weiter auf Prozess...")
                 process.wait()  # Warte normal
@@ -3664,7 +3725,7 @@ class VideoDownloader:
             
             if cancelled.is_set() or process_terminated.is_set() or cancelled_flag:
                 self.log(f"[DEBUG] Abbruch erkannt nach process.wait(), räume auf")
-                self._cleanup_after_cancel(actual_output_dir, dir_existed_before, video_info, output_format)
+                self._cleanup_after_cancel(actual_output_dir, dir_existed_before, video_info, output_format, job_prefix)
                 return (False, None, "Download abgebrochen")
             
             if process.returncode == 0:
@@ -3785,7 +3846,7 @@ class VideoDownloader:
                     except Exception:
                         pass
                     for search_dir in dirs_to_search:
-                        files = _collect_video_files(search_dir)
+                        files = [p for p in _collect_video_files(search_dir) if job_prefix in p.name]
                         if files:
                             files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
                             downloaded_files = [files[0]]
@@ -3797,7 +3858,7 @@ class VideoDownloader:
                         try:
                             cwd = Path(os.getcwd())
                             if cwd != actual_output_dir and cwd.exists():
-                                files = _collect_video_files(cwd)
+                                files = [p for p in _collect_video_files(cwd) if job_prefix in p.name]
                                 if files:
                                     files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
                                     # Nur wenn Datei in den letzten 5 Min. geändert wurde (frischer Download)
@@ -3958,6 +4019,10 @@ class VideoDownloader:
                     # MP3: Cover einbetten, falls in der Datei noch keins bzw. nur Platzhalter; danach Cover-Datei löschen
                     if downloaded_file.suffix.lower() == '.mp3':
                         try:
+                            self._write_episode_audio_tags(downloaded_file, video_info, series_name or "")
+                        except Exception as e:
+                            self.log(f"⚠ Titel in der MP3 nicht gesetzt: {e}", "WARNING")
+                        try:
                             used_cover_path = self._embed_cover_into_mp3_if_missing(downloaded_file, actual_output_dir)
                             if used_cover_path is not None and used_cover_path.exists():
                                 try:
@@ -4024,7 +4089,7 @@ class VideoDownloader:
                     try:
                         gui_instance = progress_callback.__self__
                         if hasattr(gui_instance, 'video_download_cancelled') and gui_instance.video_download_cancelled:
-                            self._cleanup_after_cancel(actual_output_dir, dir_existed_before, video_info, output_format)
+                            self._cleanup_after_cancel(actual_output_dir, dir_existed_before, video_info, output_format, job_prefix)
                     except:
                         pass
                 return False, None, error_msg
@@ -4104,6 +4169,63 @@ class VideoDownloader:
             self.log(f"⚠ Cover von Webseite nicht verfügbar: {e}", "WARNING")
             return False
     
+    def _looks_like_cdn_title(self, title: str) -> bool:
+        """Interne Clip-Kennung der Mediathek, kein Folgentitel."""
+        t = (title or "").strip()
+        if not t:
+            return True
+        if t.lower() in ("unbekannt", "na", "none", "title"):
+            return True
+        if "urn:ard:" in t.lower():
+            return True
+        if re.search(r"(?i)_audio_\d+k|_video_\d+|_stereo$", t):
+            return True
+        return bool(re.fullmatch(r"[A-Za-z0-9]{8,}", t))
+
+    def _write_episode_audio_tags(self, mp3_path: Path, video_info: Optional[Dict], series_name: str = "") -> None:
+        """Schreibt Folgentitel, Sendung und Jahr in die MP3. yt-dlp setzt sonst den Clip-Namen der Webseite."""
+        if not mp3_path or mp3_path.suffix.lower() != ".mp3" or not mp3_path.is_file():
+            return
+        info = video_info if isinstance(video_info, dict) else {}
+        title = str(info.get("title") or "").strip()
+        if self._looks_like_cdn_title(title):
+            stem = mp3_path.stem
+            stem = re.sub(r"^[0-9a-f]{8}\s+", "", stem)
+            dated = re.match(r"^\d{2}\.\d{2}\.\d{4}-E\d*\s*-\s*(.+)$", stem)
+            title = dated.group(1).strip() if dated else stem
+        if self._looks_like_cdn_title(title):
+            return
+        album = (series_name or str(info.get("series") or "")).strip()
+        artist = str(info.get("uploader") or info.get("channel") or "").strip()
+        if not artist or artist.lower() == "unbekannt":
+            artist = album
+        year = ""
+        iso = self._broadcast_date_from_info(info) if info else ""
+        if iso and len(iso) >= 4 and iso[:4].isdigit():
+            year = iso[:4]
+        if not year:
+            m = re.match(r"^(\d{2})\.(\d{2})\.(\d{4})-", mp3_path.stem)
+            if m:
+                year = m.group(3)
+        try:
+            from mutagen.mp3 import MP3
+            from mutagen.id3 import ID3, ID3NoHeaderError, TIT2, TALB, TPE1, TDRC
+            try:
+                tags = ID3(str(mp3_path))
+            except ID3NoHeaderError:
+                tags = ID3()
+            tags["TIT2"] = TIT2(encoding=3, text=title)
+            if album:
+                tags["TALB"] = TALB(encoding=3, text=album)
+            if artist:
+                tags["TPE1"] = TPE1(encoding=3, text=artist)
+            if year:
+                tags["TDRC"] = TDRC(encoding=3, text=year)
+            tags.save(str(mp3_path), v2_version=3)
+            self.log(f"✓ Titel in der Datei: {title}")
+        except Exception as e:
+            self.log(f"⚠ Titel in der MP3 nicht gesetzt: {e}", "WARNING")
+
     def _embed_cover_into_mp3_if_missing(self, mp3_path: Path, output_dir: Path) -> Optional[Path]:
         """
         Bettet das Cover (cover.jpg / cover.webp / cover.png) in die MP3 ein, falls die Datei
@@ -4313,7 +4435,7 @@ class VideoDownloader:
                 title = video_info.get('fulltitle', 'Unbekannt') if video_info else 'Unbekannt'
             return f"Titel: {title}\nURL: {url}\n"
     
-    def _cleanup_after_cancel(self, output_dir: Path, dir_existed_before: bool, video_info: Optional[Dict], output_format: str):
+    def _cleanup_after_cancel(self, output_dir: Path, dir_existed_before: bool, video_info: Optional[Dict], output_format: str, name_prefix: str = ""):
         """Räumt Dateien/Ordner nach Abbruch auf"""
         try:
             if not output_dir.exists():
@@ -4348,6 +4470,10 @@ class VideoDownloader:
                         except:
                             pass
             
+            # Nur die Dateien dieses Downloads. Parallele Folgen im selben Ordner bleiben liegen.
+            if name_prefix:
+                files_to_delete = [p for p in files_to_delete if name_prefix in p.name]
+
             # Lösche gefundene Dateien
             for file_path in files_to_delete:
                 try:

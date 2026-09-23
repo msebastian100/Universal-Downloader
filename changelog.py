@@ -11,6 +11,184 @@ from typing import List, Optional, Dict, Any
 # Neueste Version zuerst – wird für „Erster Start“ und Upgrade-Anzeige genutzt
 RELEASE_NOTES: List[Dict[str, Any]] = [
     {
+        "version": "2.1.50",
+        "date": "2026-09-23",
+        "items": [
+            "Windows: das Update wartet, bis das Programm zu ist, und startet dann den Installer. Die laufende Programmdatei wird nicht mehr überschrieben.",
+        ],
+    },
+    {
+        "version": "2.1.49",
+        "date": "2026-09-23",
+        "items": [
+            "Linux: das Menü in der Leiste zeigt den Download wie auf dem Mac, mit Balken, Prozent und „Download abbrechen“.",
+        ],
+    },
+    {
+        "version": "2.1.48",
+        "date": "2026-09-23",
+        "items": [
+            "Download: die Statuszeile und der Balken zeigen den Prozentstand und die Geschwindigkeit, auch bei einer einzelnen Folge.",
+        ],
+    },
+    {
+        "version": "2.1.47",
+        "date": "2026-09-23",
+        "items": [
+            "Linux: ein Klick auf eine Folge in der Leiste beendet das Icon nicht mehr. Der Download läuft im schon offenen Fenster weiter.",
+        ],
+    },
+    {
+        "version": "2.1.46",
+        "date": "2026-09-22",
+        "items": [
+            "Serien-Wächter: Ein Klick auf eine Folge oder „Hauptprogramm öffnen“ holt das schon offene Fenster nach vorn. Es öffnet sich kein zweites Programm.",
+        ],
+    },
+    {
+        "version": "2.1.45",
+        "date": "2026-09-22",
+        "items": [
+            "Serien-Wächter: „Jetzt prüfen“ öffnet die verfügbaren Folgen, auch wenn die Sendung schon einmal geprüft wurde und nichts als „habe ich“ markiert ist.",
+            "Linux: das Menü in der Leiste zeigt die offenen Folgen und „Folgenliste öffnen…“, wie auf dem Mac.",
+        ],
+    },
+    {
+        "version": "2.1.44",
+        "date": "2026-09-22",
+        "items": [
+            "ARD Sounds: in der MP3 steht der Folgentitel, nicht mehr der interne Clip-Name der Webseite.",
+        ],
+    },
+    {
+        "version": "2.1.43",
+        "date": "2026-09-22",
+        "items": [
+            "Serien-Wächter: weitere Folgen einer Serie bleiben beim gewählten Format. ARD Sounds landet als MP3 im Musik-Ordner, auch wenn mehrere Folgen gleichzeitig laden.",
+            "Parallele Downloads überschreiben sich nicht mehr gegenseitig die temporäre Datei.",
+        ],
+    },
+    {
+        "version": "2.1.42",
+        "date": "2026-09-22",
+        "items": [
+            "Serien-Wächter: ARD-Sounds-Sendungen wie Kein Mucks werden erkannt. Ohne „habe ich“-Markierung gelten die Folgen als verfügbar.",
+            "Das Menü zeigt nur acht Folgen. Über „Folgenliste öffnen…“ wählt man, was geladen oder ignoriert wird. Der Rest bleibt für später.",
+        ],
+    },
+    {
+        "version": "2.1.41",
+        "date": "2026-09-22",
+        "items": [
+            "Serien-Wächter: Format pro Serie. Video standardmäßig MP4 oder MKV, ARD Sounds als MP3, YouTube-Playlists als MP4, MKV oder MP3.",
+        ],
+    },
+    {
+        "version": "2.1.40",
+        "date": "2026-09-22",
+        "items": [
+            "Menü: „Jetzt laden“ startet den Download wieder. Der Klick ist zuvor ohne Meldung abgebrochen.",
+        ],
+    },
+    {
+        "version": "2.1.39",
+        "date": "2026-09-22",
+        "items": [
+            "Fehlende Folgen bleiben im Menü, auch wenn eine andere Serie dieselbe Kennung als vorhanden führt.",
+        ],
+    },
+    {
+        "version": "2.1.38",
+        "date": "2026-09-22",
+        "items": [
+            "Menüleiste: eine fertige Folge bleibt nicht bei 100 % stehen. Heruntergeladene Folgen verschwinden aus den Hinweisen.",
+        ],
+    },
+    {
+        "version": "2.1.37",
+        "date": "2026-09-22",
+        "items": [
+            "Fenster mit X schließen bricht einen laufenden Download nicht mehr ab. Er läuft in der Menüleiste weiter, das Programm lässt sich von dort wieder öffnen.",
+        ],
+    },
+    {
+        "version": "2.1.36",
+        "date": "2026-09-22",
+        "items": [
+            "Download-Fortschritt läuft live mit. Die App startet yt-dlp als eigenen Prozess, statt die Ausgabe bis zum Ende zu puffern.",
+        ],
+    },
+    {
+        "version": "2.1.35",
+        "date": "2026-09-22",
+        "items": [
+            "Menü und Programm zeigen den Download- und den Umwandlungsfortschritt live, nicht erst am Ende.",
+        ],
+    },
+    {
+        "version": "2.1.34",
+        "date": "2026-09-22",
+        "items": [
+            "Menü: schon vorhandene Folgen bleiben nicht bei 0 % hängen. Sie gelten als bereits vorhanden und verschwinden aus der laufenden Liste.",
+        ],
+    },
+    {
+        "version": "2.1.33",
+        "date": "2026-09-22",
+        "items": [
+            "Laufende Folgen zeigen im Menü und im Programm, ob sie noch laden oder schon konvertieren. Abbrechen bleibt im Menü.",
+        ],
+    },
+    {
+        "version": "2.1.32",
+        "date": "2026-09-22",
+        "items": [
+            "Serien-Wächter: „Jetzt laden“ nutzt „Max. gleichzeitige Video-Downloads“. Weitere Folgen warten in der Video-Queue. Bei GPU laden die Dateien parallel und werden danach nacheinander umgewandelt.",
+        ],
+    },
+    {
+        "version": "2.1.31",
+        "date": "2026-09-22",
+        "items": [
+            "Serien-Wächter: Fortschritt läuft mit, Abbruch stoppt den Download. Weitere Folgen landen in der Queue bzw. laufen parallel, je nach Einstellung.",
+        ],
+    },
+    {
+        "version": "2.1.30",
+        "date": "2026-09-22",
+        "items": [
+            "Serien-Wächter: gefundene Folgen in der Menüleiste direkt laden (einzeln oder alle). Laufenden Download abbrechen.",
+        ],
+    },
+    {
+        "version": "2.1.29",
+        "date": "2026-09-22",
+        "items": [
+            "Serien-Wächter: „Jetzt prüfen“ in der Menüleiste meldet nicht angehakte Folgen (z. B. Pfefferkörner S18).",
+        ],
+    },
+    {
+        "version": "2.1.28",
+        "date": "2026-09-22",
+        "items": [
+            "Serien-Wächter: „Jetzt prüfen“ zeigt nicht angehakte Folgen als fehlend, nicht als neue Serie. Das Auswahlfenster bleibt kompakt.",
+        ],
+    },
+    {
+        "version": "2.1.27",
+        "date": "2026-09-22",
+        "items": [
+            "Serien-Wächter: ungehakte Folgen gelten als fehlend; Trailer/Making-of lassen sich ignorieren.",
+        ],
+    },
+    {
+        "version": "2.1.26",
+        "date": "2026-09-22",
+        "items": [
+            "macOS: Absturz nach „Jetzt prüfen“ im Serien-Wächter behoben (keine nativen System-Alerts mehr).",
+        ],
+    },
+    {
         "version": "2.1.25",
         "date": "2026-09-22",
         "items": [

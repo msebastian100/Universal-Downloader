@@ -10,3 +10,23 @@ requires-python = ">=3.8"
 
 [tool.setuptools]
 packages = []
+
+[tool.pyright]
+include = ["."]
+exclude = [
+    "**/__pycache__",
+    "apt-repo",
+    "dist",
+    "build",
+    "flathub",
+    "deb_build",
+    "dist_installer",
+    ".venv",
+    ".venv_build_mac",
+    ".venv_build_mac_arm64",
+    ".venv_build_mac_x86_64",
+    "venv",
+    "env",
+]
+ignore = ["gui.py"]
+typeCheckingMode = "off"

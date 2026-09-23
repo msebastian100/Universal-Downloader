@@ -26,6 +26,37 @@ def _running_from_app_venv():
     return False
 
 
+def _find_ytdlp_binary():
+    """Eigenständiges yt-dlp (nicht python -m). Nur das liefert im .app laufenden Fortschritt."""
+    candidates = []
+    if platform.system() == "Darwin":
+        candidates.extend([
+            "/opt/homebrew/bin/yt-dlp",
+            "/usr/local/bin/yt-dlp",
+        ])
+    elif platform.system() == "Windows":
+        exe_dir = os.path.dirname(sys.executable) if getattr(sys, "frozen", False) else ""
+        if exe_dir:
+            candidates.append(os.path.join(exe_dir, "yt-dlp.exe"))
+    else:
+        candidates.extend(["/usr/local/bin/yt-dlp", "/usr/bin/yt-dlp"])
+    try:
+        import shutil
+        found = shutil.which("yt-dlp")
+        if found:
+            candidates.insert(0, found)
+    except Exception:
+        pass
+    seen = set()
+    for path in candidates:
+        if not path or path in seen:
+            continue
+        seen.add(path)
+        if os.path.isfile(path) and os.access(path, os.X_OK):
+            return [path]
+    return None
+
+
 def get_ytdlp_command():
     """
     Gibt den richtigen yt-dlp Befehl zurück
@@ -44,11 +75,15 @@ def get_ytdlp_command():
             python_embed = os.path.join(exe_dir, 'python', 'python.exe')
             if os.path.isfile(python_embed):
                 return [python_embed, '-u', '-m', 'yt_dlp']
+        # .app/.exe: externes yt-dlp als Prozess, sonst gibt es keinen Live-Fortschritt
+        binary = _find_ytdlp_binary()
+        if binary:
+            return binary
         # Sonst: System-Python mit yt_dlp-Modul suchen (für Fortschritt/Abbruch per Subprocess)
         python_exe = _find_python_executable()
         if python_exe:
-            return [python_exe, '-m', 'yt_dlp']
-        # Fallback: eingebettetes yt_dlp-Modul (run_ytdlp_direct)
+            return [python_exe, '-u', '-m', 'yt_dlp']
+        # Fallback: eingebettetes yt_dlp-Modul (run_ytdlp_direct) — puffert die Ausgabe bis zum Ende
         return None
     else:
         # Nach .deb-Install: App läuft mit venv (dort yt-dlp>=2026). System-yt-dlp (2024) nicht verwenden.

@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# pyright: reportGeneralTypeIssues=false, reportArgumentType=false, reportOptionalMemberAccess=false, reportOptionalCall=false, reportAttributeAccessIssue=false, reportCallIssue=false, reportAssignmentType=false, reportOperatorIssue=false, reportUnknownMemberType=false
 """
 GUI für Deezer Downloader
 """
 
 import tkinter as tk
-from tkinter import ttk, scrolledtext, filedialog, messagebox
+from tkinter import ttk, scrolledtext, filedialog, messagebox as _tk_messagebox
 from pathlib import Path
 import threading
 import queue
@@ -105,6 +106,125 @@ MUSIC_MEDIATHEK_DOMAINS = (
     'vorleser.net',         # Vorleser.net (kostenlose deutsche Hörbücher)
     'hoerspielprojekt.de',  # Hörspielprojekt (kostenlose Hörspiele)
 )
+
+
+def _mac_tk_dialog(title, message, buttons, parent=None):
+    """Modales Tk-Fenster statt nativem NSAlert (stürzt unter macOS 26/27 mit SIGTRAP ab)."""
+    result = {"value": buttons[-1][1] if buttons else None}
+    root = parent
+    if root is None:
+        root = getattr(tk, "_default_root", None)
+    win = tk.Toplevel(root) if root is not None else tk.Toplevel()
+    try:
+        win.title(str(title or ""))
+    except tk.TclError:
+        pass
+    if parent is not None:
+        try:
+            win.transient(parent)
+        except tk.TclError:
+            pass
+    try:
+        win.resizable(True, True)
+        bg = "#383838"
+        try:
+            if parent is not None:
+                bg = parent.cget("bg") or bg
+        except tk.TclError:
+            pass
+        win.configure(bg=bg)
+        win.attributes("-topmost", True)
+    except tk.TclError:
+        bg = "#383838"
+
+    frm = ttk.Frame(win, padding=16)
+    frm.pack(fill=tk.BOTH, expand=True)
+    ttk.Label(frm, text=str(message or ""), wraplength=440, justify=tk.LEFT).pack(
+        anchor=tk.W, pady=(0, 14)
+    )
+    row = ttk.Frame(frm)
+    row.pack(anchor=tk.E)
+
+    def choose(val):
+        result["value"] = val
+        try:
+            win.destroy()
+        except tk.TclError:
+            pass
+
+    for i, (label, val) in enumerate(buttons):
+        b = ttk.Button(row, text=label, command=lambda v=val: choose(v))
+        b.pack(side=tk.RIGHT, padx=4)
+        if i == 0:
+            try:
+                b.focus_set()
+                win.bind("<Return>", lambda _e, v=val: choose(v))
+            except tk.TclError:
+                pass
+    win.bind("<Escape>", lambda _e: choose(buttons[-1][1]))
+    win.protocol("WM_DELETE_WINDOW", lambda: choose(buttons[-1][1]))
+    try:
+        win.update_idletasks()
+        w, h = max(win.winfo_reqwidth(), 360), max(win.winfo_reqheight(), 120)
+        if parent is not None:
+            px = parent.winfo_rootx() + max(20, (parent.winfo_width() - w) // 2)
+            py = parent.winfo_rooty() + max(20, (parent.winfo_height() - h) // 3)
+        else:
+            px = max(40, (win.winfo_screenwidth() - w) // 2)
+            py = max(40, (win.winfo_screenheight() - h) // 3)
+        win.geometry(f"+{int(px)}+{int(py)}")
+    except tk.TclError:
+        pass
+    try:
+        win.grab_set()
+    except tk.TclError:
+        pass
+    try:
+        win.wait_window()
+    except tk.TclError:
+        pass
+    return result["value"]
+
+
+class _MacSafeMessageBox:
+    """tkinter.messagebox auf macOS 26/27: natives NSAlert → GameController-SIGTRAP."""
+
+    def showinfo(self, title=None, message=None, **kwargs):
+        _mac_tk_dialog(title, message, [("OK", "ok")], kwargs.get("parent"))
+        return "ok"
+
+    def showwarning(self, title=None, message=None, **kwargs):
+        _mac_tk_dialog(title, message, [("OK", "ok")], kwargs.get("parent"))
+        return "ok"
+
+    def showerror(self, title=None, message=None, **kwargs):
+        _mac_tk_dialog(title, message, [("OK", "ok")], kwargs.get("parent"))
+        return "ok"
+
+    def askyesno(self, title=None, message=None, **kwargs):
+        return bool(_mac_tk_dialog(title, message, [("Ja", True), ("Nein", False)], kwargs.get("parent")))
+
+    def askokcancel(self, title=None, message=None, **kwargs):
+        return bool(_mac_tk_dialog(title, message, [("OK", True), ("Abbrechen", False)], kwargs.get("parent")))
+
+    def askretrycancel(self, title=None, message=None, **kwargs):
+        return bool(_mac_tk_dialog(title, message, [("Erneut", True), ("Abbrechen", False)], kwargs.get("parent")))
+
+    def askyesnocancel(self, title=None, message=None, **kwargs):
+        return _mac_tk_dialog(
+            title, message, [("Ja", True), ("Nein", False), ("Abbrechen", None)], kwargs.get("parent")
+        )
+
+    def askquestion(self, title=None, message=None, **kwargs):
+        yes = _mac_tk_dialog(title, message, [("Ja", True), ("Nein", False)], kwargs.get("parent"))
+        return "yes" if yes else "no"
+
+
+if sys.platform == "darwin":
+    messagebox = _MacSafeMessageBox()
+else:
+    messagebox = _tk_messagebox
+
 
 def _is_music_mediathek_url(url):
     """Prüft, ob die URL eine im Musik-Tab unterstützte Mediathek oder Hörbuch-/Hörspiel-Seite ist."""
@@ -360,6 +480,8 @@ class DeezerDownloaderGUI:
         self._parallel_video_process_list = []
         self._video_parallel_workers = 0
         self._video_parallel_lock = threading.Lock()
+        self._video_convert_lock = threading.Lock()
+        self._video_queue_hold = False
         self.video_download_cancelled = False
         self.video_download_cancel_current_only = False  # Nur aktuelle Folge abbrechen
         self.video_download_episodes_total = 0  # Gesamtanzahl Episoden beim Serien-Download
@@ -388,6 +510,7 @@ class DeezerDownloaderGUI:
         self.root.after(90000, self._series_watch_schedule_tick)
         # Tray-Icon (Windows-Infobereich / macOS-Menüleiste) mit der GUI starten
         self.root.after(1800, self._start_series_watch_tray)
+        self.root.after(2500, self._series_watch_pull_gui_queue)
         
         # Prüfe ob bereits angemeldet (Deezer)
         if DeezerAuth:
@@ -1313,6 +1436,16 @@ class DeezerDownloaderGUI:
         self.video_status_var = tk.StringVar(value="Bereit")
         video_status_label = ttk.Label(status_frame, textvariable=self.video_status_var, relief=tk.SUNKEN, anchor=tk.W, font=("Arial", 9), style="Download.TLabel")
         video_status_label.pack(fill=tk.X)
+        self.video_jobs_var = tk.StringVar(value="")
+        self.video_jobs_label = ttk.Label(
+            status_frame, textvariable=self.video_jobs_var, anchor=tk.W, justify=tk.LEFT,
+            font=("Arial", 9), style="Download.TLabel",
+        )
+        self.video_jobs_label.pack(fill=tk.X, pady=(4, 0))
+        self._video_active_jobs = {}
+        self._video_jobs_lock = threading.Lock()
+        self._video_jobs_render_scheduled = False
+        self._video_jobs_last_write = 0.0
         
         # Download-Queue initialisieren (erweiterte Struktur für Download-Optionen)
         self.video_download_queue = []
@@ -2084,7 +2217,7 @@ class DeezerDownloaderGUI:
                 else:
                     popen_kw["start_new_session"] = True
                     popen_kw["env"] = os.environ.copy()
-                subprocess.Popen(argv, **popen_kw)
+                self._series_watch_tray_proc = subprocess.Popen(argv, **popen_kw)
                 self._series_watch_tray_app = True
                 self._write_to_log_file("[Serien-Wächter] Tray-Prozess gestartet.", "INFO")
             if self.settings.get("series_watch_tray_enabled", True) and self.settings.get("series_watch_tray_autostart", True):
@@ -2095,6 +2228,117 @@ class DeezerDownloaderGUI:
                 self._write_to_log_file(f"[Serien-Wächter] Tray-Start fehlgeschlagen: {e}", "WARNING")
             except Exception:
                 pass
+
+    def _series_watch_ensure_tray(self):
+        """Bringt das Leisten-Icon zurück, wenn der Tray-Prozess abgestürzt ist."""
+        if os.environ.get("SERIES_WATCH_NO_TRAY"):
+            return
+        if not self.settings.get("series_watch_tray_enabled", True):
+            return
+        try:
+            import series_watch_tray as swt
+        except ImportError:
+            return
+        proc = getattr(self, "_series_watch_tray_proc", None)
+        if proc is not None:
+            try:
+                proc.poll()
+            except Exception:
+                pass
+        if swt.tray_instance_running(self.base_download_path):
+            return
+        now = time.time()
+        if now - float(getattr(self, "_tray_restart_ts", 0) or 0) < 8:
+            return
+        self._tray_restart_ts = now
+        self._series_watch_tray_app = None
+        self._start_series_watch_tray()
+
+    def _series_watch_pull_gui_queue(self):
+        """Folgen aus der Menüleiste in die Video-Queue übernehmen und nach der Einstellung starten."""
+        try:
+            if series_watch is not None:
+                show_flag = self.base_download_path / "series_watch_show_window"
+                pick_flag = self.base_download_path / "series_watch_pick_episodes"
+                if show_flag.exists() or pick_flag.exists():
+                    pick_raw = ""
+                    if pick_flag.exists():
+                        try:
+                            pick_raw = pick_flag.read_text(encoding="utf-8").strip()
+                        except Exception:
+                            pick_raw = "*"
+                        try:
+                            pick_flag.unlink()
+                        except Exception:
+                            pass
+                    if show_flag.exists():
+                        try:
+                            show_flag.unlink()
+                        except Exception:
+                            pass
+                    try:
+                        self.root.deiconify()
+                        self.root.lift()
+                        self.root.focus_force()
+                        if sys.platform.startswith("linux"):
+                            self.root.attributes("-topmost", True)
+                            self.root.after(400, lambda: self.root.attributes("-topmost", False))
+                    except Exception:
+                        pass
+                    if pick_raw:
+                        rows = self._series_watch_rows_for_picker(pick_raw)
+                        self._series_watch_new_episodes_actions_dialog(
+                            self.root, rows, "Verfügbare Folgen"
+                        )
+                if series_watch.is_download_cancel_requested(self.base_download_path):
+                    self.video_download_cancelled = True
+                    self._video_queue_hold = True
+                    for proc in list(getattr(self, '_parallel_video_process_list', []) or []):
+                        self._terminate_video_subprocess(proc)
+                    if self.video_download_process is not None:
+                        self._terminate_video_subprocess(self.video_download_process)
+                    series_watch.write_runtime_status(self.base_download_path, cancel_requested=False)
+                rows = series_watch.take_gui_video_queue(self.base_download_path)
+                added = 0
+                for row in rows:
+                    url = (row.get("url") or "").strip()
+                    if not url:
+                        continue
+                    self._add_to_download_queue(
+                        url,
+                        episode_info={
+                            "title": row.get("title") or "",
+                            "series_name": row.get("series_name") or row.get("series") or "",
+                            "season_number": row.get("season_number"),
+                            "episode_number": row.get("episode_number"),
+                            "playlist_index": row.get("playlist_index") or row.get("episode_number"),
+                            "url": url,
+                            "id": row.get("id"),
+                            "kind": row.get("kind") or "",
+                            "output_format": (row.get("output_format") or "").lower(),
+                        },
+                        show_dialog=False,
+                    )
+                    added += 1
+                if added:
+                    self._video_queue_hold = False
+                    self.video_download_cancelled = False
+                    max_c = self._max_parallel_video_downloads()
+                    self.video_log(
+                        f"Serien-Wächter: {added} Folge(n) in der Queue, bis zu {max_c} gleichzeitig."
+                    )
+                    self._process_download_queue()
+                    self._update_queue_status()
+        except Exception:
+            pass
+        try:
+            self._series_watch_ensure_tray()
+        except Exception:
+            pass
+        try:
+            self.root.after(1000, self._series_watch_pull_gui_queue)
+        except Exception:
+            pass
 
     def _series_watch_schedule_tick(self):
         """Ruft periodisch die Serien-Prüfung auf (minütlich; Abstand siehe Einstellungen)."""
@@ -2119,6 +2363,10 @@ class DeezerDownloaderGUI:
             n = series_watch.mark_downloaded_episodes(
                 self.base_download_path, urls=urls, episode_ids=ids
             )
+            try:
+                series_watch.prune_owned_alerts(self.base_download_path)
+            except Exception:
+                pass
             if n:
                 self._write_to_log_file(
                     f"[Serien-Wächter] {n} Folge(n) als „habe ich“ markiert ({(url or '')[:80]})",
@@ -2269,13 +2517,25 @@ class DeezerDownloaderGUI:
                     e = dict(ep)
                     if wn and not e.get("series"):
                         e["series"] = wn
+                    if n.get("series_url") and not e.get("series_url"):
+                        e["series_url"] = n.get("series_url")
                     all_new.append(e)
             parent_win = parent or self.root
 
             def ask():
+                only_gaps = bool(notifications) and all(n.get("gap") for n in notifications)
+                names = ", ".join((n.get("watch_name") or "Serie") for n in notifications[:3])
+                n_eps = sum(len(n.get("new_episodes") or []) for n in notifications)
+                if only_gaps:
+                    self._series_watch_new_episodes_actions_dialog(
+                        parent_win,
+                        all_new,
+                        f"Fehlende Folgen — {names}",
+                    )
+                    return
                 if messagebox.askyesno(
                     "Neue Folgen",
-                    f"{len(notifications)} Meldung(en). Neue Folgen zur Queue hinzufügen oder herunterladen?",
+                    f"{n_eps} neue Folge(n) bei {names}. Zur Queue hinzufügen oder herunterladen?",
                     parent=parent_win,
                 ):
                     self._series_watch_new_episodes_actions_dialog(parent_win, all_new, "Neue Folgen — Aktion")
@@ -2471,7 +2731,7 @@ class DeezerDownloaderGUI:
         threading.Thread(target=work, daemon=True).start()
 
     def _series_watch_owned_checkbox_ui(self, parent, item_index: int, item_copy: Dict, series_data: Dict):
-        """Checkbox-UI: angehakt = bereits vorhanden."""
+        """Checkbox-UI: angehakt = bereits vorhanden; Ignorieren = Trailer/Making-of o. Ä."""
         sel_win = tk.Toplevel(parent)
         sel_win.title("Bereits vorhandene Folgen markieren")
         sel_win.transient(parent)
@@ -2481,10 +2741,12 @@ class DeezerDownloaderGUI:
         main_frame = ttk.Frame(sel_win, padding="12", style="Download.TFrame")
         main_frame.pack(fill=tk.BOTH, expand=True)
         hid = set(str(x) for x in (item_copy.get("have_ids") or []))
+        ign = set(str(x) for x in (item_copy.get("ignore_ids") or []))
         ttk.Label(
             main_frame,
-            text=f"Serie: {series_data.get('series_name', '')} — Haken = „habe ich schon“, dann keine Hinweise für diese IDs.\n"
-            "Pro Staffel: „Gesamte Staffel markieren“ setzt alle Folgen dieser Staffel; unten auch „Alle Folgen“ / „Alle abwählen“.",
+            text=f"Serie: {series_data.get('series_name', '')} — Haken links = „habe ich schon“.\n"
+            "Kreuz rechts = ignorieren (Trailer, Making-of, …): keine Hinweise, nicht als fehlend.\n"
+            "Pro Staffel: „Gesamte Staffel markieren“ setzt alle Folgen dieser Staffel auf „habe ich“.",
             wraplength=900,
             style="Download.TLabel",
         ).pack(anchor=tk.W, pady=(0, 8))
@@ -2501,12 +2763,21 @@ class DeezerDownloaderGUI:
         canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         sb.pack(side=tk.RIGHT, fill=tk.Y)
         episode_vars = {}
+        ignore_vars = {}
         season_vars = {}
         seasons = series_data.get("seasons") or {}
+
+        def _exclusive(have_var, ign_var, which):
+            if which == "have" and have_var.get():
+                ign_var.set(False)
+            elif which == "ign" and ign_var.get():
+                have_var.set(False)
 
         def select_all_episodes():
             for var in episode_vars.values():
                 var.set(True)
+            for iv in ignore_vars.values():
+                iv.set(False)
             for svar in season_vars.values():
                 svar.set(True)
 
@@ -2516,8 +2787,21 @@ class DeezerDownloaderGUI:
             for svar in season_vars.values():
                 svar.set(False)
 
+        def ignore_extras():
+            for (sn, i), iv in ignore_vars.items():
+                eps = seasons.get(sn) or []
+                if i >= len(eps):
+                    continue
+                title = eps[i].get("title") or ""
+                if series_watch.is_likely_extra_title(title):
+                    iv.set(True)
+                    k = (sn, i)
+                    if k in episode_vars:
+                        episode_vars[k].set(False)
+
         ttk.Button(quick_fr, text="Alle Folgen auswählen", command=select_all_episodes, style="Download.TButton").pack(side=tk.LEFT, padx=(0, 6))
         ttk.Button(quick_fr, text="Alle abwählen", command=select_none_episodes, style="Download.TButton").pack(side=tk.LEFT, padx=6)
+        ttk.Button(quick_fr, text="Trailer/Making-of ignorieren", command=ignore_extras, style="Download.TButton").pack(side=tk.LEFT, padx=6)
 
         for season_num in sorted(seasons.keys()):
             eps = seasons[season_num]
@@ -2531,11 +2815,14 @@ class DeezerDownloaderGUI:
 
             def make_season_toggle(snum, svar):
                 def toggle():
+                    on = svar.get()
                     n_eps = seasons.get(snum) or []
                     for i in range(len(n_eps)):
                         k = (snum, i)
                         if k in episode_vars:
-                            episode_vars[k].set(svar.get())
+                            episode_vars[k].set(on)
+                        if on and k in ignore_vars:
+                            ignore_vars[k].set(False)
                 return toggle
 
             ttk.Checkbutton(
@@ -2546,22 +2833,51 @@ class DeezerDownloaderGUI:
             ).pack(anchor=tk.W, pady=(0, 6), padx=4)
             for i, ep in enumerate(eps):
                 eid = str(ep.get("id") or "")
-                var = tk.BooleanVar(value=(eid in hid if eid else False))
-                episode_vars[(season_num, i)] = var
                 title = ep.get("title", "?")
-                if len(title) > 75:
-                    title = title[:72] + "…"
-                ttk.Checkbutton(lf, text=title, variable=var).pack(anchor=tk.W, padx=12, pady=2)
+                extra = series_watch.is_likely_extra_title(title)
+                have_on = bool(eid and eid in hid)
+                ign_on = bool(eid and eid in ign) or (extra and not have_on)
+                if have_on:
+                    ign_on = False
+                var = tk.BooleanVar(value=have_on)
+                ivar = tk.BooleanVar(value=ign_on)
+                episode_vars[(season_num, i)] = var
+                ignore_vars[(season_num, i)] = ivar
+                if len(title) > 70:
+                    title = title[:67] + "…"
+                row = ttk.Frame(lf, style="Download.TFrame")
+                row.pack(fill=tk.X, padx=8, pady=1)
+                ttk.Checkbutton(
+                    row,
+                    text=title,
+                    variable=var,
+                    command=lambda h=var, g=ivar: _exclusive(h, g, "have"),
+                ).pack(side=tk.LEFT, fill=tk.X, expand=True, anchor=tk.W)
+                ttk.Checkbutton(
+                    row,
+                    text="Ignorieren",
+                    variable=ivar,
+                    command=lambda h=var, g=ivar: _exclusive(h, g, "ign"),
+                ).pack(side=tk.RIGHT)
 
         def do_save():
-            new_hid = set(str(x) for x in (item_copy.get("have_ids") or []))
+            shown_ids = set()
+            new_hid = set()
+            new_ign = set()
             for (sn, i), var in episode_vars.items():
-                if not var.get():
-                    continue
                 ep = seasons.get(sn, [])[i] if i < len(seasons.get(sn, [])) else None
-                if ep and ep.get("id"):
-                    new_hid.add(str(ep["id"]))
-            item_copy["have_ids"] = sorted(new_hid)
+                if not ep or not ep.get("id"):
+                    continue
+                eid = str(ep["id"])
+                shown_ids.add(eid)
+                if var.get():
+                    new_hid.add(eid)
+                elif ignore_vars.get((sn, i)) and ignore_vars[(sn, i)].get():
+                    new_ign.add(eid)
+            old_hid = set(str(x) for x in (item_copy.get("have_ids") or []) if x)
+            old_ign = set(str(x) for x in (item_copy.get("ignore_ids") or []) if x)
+            item_copy["have_ids"] = sorted((old_hid - shown_ids) | new_hid)
+            item_copy["ignore_ids"] = sorted(((old_ign - shown_ids) | new_ign) - set(item_copy["have_ids"]))
             try:
                 _pid, _pt, cur = series_watch.fetch_playlist_episodes(item_copy.get("url") or "")
                 series_watch.merge_have_ids_from_current(item_copy, cur)
@@ -2576,8 +2892,33 @@ class DeezerDownloaderGUI:
         ttk.Button(bf, text="Speichern", command=do_save, style="Download.TButton").pack(side=tk.LEFT, padx=(0, 6))
         ttk.Button(bf, text="Abbrechen", command=sel_win.destroy, style="Download.TButton").pack(side=tk.LEFT)
 
+    def _series_watch_rows_for_picker(self, series_url: str = "") -> List[Dict]:
+        """Offene Folgen einer Serie (oder aller Serien) für die Auswahlliste."""
+        if series_watch is None:
+            return []
+        state = series_watch.load_state(self.base_download_path)
+        want = (series_url or "").strip()
+        if want == "*":
+            want = ""
+        rows: List[Dict] = []
+        for group in series_watch.available_groups(state):
+            surl = (group.get("series_url") or "").strip()
+            if want and surl != want:
+                continue
+            name = group.get("name") or ""
+            kind = series_watch.watch_item_kind(None, surl)
+            fmt = series_watch.download_format_for_series(state, surl, name)
+            rows.extend(series_watch.episodes_for_video_download(
+                group.get("episodes") or [],
+                name,
+                kind=kind,
+                series_url=surl,
+                output_format=fmt,
+            ))
+        return rows
+
     def _series_watch_new_episodes_actions_dialog(self, parent, flat_eps: List[Dict], heading: str = "Neue Folgen"):
-        """Auswahl: zur Video-Queue oder direkt herunterladen."""
+        """Auswahl: zur Video-Queue, herunterladen oder ignorieren. Der Rest bleibt für später."""
         if not flat_eps:
             messagebox.showinfo("Serien-Wächter", "Keine Folgen in der Liste.", parent=parent)
             return
@@ -2586,27 +2927,89 @@ class DeezerDownloaderGUI:
         d.transient(parent)
         d.grab_set()
         self._apply_dark_toplevel(d)
-        self._fit_dialog(d, 900, 680, 640, 480)
+        self._fit_dialog(d, 760, 560, 560, 360)
         mf = ttk.Frame(d, padding="10", style="Download.TFrame")
         mf.pack(fill=tk.BOTH, expand=True)
-        ttk.Label(mf, text="Neue Folgen — auswählen und zur Queue hinzufügen oder Download starten:", style="Download.TLabel").pack(anchor=tk.W)
-        canvas = tk.Canvas(mf, highlightthickness=0)
-        sb = ttk.Scrollbar(mf, orient="vertical", command=canvas.yview)
-        sf = ttk.Frame(canvas)
-        sf.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-        canvas.create_window((0, 0), window=sf, anchor="nw")
-        canvas.configure(yscrollcommand=sb.set)
+        if "Verfügbar" in (heading or ""):
+            lead = "Verfügbare Folgen"
+        elif "Fehlend" in (heading or ""):
+            lead = "Fehlende Folgen"
+        else:
+            lead = "Folgen"
+        ttk.Label(
+            mf,
+            text=(
+                f"{lead} ({len(flat_eps)}) — anhaken, was geladen werden soll. "
+                "Der Rest bleibt für später, oder die angehakten Folgen ignorieren."
+            ),
+            style="Download.TLabel",
+            wraplength=700,
+        ).pack(anchor=tk.W, side=tk.TOP)
+
         vars_map = {}
+        list_fr = ttk.Frame(mf, style="Download.TFrame")
+        list_fr.pack(fill=tk.BOTH, expand=True, pady=8, side=tk.TOP)
+        canvas = tk.Canvas(list_fr, highlightthickness=0, bd=0)
+        scroll = ttk.Scrollbar(list_fr, orient=tk.VERTICAL, command=canvas.yview)
+        inner = ttk.Frame(canvas, style="Download.TFrame")
+        inner.bind("<Configure>", lambda _e: canvas.configure(scrollregion=canvas.bbox("all")))
+        win_id = canvas.create_window((0, 0), window=inner, anchor="nw")
+        canvas.configure(yscrollcommand=scroll.set)
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scroll.pack(side=tk.RIGHT, fill=tk.Y)
+
+        def _canvas_width(event):
+            canvas.itemconfigure(win_id, width=event.width)
+
+        canvas.bind("<Configure>", _canvas_width)
+
+        def _on_wheel(event):
+            if sys.platform == "darwin":
+                canvas.yview_scroll(int(-1 * event.delta), "units")
+            else:
+                step = int(-1 * (getattr(event, "delta", 0) or 0) / 120) or (-1 if getattr(event, "delta", 0) > 0 else 1)
+                canvas.yview_scroll(step, "units")
+
+        def _on_linux_btn(event):
+            canvas.yview_scroll(-3 if getattr(event, "num", 5) == 4 else 3, "units")
+
+        def _wheel_on(_event=None):
+            canvas.bind_all("<MouseWheel>", _on_wheel)
+            canvas.bind_all("<Button-4>", _on_linux_btn)
+            canvas.bind_all("<Button-5>", _on_linux_btn)
+
+        def _wheel_off(_event=None):
+            for seq in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+                try:
+                    canvas.unbind_all(seq)
+                except Exception:
+                    pass
+
+        canvas.bind("<Enter>", _wheel_on)
+        canvas.bind("<Leave>", _wheel_off)
+        d.bind("<Destroy>", _wheel_off)
+
+        series_names = {
+            (ep.get("series") or ep.get("series_name") or "").strip()
+            for ep in flat_eps
+        }
+        one_series = len([s for s in series_names if s]) <= 1
+        precheck = len(flat_eps) <= 10
         for i, ep in enumerate(flat_eps):
             eid = ep.get("id") or ep.get("url") or str(i)
-            v = tk.BooleanVar(value=True)
+            v = tk.BooleanVar(value=precheck)
             vars_map[str(eid)] = (v, ep)
             t = ep.get("title") or ep.get("url") or "?"
-            if len(t) > 90:
-                t = t[:87] + "…"
-            ttk.Checkbutton(sf, text=t, variable=v).pack(anchor=tk.W, padx=6, pady=2)
-        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, pady=6)
-        sb.pack(side=tk.RIGHT, fill=tk.Y, pady=6)
+            series = (ep.get("series") or ep.get("series_name") or "").strip()
+            if series and series not in t and not one_series:
+                t = f"{series}: {t}"
+            if len(t) > 110:
+                t = t[:107] + "…"
+            ttk.Checkbutton(inner, text=t, variable=v).pack(anchor=tk.W, padx=4, pady=2)
+
+        def set_all(value: bool) -> None:
+            for var, _ep in vars_map.values():
+                var.set(value)
 
         def collect_selected() -> List[Dict]:
             out = []
@@ -2658,11 +3061,39 @@ class DeezerDownloaderGUI:
             threading.Thread(target=self.video_download_episodes_thread, args=(norm_eps,), daemon=True).start()
             messagebox.showinfo("Serien-Wächter", f"Download von {len(norm_eps)} Folge(n) gestartet (Video-Tab).", parent=parent)
 
+        pick_row = ttk.Frame(mf, style="Download.TFrame")
+        pick_row.pack(fill=tk.X, side=tk.BOTTOM, pady=(0, 4))
+        ttk.Button(pick_row, text="Alle anhaken", command=lambda: set_all(True), style="Download.TButton").pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(pick_row, text="Keine", command=lambda: set_all(False), style="Download.TButton").pack(side=tk.LEFT)
+
         bf = ttk.Frame(mf, style="Download.TFrame")
-        bf.pack(fill=tk.X, pady=8)
+        bf.pack(fill=tk.X, side=tk.BOTTOM, pady=(4, 0))
         ttk.Button(bf, text="➕ Ausgewählte zur Queue", command=to_queue, style="Download.TButton").pack(side=tk.LEFT, padx=(0, 6))
         ttk.Button(bf, text="▶ Ausgewählte herunterladen", command=download_now, style="Download.TButton").pack(side=tk.LEFT, padx=6)
-        ttk.Button(bf, text="Schließen", command=d.destroy, style="Download.TButton").pack(side=tk.RIGHT)
+
+        def ignore_selected():
+            eps = collect_selected()
+            if not eps:
+                messagebox.showinfo("Hinweis", "Nichts ausgewählt.", parent=d)
+                return
+            ids = [str(ep.get("id") or "") for ep in eps if ep.get("id")]
+            series_url = ""
+            for ep in eps:
+                series_url = (ep.get("series_url") or "").strip()
+                if series_url:
+                    break
+            n = series_watch.mark_ignored_episodes(
+                self.base_download_path, episode_ids=ids, series_url=series_url
+            )
+            d.destroy()
+            messagebox.showinfo(
+                "Serien-Wächter",
+                f"{n} Folge(n) ignoriert (Trailer/Making-of o. Ä.). Keine Hinweise mehr dafür.",
+                parent=parent,
+            )
+
+        ttk.Button(bf, text="Ignorieren", command=ignore_selected, style="Download.TButton").pack(side=tk.LEFT, padx=6)
+        ttk.Button(bf, text="Später", command=d.destroy, style="Download.TButton").pack(side=tk.RIGHT)
 
     def _series_watch_add_episodes_to_video_queue(self, episodes: List[Dict]):
         """Fügt Episoden-Dicts (url, title, series, season_number, …) zur Video-Queue hinzu."""
@@ -2680,6 +3111,8 @@ class DeezerDownloaderGUI:
                 "playlist_index": ep.get("playlist_index"),
                 "url": url,
                 "id": ep.get("id"),
+                "kind": ep.get("kind") or "",
+                "output_format": (ep.get("output_format") or "").lower(),
             }
             if info["season_number"] is None or info["episode_number"] is None:
                 s, e = series_watch.episode_s_e_from_title(ep.get("title") or "")
@@ -2714,10 +3147,66 @@ class DeezerDownloaderGUI:
         for ep in cur:
             if series_watch.is_episode_had(ep, it):
                 continue
-            missing.append(dict(ep))
+            row = dict(ep)
+            row["series_url"] = url
+            row["series"] = (it.get("display_name") or it.get("playlist_title") or "").strip()
+            row["output_format"] = series_watch.effective_download_format(it, url)
+            row["kind"] = series_watch.watch_item_kind(it, url)
+            missing.append(row)
         if not missing:
             messagebox.showinfo("Serien-Wächter", "Keine fehlenden Folgen laut Besitz-Regeln.", parent=parent)
         return missing
+
+    def _series_watch_format_dialog(self, parent, item_index: int, refresh_list):
+        """Ausgabeformat einer überwachten Serie: MP4/MKV, bei Audio MP3, bei YouTube auch MP3."""
+        if series_watch is None:
+            return
+        data = series_watch.load_state(self.base_download_path)
+        items = data.get("items") or []
+        if not (0 <= item_index < len(items)) or not isinstance(items[item_index], dict):
+            return
+        it = items[item_index]
+        choices = series_watch.format_choices_for_watch(it)
+        current = series_watch.effective_download_format(it)
+        name = (it.get("display_name") or it.get("playlist_title") or it.get("url") or "Serie").strip()
+        d = tk.Toplevel(parent)
+        d.title("Download-Format")
+        d.transient(parent)
+        d.grab_set()
+        self._apply_dark_toplevel(d)
+        self._fit_dialog(d, 460, 280, 400, 220)
+        frm = ttk.Frame(d, padding=14, style="Download.TFrame")
+        frm.pack(fill=tk.BOTH, expand=True)
+        ttk.Label(
+            frm,
+            text=f"{name}\nBeim Laden gefundener Folgen wird dieses Format verwendet.",
+            style="Download.TLabel",
+            wraplength=420,
+        ).pack(anchor=tk.W, pady=(0, 10))
+        var = tk.StringVar(value=current)
+        labels = {
+            "mp4": "MP4  (Video, Standard)",
+            "mkv": "MKV  (Video)",
+            "mp3": "MP3  (Audio, Musik-Ordner)",
+        }
+        for choice in choices:
+            ttk.Radiobutton(
+                frm, text=labels.get(choice, choice.upper()), variable=var, value=choice,
+            ).pack(anchor=tk.W, pady=2)
+
+        def save():
+            it["download_format"] = var.get()
+            series_watch.save_state(self.base_download_path, data)
+            d.destroy()
+            try:
+                refresh_list()
+            except Exception:
+                pass
+
+        bf = ttk.Frame(frm, style="Download.TFrame")
+        bf.pack(fill=tk.X, pady=(14, 0))
+        ttk.Button(bf, text="Speichern", command=save, style="Download.TButton").pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(bf, text="Abbrechen", command=d.destroy, style="Download.TButton").pack(side=tk.LEFT)
 
     def show_series_watch_dialog(self):
         """Dialog: Serien-URLs überwachen (Mediathek-Playlist), neue Folgen melden."""
@@ -2735,8 +3224,11 @@ class DeezerDownloaderGUI:
             main,
             text="Video (z. B. ARD Mediathek) und Hörbücher/Hörspiele (ARD Audiothek, ARD Sounds, LibriVox, …).\n"
             "ARD-Video: Auch bei „Staffel-x“-Links wird intern die Serien-URL genutzt.\n"
-            "Audiodeskription wird ignoriert. Downloads werden als „habe ich“ abgehakt.\n"
-            "Auto-Download: global in den Einstellungen oder pro Serie. Audio landet im Musik-Ordner (MP3), Video im Video-Ordner.",
+            "Audiodeskription wird ignoriert. Trailer/Making-of können Sie mit „Ignorieren“ ausblenden.\n"
+            "Downloads werden als „habe ich“ abgehakt.\n"
+            "Auto-Download: global in den Einstellungen oder pro Serie.\n"
+            "Format pro Serie: Video standardmäßig MP4 (oder MKV). ARD Sounds als MP3. "
+            "YouTube-Playlists als MP4, MKV oder MP3. Audio landet im Musik-Ordner, Video im Video-Ordner.",
             style="Download.TLabel",
             wraplength=900,
         ).pack(anchor=tk.W, pady=(0, 8))
@@ -2761,13 +3253,16 @@ class DeezerDownloaderGUI:
                 kind = "🎧" if series_watch.watch_item_kind(it) == "audio" else "📺"
                 n_ep = len(it.get("episodes") or {}) if isinstance(it.get("episodes"), dict) else 0
                 n_have = len(it.get("have_ids") or []) if isinstance(it.get("have_ids"), list) else 0
+                n_ign = len(it.get("ignore_ids") or []) if isinstance(it.get("ignore_ids"), list) else 0
                 bl = "✓" if it.get("baseline_done") else "…"
                 ad = ""
                 if "auto_download" in it:
                     ad = "  |  Auto-DL an" if it.get("auto_download") else "  |  Auto-DL aus"
                 elif self.settings.get("series_watch_auto_download", False):
                     ad = "  |  Auto-DL (global)"
-                lb.insert(tk.END, f"{bl} {kind} {nm}  |  Stand {n_ep} IDs  |  als „habe“ {n_have}{ad}  |  {u}")
+                ign_s = f"  |  ignoriert {n_ign}" if n_ign else ""
+                fmt = series_watch.effective_download_format(it).upper()
+                lb.insert(tk.END, f"{bl} {kind} {nm}  |  {fmt}  |  Stand {n_ep} IDs  |  als „habe“ {n_have}{ign_s}{ad}  |  {u}")
 
         refresh_list()
 
@@ -2794,11 +3289,13 @@ class DeezerDownloaderGUI:
             items.append({
                 "url": nu,
                 "kind": series_watch.watch_item_kind(None, nu),
+                "download_format": series_watch.effective_download_format(None, nu),
                 "display_name": name_var.get().strip(),
                 "episodes": {},
                 "baseline_done": False,
                 "max_season_seen": 0,
                 "have_ids": [],
+                "ignore_ids": [],
                 "have_full_seasons_upto": 0,
                 "have_partial_seasons": [],
             })
@@ -2862,6 +3359,7 @@ class DeezerDownloaderGUI:
                         _, notifications = series_watch.check_all(
                             self.base_download_path,
                             on_item_error=lambda n, e: self._write_to_log_file(f"[Serien-Wächter] {n}: {e}", "WARNING"),
+                            report_unowned=True,
                         )
                     except Exception as e:
                         self.root.after(0, lambda: messagebox.showerror("Serien-Wächter", str(e), parent=win))
@@ -2870,9 +3368,17 @@ class DeezerDownloaderGUI:
                     self._series_watch_last_run = time.time()
                     self.root.after(0, refresh_list)
                     if not notifications:
+                        open_rows = self._series_watch_rows_for_picker()
+                        if open_rows:
+                            self.root.after(0, lambda rows=list(open_rows): self._series_watch_new_episodes_actions_dialog(
+                                win,
+                                rows,
+                                "Verfügbare Folgen",
+                            ))
+                            return
                         self.root.after(0, lambda: messagebox.showinfo(
                             "Serien-Wächter",
-                            "Keine neuen Folgen (nach Ihren Besitz-Regeln).",
+                            "Keine fehlenden Folgen (angehakt oder ignoriert).",
                             parent=win,
                         ))
                         return
@@ -2902,6 +3408,7 @@ class DeezerDownloaderGUI:
             fn(i)
 
         ttk.Button(btn_fr2, text="☑ Folgen habe ich…", command=lambda: _with_sel(lambda i: self._series_watch_owned_episodes_dialog(win, i)), style="Download.TButton").pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(btn_fr2, text="📦 Download-Format…", command=lambda: _with_sel(lambda i: self._series_watch_format_dialog(win, i, refresh_list)), style="Download.TButton").pack(side=tk.LEFT, padx=6)
         ttk.Button(btn_fr2, text="⚡ Schnell Staffel 1…n", command=lambda: _with_sel(lambda i: self._series_watch_quick_rules_dialog(win, i)), style="Download.TButton").pack(side=tk.LEFT, padx=6)
         ttk.Button(btn_fr2, text="⬇ Fehlende / neue wählen…", command=lambda: self._series_watch_new_episodes_actions_dialog(win, self._series_watch_collect_missing_from_selection(win, lb), "Folgen — Queue oder Download"), style="Download.TButton").pack(side=tk.LEFT, padx=6)
 
@@ -3077,7 +3584,17 @@ class DeezerDownloaderGUI:
                 _s.configure("Download.TCombobox", fieldbackground=_bg_card, foreground=_fg_text, background=_bg_card)
             except tk.TclError:
                 pass
-            _s.configure("Horizontal.TProgressbar", background=_btn_bg, troughcolor=_bg_card, bordercolor=_bg_panel, lightcolor=_btn_light, darkcolor=_btn_dark)
+            _bar = "#1565c0" if (theme_name or "").lower() == "light" else "#3b82f6"
+            _trough = "#d6d6d6" if (theme_name or "").lower() == "light" else "#2a2a2a"
+            _s.configure(
+                "Horizontal.TProgressbar",
+                background=_bar,
+                troughcolor=_trough,
+                bordercolor=_trough,
+                lightcolor=_bar,
+                darkcolor=_bar,
+                thickness=14,
+            )
             self._refresh_theme_tk_widgets()
         except Exception:
             pass
@@ -5726,7 +6243,7 @@ class DeezerDownloaderGUI:
             self.video_log(f"Qualität: {Qo('quality', self.video_quality_var.get)}")
             if is_youtube and is_youtube_playlist:
                 self.video_log(f"YouTube-Playlist erkannt: Gesamte Playlist wird heruntergeladen")
-            self.video_log(f"Ziel: {self.video_download_path}")
+            self.video_log(f"Ziel: {qi.get('output_dir') or self.video_download_path}")
             self.video_log("=" * 60)
             
             # Pro parallelem Job eigener Downloader + keine GPU-Kodierung (sonst oft fehlgeschlagene
@@ -5752,10 +6269,11 @@ class DeezerDownloaderGUI:
                         output_format=(Qo('format', self.video_format_var.get) or 'mp4').lower(),
                         gui_instance=gui_inst,
                     )
-                    if self.settings.get('gpu_enabled', False):
+                    fmt_now = (Qo('format', self.video_format_var.get) or 'mp4').lower()
+                    if self.settings.get('gpu_enabled', False) and fmt_now not in ('mp3', 'none', ''):
                         self.video_log(
-                            f"{job_tag}Parallele Downloads: GPU-Beschleunigung für diesen Job aus "
-                            f"(Software-Kodierung – zuverlässigeres MP4 nach Download)."
+                            f"{job_tag}Parallele Downloads: die Dateien laden gleichzeitig, "
+                            f"die GPU wandelt sie danach nacheinander nach {fmt_now.upper()} um."
                         )
                 except Exception as _e:
                     self.video_log(f"{job_tag}Hinweis: Eigener Downloader fehlgeschlagen, nutze Standard: {_e}")
@@ -5777,6 +6295,7 @@ class DeezerDownloaderGUI:
                 
                 self.video_log(f"\n✓ Video gefunden:")
                 self.video_log(f"  Titel: {title}")
+                self._video_job_update(url, title=title)
                 self.video_log(f"  Dauer: {duration_str}")
                 self.video_log(f"  Uploader: {video_info.get('uploader', 'Unbekannt')}")
                 
@@ -5793,60 +6312,27 @@ class DeezerDownloaderGUI:
             
             # Starte Download mit Fortschritts-Callback
             self.video_log("\nStarte Download...")
-            
-            _last_log_percent = [None]  # Liste für nonlocal-ähnliches Update
-            _last_log_time = [None]
+            _job_title = ""
+            if isinstance(qi, dict):
+                _epi = qi.get("episode_info") if isinstance(qi.get("episode_info"), dict) else {}
+                _job_title = (_epi.get("title") or qi.get("episode_title") or "").strip()
+            if not _job_title:
+                _job_title = (url or "Download")[:70]
+            self._video_job_update(url, title=_job_title, phase="download", percent=0, create=True)
+
             def progress_callback(percent, status_line):
-                """Callback für Fortschritts-Updates (Download und Konvertierung) – läuft im Main-Thread ausführen"""
-                def _update():
-                    try:
-                        ep_total = getattr(self, '_video_batch_episode_total', 0)
-                        ep_current = getattr(self, '_video_batch_episode_current', 0)
-                        speed_str = ""
-                        eta_str = ""
-                        if status_line:
-                            speed_match = re.search(r'at\s+([\d.]+)\s*([KMGT]?i?B/s)', status_line, re.IGNORECASE)
-                            if speed_match:
-                                speed_str = f" - {speed_match.group(1)}{speed_match.group(2)}"
-                            eta_match = re.search(r'ETA\s+(\d+:\d+)', status_line)
-                            if eta_match:
-                                eta_str = f" - ETA: {eta_match.group(1)}"
-                        if parallel_mode:
-                            self.video_status_var.set(
-                                f"Parallel ({getattr(self, '_video_parallel_workers', 0)} aktiv): {job_tag.strip()} {percent:.0f}%"
-                            )
-                            if (speed_str or eta_str) and percent < 100:
-                                import time
-                                now = time.time()
-                                last_p = _last_log_percent[0]
-                                last_t = _last_log_time[0]
-                                if (last_p is None or percent - last_p >= 15 or (last_t and now - last_t >= 8)):
-                                    _last_log_percent[0] = percent
-                                    _last_log_time[0] = now
-                                    self.video_log(f"{job_tag}→ {percent:.1f}%{speed_str}{eta_str}")
-                        else:
-                            if self.settings.get('log_level') == 'debug':
-                                self.video_log(f"[DEBUG] Progress UI: {percent:.1f}% gesetzt (Folge {ep_current}/{ep_total})")
-                            self.video_progress_var.set(percent)
-                            prefix = f"Download läuft ({ep_current}/{ep_total})... " if (ep_total and ep_current) else "Download läuft... "
-                            if status_line and "Konvertierung" in status_line:
-                                self.video_status_var.set(prefix + status_line if (ep_total and ep_current) else status_line)
-                            else:
-                                status_text = f"{prefix}{percent:.1f}%{speed_str}{eta_str}"
-                                self.video_status_var.set(status_text)
-                            if (speed_str or eta_str) and percent < 100:
-                                import time
-                                now = time.time()
-                                last_p = _last_log_percent[0]
-                                last_t = _last_log_time[0]
-                                if (last_p is None or percent - last_p >= 10 or (last_t and now - last_t >= 5)):
-                                    _last_log_percent[0] = percent
-                                    _last_log_time[0] = now
-                                    self.video_log(f"  → {percent:.1f}%{speed_str}{eta_str}")
-                        self.root.update_idletasks()
-                    except Exception:
-                        pass
-                self.root.after(0, _update)
+                """Fortschritt direkt merken. Die Anzeige zieht das alle 250 ms, ohne die Oberfläche zu fluten."""
+                phase_now = "download"
+                pct = percent
+                if status_line and "Konvertierung" in status_line:
+                    phase_now = "convert"
+                    m = re.search(r"(\d+\.?\d*)\s*%", status_line)
+                    if m:
+                        try:
+                            pct = float(m.group(1))
+                        except ValueError:
+                            pass
+                self._video_job_update(url, phase=phase_now, percent=pct, status_line=status_line)
             
             # Prüfe ob es eine Serie ist (nur für nicht-YouTube URLs)
             # Oder: Einzelvideo aus Queue mit episode_info (z. B. Playlist-Folge) → gleicher Ordner wie Playlist
@@ -5876,15 +6362,21 @@ class DeezerDownloaderGUI:
             
             # Für YouTube: Playlist automatisch erkennen
             download_playlist = is_youtube and is_youtube_playlist
+            target_fmt = (Qo('format', self.video_format_var.get) or 'mp4').lower()
+            out_dir = qi.get('output_dir') or self.video_download_path
+            if target_fmt == 'mp3':
+                out_dir = self.music_download_path
             
             # Prüfung: Datei existiert bereits? (nur bei Einzelvideo, nicht bei Playlist)
             file_exists_choice = None  # "redownload" | "skip" | "convert" | "cancel"
             if not download_playlist and video_info:
                 exists, existing_path, same_format = vd.check_existing_file(
-                    video_info, self.video_download_path, Qo('format', self.video_format_var.get),
+                    video_info, out_dir, target_fmt,
                     is_series, series_name, season_number, url
                 )
-                if exists and existing_path:
+                if exists and existing_path and same_format and _from_queue_worker:
+                    file_exists_choice = "skip"
+                elif exists and existing_path:
                     result_queue = queue.Queue()
                     def _show_exists_dialog():
                         choice = [None]  # use list to allow assign in nested
@@ -5926,8 +6418,9 @@ class DeezerDownloaderGUI:
                 self.video_status_var.set("Abgebrochen")
                 success, file_path, error = False, None, "Abgebrochen"
             elif file_exists_choice == "skip":
-                self.video_log("\nÜbersprungen – Datei existiert bereits.")
-                self.video_status_var.set("Übersprungen – Datei existiert bereits")
+                self.video_log("\nBereits vorhanden – nicht erneut geladen.")
+                self.video_status_var.set("Bereits vorhanden")
+                self._video_job_update(url, phase="exists", percent=100)
                 success, file_path, error = True, existing_path, ""
             elif file_exists_choice == "convert":
                 self.video_log("\nKonvertiere vorhandene Datei...")
@@ -5945,12 +6438,15 @@ class DeezerDownloaderGUI:
                         speed_limit = float(self.settings.get('speed_limit_value', '5'))
                     except ValueError:
                         speed_limit = None
-                use_gpu = bool(self.settings.get('gpu_enabled', False)) and not parallel_mode
+                gpu_on = bool(self.settings.get('gpu_enabled', False))
+                # Mehrere Downloads parallel, GPU-Umwandlung danach nacheinander.
+                defer_recode = bool(parallel_mode and gpu_on and target_fmt not in ('mp3', 'none', ''))
+                use_gpu = gpu_on and not parallel_mode
                 success, file_path, error = vd.download_video(
                 url,
-                output_dir=self.video_download_path,
+                output_dir=out_dir,
                 quality=Qo('quality', self.video_quality_var.get),
-                output_format=Qo('format', self.video_format_var.get),
+                output_format=target_fmt,
                 download_playlist=download_playlist,
                 progress_callback=progress_callback,
                 video_info=video_info,
@@ -5968,8 +6464,34 @@ class DeezerDownloaderGUI:
                 gui_instance=gui_inst,
                 gpu_enabled=use_gpu,
                 gpu_vendor=self.settings.get('gpu_vendor', 'auto'),
-                force_redownload=(file_exists_choice == "redownload")
+                force_redownload=(file_exists_choice == "redownload"),
+                defer_recode=defer_recode,
             )
+                if success and defer_recode and file_path and Path(file_path).suffix.lower() != f'.{target_fmt}':
+                    self.video_log(f"{job_tag}Download fertig. Konvertierung nach {target_fmt.upper()} wartet, bis die GPU frei ist.")
+                    self._video_job_update(url, phase="convert_wait", percent=100)
+                    with self._video_convert_lock:
+                        if self.video_download_cancelled:
+                            success, file_path, error = False, None, "Abgebrochen"
+                        else:
+                            self._video_job_update(url, phase="convert", percent=100)
+                            progress_callback(100, "Konvertierung läuft...")
+                            ok_c, fp_c, err_c = vd.convert_existing_to_format(
+                                file_path,
+                                target_fmt,
+                                progress_callback,
+                                gpu_enabled=True,
+                                gpu_vendor=self.settings.get('gpu_vendor', 'auto'),
+                            )
+                            if ok_c and fp_c:
+                                try:
+                                    if Path(fp_c).resolve() != Path(file_path).resolve():
+                                        Path(file_path).unlink()
+                                except Exception:
+                                    pass
+                                file_path = fp_c
+                            else:
+                                success, error = False, err_c or "Konvertierung fehlgeschlagen"
             
             if success:
                 if file_path:
@@ -6068,6 +6590,7 @@ class DeezerDownloaderGUI:
             err_msg = f"Fehler beim Download: {e}"
             self.root.after(0, lambda: messagebox.showerror("Fehler", err_msg))
         finally:
+            self._video_job_update(url, remove=True)
             if not _from_queue_worker:
                 self.video_download_button.config(state=tk.NORMAL)
                 if hasattr(self, 'video_cancel_button'):
@@ -7185,6 +7708,8 @@ class DeezerDownloaderGUI:
                                 'upload_date': remaining_episode.get('upload_date') or '',
                                 'url': remaining_url,
                                 'id': remaining_episode.get('id'),
+                                'kind': remaining_episode.get('kind') or '',
+                                'output_format': (remaining_episode.get('output_format') or '').lower(),
                             }
                             # Füge zur Queue hinzu ohne Dialog
                             self._add_to_download_queue(remaining_url, episode_info=remaining_episode_info, show_dialog=False)
@@ -7283,9 +7808,9 @@ class DeezerDownloaderGUI:
                 
                 success, file_path, error = self.video_downloader.download_video(
                         url,
-                        output_dir=self.video_download_path,
+                        output_dir=self.music_download_path if str(episode.get('output_format') or '').lower() == 'mp3' else self.video_download_path,
                         quality=self.video_quality_var.get(),
-                        output_format=self.video_format_var.get(),
+                        output_format=(episode.get('output_format') or self.video_format_var.get() or 'mp4'),
                         download_playlist=False,
                         progress_callback=progress_callback,
                         video_info=episode_info,
@@ -8008,6 +8533,12 @@ class DeezerDownloaderGUI:
             queue_item['season_number'] = episode_info.get('season_number')
             queue_item['episode_number'] = episode_info.get('episode_number')
             queue_item['episode_title'] = episode_info.get('title', '')
+            fmt = str(episode_info.get('output_format') or '').lower().strip()
+            if fmt in ('mp3', 'mp4', 'mkv'):
+                queue_item['format'] = fmt
+            if fmt == 'mp3' or episode_info.get('kind') == 'audio':
+                queue_item['output_dir'] = str(self.music_download_path)
+                queue_item['format'] = 'mp3'
         
         self.video_download_queue.append(queue_item)
         
@@ -8128,6 +8659,207 @@ class DeezerDownloaderGUI:
             else:
                 self.video_queue_status_label.config(text="📋 Queue: 0 Downloads")
     
+    def _video_job_update(self, job_id, title=None, phase=None, percent=None, status_line=None, remove=False, create=False):
+        """Merkt den Zustand einer laufenden Folge für Programm und Menü.
+
+        create=False ändert nur einen laufenden Eintrag. Ein später Fortschritt
+        nach dem Ende legt den Eintrag nicht wieder an (sonst bleibt 0 % stehen).
+        """
+        key = str(job_id or "")
+        if not key:
+            return
+        with self._video_jobs_lock:
+            if remove:
+                self._video_active_jobs.pop(key, None)
+            elif key not in self._video_active_jobs:
+                if not create:
+                    return
+                self._video_active_jobs[key] = {"title": "Folge", "phase": "download", "percent": 0.0}
+            if not remove and key in self._video_active_jobs:
+                slot = self._video_active_jobs[key]
+                if title:
+                    slot["title"] = str(title)[:80]
+                if phase:
+                    slot["phase"] = phase
+                if status_line:
+                    speed_match = re.search(
+                        r"at\s+([\d.]+\s*[KMGT]?i?B/s)", str(status_line), re.IGNORECASE
+                    )
+                    if speed_match:
+                        slot["speed"] = re.sub(r"\s+", "", speed_match.group(1))
+                if percent is not None:
+                    try:
+                        slot["percent"] = max(0.0, min(100.0, float(percent)))
+                    except (TypeError, ValueError):
+                        pass
+            snapshot_empty = not self._video_active_jobs
+            removed_last = bool(remove and snapshot_empty)
+        self._video_jobs_arm_tick()
+        if removed_last:
+            self._video_jobs_publish([], [])
+
+    def _video_downloads_running(self) -> bool:
+        """True, solange ein Video-Download oder eine Umwandlung läuft."""
+        try:
+            with self._video_jobs_lock:
+                if self._video_active_jobs:
+                    return True
+        except Exception:
+            pass
+        if getattr(self, "_video_parallel_workers", 0) > 0:
+            return True
+        proc = getattr(self, "video_download_process", None)
+        if proc is not None:
+            try:
+                return proc.poll() is None
+            except Exception:
+                return True
+        return False
+
+    def _video_jobs_arm_tick(self):
+        with self._video_jobs_lock:
+            if getattr(self, "_video_jobs_tick_on", False):
+                return
+            self._video_jobs_tick_on = True
+        try:
+            self.root.after(0, self._video_jobs_tick)
+        except Exception:
+            self._video_jobs_tick_on = False
+
+    def _video_jobs_tick(self):
+        try:
+            self._video_jobs_render()
+        except Exception:
+            pass
+        with self._video_jobs_lock:
+            alive = bool(self._video_active_jobs)
+        if not alive:
+            # Der erste Stand kann noch die Folge enthalten, die gerade fertig wurde.
+            try:
+                self._video_jobs_render()
+            except Exception:
+                pass
+            with self._video_jobs_lock:
+                alive = bool(self._video_active_jobs)
+        if alive:
+            try:
+                self.root.after(250, self._video_jobs_tick)
+                return
+            except Exception:
+                pass
+        with self._video_jobs_lock:
+            if self._video_active_jobs:
+                try:
+                    self.root.after(250, self._video_jobs_tick)
+                except Exception:
+                    self._video_jobs_tick_on = False
+                return
+            self._video_jobs_tick_on = False
+
+    def _video_jobs_render(self):
+        with self._video_jobs_lock:
+            snapshot = [dict(v) for v in self._video_active_jobs.values()]
+        lines = []
+        for slot in snapshot:
+            title = (slot.get("title") or "Folge").strip()
+            phase = slot.get("phase") or "download"
+            pct = float(slot.get("percent") or 0)
+            speed = (slot.get("speed") or "").strip()
+            speed_bit = f" · {speed}" if speed and phase == "download" else ""
+            if phase == "convert":
+                lines.append(f"⟳ {title} — konvertiert {pct:.0f}%")
+            elif phase == "convert_wait":
+                lines.append(f"⏳ {title} — Download fertig, wartet auf Konvertierung")
+            elif phase == "exists":
+                lines.append(f"✓ {title} — bereits vorhanden")
+            else:
+                lines.append(f"⬇ {title} — lädt {pct:.0f}%{speed_bit}")
+        pending = []
+        for item in list(getattr(self, "video_download_queue", []) or [])[:8]:
+            if isinstance(item, dict):
+                epi = item.get("episode_info") if isinstance(item.get("episode_info"), dict) else {}
+                t = (epi.get("title") or item.get("episode_title") or item.get("url") or "Folge")
+            else:
+                t = str(item)
+            pending.append({"title": str(t)[:80]})
+            if len(lines) < 8:
+                lines.append(f"· {str(t)[:70]} — wartet in der Queue")
+        if hasattr(self, "video_jobs_var"):
+            self.video_jobs_var.set("\n".join(lines))
+        if snapshot:
+            bits = []
+            for slot in snapshot[:3]:
+                title = (slot.get("title") or "Folge").strip()[:36]
+                pct = float(slot.get("percent") or 0)
+                phase = slot.get("phase") or "download"
+                speed = (slot.get("speed") or "").strip()
+                speed_bit = f" · {speed}" if speed and phase == "download" else ""
+                if phase == "convert":
+                    bits.append(f"{title} — konvertiert {pct:.0f}%")
+                elif phase == "convert_wait":
+                    bits.append(f"{title} — wartet auf Konvertierung")
+                elif phase == "exists":
+                    bits.append(f"{title} — bereits vorhanden")
+                else:
+                    bits.append(f"{title} — {pct:.0f}%{speed_bit}")
+            if pending:
+                bits.append(f"{len(self.video_download_queue)} in der Queue")
+            self.video_status_var.set(" · ".join(bits))
+            show = None
+            for slot in snapshot:
+                if (slot.get("phase") or "download") == "download":
+                    show = float(slot.get("percent") or 0)
+                    break
+            if show is None:
+                show = float(snapshot[0].get("percent") or 0)
+            self.video_progress_var.set(show)
+            try:
+                self.video_progress_bar.update_idletasks()
+            except Exception:
+                pass
+        elif hasattr(self, "video_jobs_var"):
+            self.video_jobs_var.set("")
+        self._video_jobs_publish(snapshot, pending)
+
+    def _video_jobs_publish(self, snapshot, pending):
+        if series_watch is None:
+            return
+        import time as _time
+        now = _time.monotonic()
+        force = (not snapshot) or any((s.get("phase") or "download") != "download" for s in snapshot)
+        if snapshot and not force and (now - getattr(self, "_video_jobs_last_write", 0.0)) < 0.25:
+            return
+        self._video_jobs_last_write = now
+        try:
+            if not snapshot:
+                series_watch.clear_download_status(self.base_download_path, phase="idle")
+                return
+            first = snapshot[0]
+            series_watch.write_runtime_status(
+                self.base_download_path,
+                phase="downloading",
+                downloads=[
+                    {
+                        "title": s.get("title") or "",
+                        "percent": float(s.get("percent") or 0),
+                        "phase": s.get("phase") or "download",
+                        "speed": s.get("speed") or "",
+                    }
+                    for s in snapshot[:6]
+                ],
+                download={
+                    "title": first.get("title") or "",
+                    "percent": float(first.get("percent") or 0),
+                    "phase": first.get("phase") or "download",
+                    "speed": first.get("speed") or "",
+                    "index": 1,
+                    "total": len(snapshot) + len(pending),
+                },
+                pending=pending,
+            )
+        except Exception:
+            pass
+
     def _max_parallel_video_downloads(self) -> int:
         """Gleichzeitige Video-Queue-Downloads (1–8), aus Einstellungen."""
         try:
@@ -8161,8 +8893,7 @@ class DeezerDownloaderGUI:
                 delay_ms = 500 if max_c > 1 and last_url and ('youtube.com' in last_url.lower() or 'youtu.be' in last_url.lower()) else 0
                 if delay_ms:
                     self.video_log("  Kurze Pause (YouTube, parallele Queue)…")
-                if remaining == 0:
-                    self.root.after(delay_ms, self._process_download_queue)
+                self.root.after(delay_ms, self._process_download_queue)
             self.root.after(0, _worker_finished)
 
     def _process_download_queue(self):
@@ -8208,6 +8939,9 @@ class DeezerDownloaderGUI:
                 self._video_batch_episode_current = 0
             if getattr(self, 'video_shutdown_after_queue_var', None) and self.video_shutdown_after_queue_var.get():
                 self.root.after(100, self._show_shutdown_after_downloads_dialog)
+            return
+
+        if getattr(self, '_video_queue_hold', False):
             return
 
         while True:
@@ -8596,6 +9330,8 @@ class DeezerDownloaderGUI:
                 item.update(current_opts)
         
         # Starte Queue-Verarbeitung
+        self._video_queue_hold = False
+        self.video_download_cancelled = False
         self.video_download_queue_processing = True
         self.video_log(f"\n{'='*60}")
         self.video_log(f"📋 Starte Queue-Download: {len(self.video_download_queue)} Downloads")
@@ -9808,7 +10544,13 @@ Historie-Einträge: {len(self.video_download_history)}
                             update_info['version'],
                         )
                         
-                        if install_success:
+                        if install_success and install_msg == "handoff":
+                            status_label.config(
+                                text="Das Programm schließt sich. Die neue Version startet danach von selbst."
+                            )
+                            self.root.update()
+                            self.root.after(1200, self._exit_for_windows_update)
+                        elif install_success:
                             status_label.config(text="✓ Update installiert! Starte Programm neu...")
                             self.root.update()
                             
@@ -9851,27 +10593,13 @@ Historie-Einträge: {len(self.video_download_history)}
         """
         try:
             if sys.platform == "win32":
-                # Windows: Ersetze die aktuelle .exe
-                current_exe = Path(sys.executable)
-                
-                # Prüfe ob wir in einer .exe sind
                 if not getattr(sys, 'frozen', False):
-                    # Normale Python-Umgebung - kann nicht automatisch installieren
                     return False, "Kein Windows-.exe-Build – automatische Installation nicht möglich."
-                
-                # Erstelle Backup der alten .exe
-                backup_path = current_exe.parent / f"{current_exe.stem}_backup_{get_version()}.exe"
-                if current_exe.exists():
-                    shutil.copy2(current_exe, backup_path)
-                
-                # Ersetze die .exe
-                shutil.copy2(update_file, current_exe)
-                
-                # Lösche Update-Datei aus Temp
-                if update_file:
-                    update_file.unlink(missing_ok=True)
-                
-                return True, ""
+                if update_file is None or not Path(update_file).is_file():
+                    return False, "Die Update-Datei fehlt."
+                # Die laufende .exe ist gesperrt. Ein Helfer wartet, bis das Programm zu ist,
+                # und startet dann den Installer.
+                return self._windows_handoff_update(Path(update_file))
             elif sys.platform == "linux":
                 if not UpdateChecker:
                     return False, "Updater nicht verfügbar."
@@ -9885,6 +10613,72 @@ Historie-Einträge: {len(self.video_download_history)}
             print(f"[ERROR] Fehler bei Update-Installation: {e}")
             return False, str(e)
     
+    def _is_inno_setup(self, path: Path) -> bool:
+        try:
+            size = path.stat().st_size
+            with open(path, "rb") as fh:
+                fh.seek(max(0, size - 512_000))
+                tail = fh.read()
+            return b"Inno Setup" in tail
+        except Exception:
+            return "setup" in path.name.lower()
+
+    def _windows_handoff_update(self, update_file: Path):
+        """Installer oder neue .exe erst starten, wenn dieses Programm beendet ist."""
+        pid = os.getpid()
+        setup = str(update_file)
+        is_setup = self._is_inno_setup(update_file)
+        bat = Path(tempfile.gettempdir()) / "ud_apply_update.cmd"
+        if is_setup:
+            install_lines = (
+                f'"{setup}" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS\r\n'
+                'set "APP=%LOCALAPPDATA%\\Programs\\Universal Downloader\\UniversalDownloader.exe"\r\n'
+                'if not exist "%APP%" set "APP=%ProgramFiles%\\Universal Downloader\\UniversalDownloader.exe"\r\n'
+                'if exist "%APP%" start "" "%APP%"\r\n'
+            )
+        else:
+            current = str(Path(sys.executable))
+            install_lines = (
+                f'copy /Y "{setup}" "{current}"\r\n'
+                f'if exist "{current}" start "" "{current}"\r\n'
+            )
+        bat.write_text(
+            "@echo off\r\n"
+            f":wait\r\n"
+            f'tasklist /FI "PID eq {pid}" | find "{pid}" >nul\r\n'
+            "if not errorlevel 1 (\r\n"
+            "  timeout /t 1 /nobreak >nul\r\n"
+            "  goto wait\r\n"
+            ")\r\n"
+            + install_lines
+            + f'del /F /Q "{setup}"\r\n'
+            'del /F /Q "%~f0"\r\n',
+            encoding="utf-8",
+        )
+        flags = 0
+        if hasattr(subprocess, "DETACHED_PROCESS"):
+            flags |= subprocess.DETACHED_PROCESS
+        if hasattr(subprocess, "CREATE_NEW_PROCESS_GROUP"):
+            flags |= subprocess.CREATE_NEW_PROCESS_GROUP
+        if hasattr(subprocess, "CREATE_NO_WINDOW"):
+            flags |= subprocess.CREATE_NO_WINDOW
+        subprocess.Popen(
+            ["cmd", "/c", "start", "", "/min", "cmd", "/c", str(bat)],
+            creationflags=flags,
+            close_fds=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return True, "handoff"
+
+    def _exit_for_windows_update(self):
+        try:
+            self.root.destroy()
+        except Exception:
+            pass
+        os._exit(0)
+
     def _restart_application(self, update_file: Path = None):
         """
         Startet die Anwendung neu nach einem Update oder nach Abhängigkeits-Installation
@@ -10827,7 +11621,7 @@ Copyright (c) 2025 Universal Downloader Contributors
         max_downloads_spin.pack(anchor=tk.W, pady=5)
         max_dl_help_lbl = ttk.Label(
             general_frame,
-            text="Mehrere URLs aus der Queue gleichzeitig. Bei YouTube: Rate-Limits möglich. Bei aktiver GPU-Beschleunigung wird sie pro parallelem Job automatisch ausgeschaltet (sonst fehlgeschlagene MP4-Konvertierung).",
+            text="Mehrere URLs aus der Queue gleichzeitig. Was darüber liegt, wartet in der Queue. Bei GPU-Beschleunigung laden die Dateien parallel und werden danach nacheinander umgewandelt. Ohne GPU wird auch parallel umgewandelt.",
             font=("Arial", 8),
             foreground="gray",
             wraplength=840,
@@ -11390,11 +12184,35 @@ def main():
     
     # Cleanup beim Schließen
     def on_closing():
-        app._save_window_geometry()  # Speichere Fenstergröße
+        if app._video_downloads_running():
+            app._save_window_geometry()
+            root.withdraw()
+            try:
+                import series_watch as _sw
+                _sw.desktop_notify(
+                    "Universal Downloader",
+                    "Fenster geschlossen. Der Download läuft in der Menüleiste weiter.",
+                )
+            except Exception:
+                pass
+            return
+        app._save_window_geometry()
         app._close_log_file()
         root.destroy()
-    
+
     root.protocol("WM_DELETE_WINDOW", on_closing)
+    if sys.platform == "darwin":
+        def _mac_reopen():
+            try:
+                root.deiconify()
+                root.lift()
+                root.focus_force()
+            except Exception:
+                pass
+        try:
+            root.createcommand("::tk::mac::ReopenApplication", _mac_reopen)
+        except Exception:
+            pass
     root.mainloop()
 
 

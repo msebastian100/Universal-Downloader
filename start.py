@@ -151,9 +151,12 @@ if __name__ == "__main__":
         # LSUIElement setzen, BEVOR irgendwer NSApplication.startet – sonst Dock-Icon.
         if sys.platform == "darwin":
             try:
-                from Foundation import NSBundle
+                import Foundation  # type: ignore[import-untyped]
 
-                info = NSBundle.mainBundle().infoDictionary()
+                ns_bundle = getattr(Foundation, "NSBundle", None)
+                if ns_bundle is None:
+                    raise RuntimeError("NSBundle fehlt")
+                info = ns_bundle.mainBundle().infoDictionary()
                 if info is not None:
                     info["LSUIElement"] = True
             except Exception:
@@ -184,26 +187,28 @@ if __name__ == "__main__":
                 _lock_handle = _f  # Halten, damit Lock bestehen bleibt
             except (IOError, OSError):
                 _f.close()
+                _old_pid = 0
                 try:
                     with open(_lock_file, "r") as _rf:
                         _old_pid = int(_rf.read().strip())
                     os.kill(_old_pid, 0)
                 except (ProcessLookupError, ValueError, OSError):
-                    pass
-                try:
-                    import subprocess
-                    subprocess.run(
-                        [
-                            "osascript",
-                            "-e",
-                            f'tell application "System Events" to set frontmost of '
-                            f"(first process whose unix id is {_old_pid}) to true",
-                        ],
-                        capture_output=True,
-                        timeout=2,
-                    )
-                except Exception:
-                    pass
+                    _old_pid = 0
+                if _old_pid:
+                    try:
+                        import subprocess
+                        subprocess.run(
+                            [
+                                "osascript",
+                                "-e",
+                                f'tell application "System Events" to set frontmost of '
+                                f"(first process whose unix id is {_old_pid}) to true",
+                            ],
+                            capture_output=True,
+                            timeout=2,
+                        )
+                    except Exception:
+                        pass
                 os._exit(0)
         except Exception:
             pass
@@ -212,16 +217,20 @@ if __name__ == "__main__":
     from datetime import datetime
     
     # Plattform-spezifische Imports für Lock-Mechanismus
+    msvcrt = None
+    fcntl = None
     if sys.platform == "win32":
         try:
-            import msvcrt  # Für Windows
+            import msvcrt as _msvcrt
+            msvcrt = _msvcrt
         except ImportError:
-            msvcrt = None
+            pass
     else:
         try:
-            import fcntl  # Für Unix/Linux/macOS
+            import fcntl as _fcntl
+            fcntl = _fcntl
         except ImportError:
-            fcntl = None
+            pass
     
     # Single-Instance: Fester Pfad im Benutzerverzeichnis (unter macOS/Programme sonst oft zweite Instanz)
     lock_file = Path.home() / ".universal_downloader.lock"
@@ -232,6 +241,8 @@ if __name__ == "__main__":
         global lock_file_handle
         try:
             if sys.platform == "win32":
+                if msvcrt is None:
+                    return True
                 # Windows: Verwende msvcrt
                 lock_file_handle = open(lock_file, 'w')
                 try:
@@ -245,11 +256,16 @@ if __name__ == "__main__":
                     lock_file_handle.close()
                     return False
             else:
-                # Unix/Linux/macOS: Verwende fcntl
-                lock_file_handle = open(lock_file, 'w')
+                if fcntl is None:
+                    return True
+                # Unix/Linux/macOS: Verwende fcntl.
+                # Nicht mit "w" öffnen: das leert die PID, bevor die Sperre greift,
+                # und eine zweite Instanz startet dann doch ein Fenster.
+                lock_file_handle = open(lock_file, 'a+')
                 try:
                     fcntl.flock(lock_file_handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-                    # Schreibe PID in Lock-Datei
+                    lock_file_handle.seek(0)
+                    lock_file_handle.truncate()
                     lock_file_handle.write(str(os.getpid()))
                     lock_file_handle.flush()
                     return True
@@ -340,6 +356,11 @@ if __name__ == "__main__":
                         # Prozess läuft noch - beende diese Instanz
                         print(f"[INFO] Eine andere Instanz läuft bereits (PID: {old_pid})")
                         print("[INFO] Diese Instanz wird beendet...")
+                        try:
+                            import series_watch as _sw
+                            _sw._request_show_main_window()
+                        except Exception:
+                            pass
                         if sys.platform == "darwin":
                             # macOS: Laufende Instanz in den Vordergrund holen, damit nur ein Fenster sichtbar ist
                             try:

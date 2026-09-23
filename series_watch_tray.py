@@ -132,9 +132,18 @@ def _pid_running(pid: int) -> bool:
             ctypes.windll.kernel32.CloseHandle(handle)
     try:
         os.kill(pid, 0)
-        return True
     except OSError:
         return False
+    if sys.platform.startswith("linux"):
+        try:
+            with open(f"/proc/{int(pid)}/stat", encoding="utf-8", errors="ignore") as fh:
+                stat = fh.read()
+            state = stat[stat.rfind(")") + 2 :].split(None, 1)[0]
+            if state == "Z":
+                return False
+        except Exception:
+            pass
+    return True
 
 
 def try_become_tray_instance(base: Path) -> bool:
@@ -1195,6 +1204,8 @@ class LinuxStatusIcon:
             _log(f"Linux-Tray: AppIndicator ({icon_path or icon_name})")
 
         self._loop = GLib.MainLoop()
+        # Auf dem GTK-Takt, nicht aus dem Prüf-Thread: sonst bleibt der Menükopf stehen.
+        GLib.timeout_add(400, self._progress_tick)
         return True
 
     def _on_gtk_popup(self, icon, button, time) -> None:
@@ -1218,10 +1229,7 @@ class LinuxStatusIcon:
                 btn = int(args[1])
             except (TypeError, ValueError):
                 btn = 1
-        if btn == 1:
-            self.app.open_main()
-        else:
-            self._popup_menu()
+        self._popup_menu()
 
     def _popup_menu(self) -> None:
         menu = self._menu
@@ -1236,21 +1244,138 @@ class LinuxStatusIcon:
             except Exception as e:
                 _log(f"Linux-Tray Menü: {e}")
 
+    def _safe_call(self, fn, *args, **kwargs) -> None:
+        """Menü-Aktion erst nach dem Schließen ausführen, damit das Icon nicht abstürzt."""
+        self._menu_hold_until = time.time() + 0.8
+        try:
+            fn(*args, **kwargs)
+        except Exception as e:
+            _log(f"Menü-Aktion: {e}")
+
     def _rebuild_menu(self) -> None:
         Gtk = self._Gtk
         if Gtk is None:
             return
         menu = Gtk.Menu()
         rt = series_watch.read_runtime_status(self.app.base)
-        tip = self.app._tooltip(rt)
-        head = Gtk.MenuItem.new_with_label(tip[:80] or "Serien-Wächter")
-        head.set_sensitive(False)
-        menu.append(head)
+        phase = rt.get("phase") or "idle"
+        self._shown_phase = phase
+        self._progress_rows = []
+        downloads = rt.get("downloads") if isinstance(rt.get("downloads"), list) else []
+        one = rt.get("download") if isinstance(rt.get("download"), dict) else {}
+        if not downloads and one:
+            downloads = [one]
+        pending = rt.get("pending") if isinstance(rt.get("pending"), list) else []
+        if phase == "downloading" and downloads:
+            cancel = Gtk.MenuItem.new_with_label("⏹ Download abbrechen")
+            cancel.connect("activate", lambda *_: self._safe_call(self.app.cancel_download))
+            menu.append(cancel)
+            for slot in downloads[:4]:
+                if not isinstance(slot, dict):
+                    continue
+                title = _truncate(slot.get("title") or "Download", 36)
+                phase_slot = slot.get("phase") or "download"
+                pct = float(slot.get("percent") or 0)
+                if phase_slot == "convert":
+                    title_text = f"⟳ {title}"
+                    bar_text = f"   {_progress_bar(pct)}  konvertiert"
+                elif phase_slot == "convert_wait":
+                    title_text = f"⏳ {title}"
+                    bar_text = "   Download fertig, wartet auf Konvertierung"
+                elif phase_slot == "exists":
+                    title_text = f"✓ {title}"
+                    bar_text = "   bereits vorhanden"
+                else:
+                    title_text = f"⬇ {title}"
+                    bar_text = f"   {_progress_bar(pct)}  lädt"
+                title_item = Gtk.MenuItem.new_with_label(title_text)
+                title_item.set_sensitive(False)
+                bar_item = Gtk.MenuItem.new_with_label(bar_text)
+                bar_item.set_sensitive(False)
+                menu.append(title_item)
+                menu.append(bar_item)
+                self._progress_rows.append({"title": title_item, "bar": bar_item})
+            if pending:
+                menu.append(Gtk.SeparatorMenuItem())
+                wait = Gtk.MenuItem.new_with_label(f"Queue ({len(pending)} wartend)")
+                wait.set_sensitive(False)
+                menu.append(wait)
+        elif phase == "checking":
+            head = Gtk.MenuItem.new_with_label("Prüfe Serien…")
+            head.set_sensitive(False)
+            menu.append(head)
+        else:
+            tip = self.app._tooltip(rt)
+            head = Gtk.MenuItem.new_with_label(tip[:80] or "Serien-Wächter")
+            head.set_sensitive(False)
+            menu.append(head)
+            self._head_item = head
         menu.append(Gtk.SeparatorMenuItem())
-        if (rt.get("phase") or "") == "downloading":
-            item = Gtk.MenuItem.new_with_label("Download abbrechen")
-            item.connect("activate", lambda *_: self.app.cancel_download())
-            menu.append(item)
+        try:
+            state = series_watch.load_state(self.app.base)
+            groups = series_watch.available_groups(state)
+        except Exception:
+            groups = []
+        preview_limit = 8
+        if groups:
+            for group in groups:
+                eps = [ep for ep in (group.get("episodes") or []) if isinstance(ep, dict)]
+                if not eps:
+                    continue
+                name = _truncate(group.get("name") or "Serie", 40)
+                title = Gtk.MenuItem.new_with_label(f"{name} ({len(eps)})")
+                title.set_sensitive(False)
+                menu.append(title)
+                for ep in eps[:preview_limit]:
+                    eid = str(ep.get("id") or "")
+                    label = _truncate(ep.get("title") or "Folge", 48)
+                    item = Gtk.MenuItem.new_with_label(f"▶ {label}")
+                    item.connect(
+                        "activate",
+                        lambda _w, episode_id=eid: self._safe_call(
+                            self.app._start_found_download, only_id=episode_id
+                        ),
+                    )
+                    menu.append(item)
+                rest = len(eps) - preview_limit
+                if rest > 0:
+                    more = Gtk.MenuItem.new_with_label(f"  … +{rest} weitere")
+                    more.set_sensitive(False)
+                    menu.append(more)
+                series_url = group.get("series_url") or ""
+                pick = Gtk.MenuItem.new_with_label("Folgenliste öffnen…")
+                pick.connect(
+                    "activate",
+                    lambda _w, surl=series_url: self._safe_call(self.app.open_episode_picker, surl),
+                )
+                menu.append(pick)
+            menu.append(Gtk.SeparatorMenuItem())
+        try:
+            watched = [
+                it for it in (series_watch.load_state(self.app.base).get("items") or [])
+                if isinstance(it, dict)
+            ]
+        except Exception:
+            watched = []
+        if watched:
+            cap = Gtk.MenuItem.new_with_label(f"Überwacht: {len(watched)} Serie(n)")
+            cap.set_sensitive(False)
+            menu.append(cap)
+            settings = self.app._settings()
+            for it in watched[:8]:
+                nm = _truncate(
+                    (it.get("display_name") or it.get("playlist_title") or it.get("url") or "?"),
+                    40,
+                )
+                if "auto_download" in it:
+                    ad = " · Auto" if it.get("auto_download") else ""
+                elif settings.get("series_watch_auto_download"):
+                    ad = " · Auto"
+                else:
+                    ad = ""
+                row = Gtk.MenuItem.new_with_label(f"  ○ {nm}{ad}")
+                row.set_sensitive(False)
+                menu.append(row)
             menu.append(Gtk.SeparatorMenuItem())
         rows = (
             ("Jetzt prüfen", self.app.do_check_now),
@@ -1260,11 +1385,11 @@ class LinuxStatusIcon:
         )
         for label, cb in rows:
             item = Gtk.MenuItem.new_with_label(label)
-            item.connect("activate", lambda _w, fn=cb: fn())
+            item.connect("activate", lambda _w, fn=cb: self._safe_call(fn))
             menu.append(item)
         menu.append(Gtk.SeparatorMenuItem())
         quit_item = Gtk.MenuItem.new_with_label("Beenden")
-        quit_item.connect("activate", lambda *_: self.app.quit_app())
+        quit_item.connect("activate", lambda *_: self._safe_call(self.app.quit_app))
         menu.append(quit_item)
         menu.show_all()
         self._menu = menu
@@ -1283,13 +1408,94 @@ class LinuxStatusIcon:
             except Exception as e:
                 _log(f"AppIndicator set_menu: {e}")
 
+    def _menu_open(self) -> bool:
+        menu = self._menu
+        if menu is None:
+            return False
+        try:
+            return bool(menu.get_mapped())
+        except Exception:
+            return False
+
+    def _apply_download_rows(self, rt: Dict[str, Any]) -> bool:
+        """Aktualisiert Titel und Balken im offenen Menü. False, wenn das Menü neu gebaut werden muss."""
+        rows = getattr(self, "_progress_rows", None) or []
+        downloads = rt.get("downloads") if isinstance(rt.get("downloads"), list) else []
+        one = rt.get("download") if isinstance(rt.get("download"), dict) else {}
+        if not downloads and one:
+            downloads = [one]
+        phase = rt.get("phase") or "idle"
+        if phase != "downloading" or len(rows) != len(downloads[:4]):
+            return False
+        for row, slot in zip(rows, downloads[:4]):
+            if not isinstance(slot, dict):
+                continue
+            title = _truncate(slot.get("title") or "Download", 36)
+            pct = float(slot.get("percent") or 0)
+            phase_slot = slot.get("phase") or "download"
+            if phase_slot == "convert":
+                title_text = f"⟳ {title}"
+                bar_text = f"   {_progress_bar(pct)}  konvertiert"
+            elif phase_slot == "convert_wait":
+                title_text = f"⏳ {title}"
+                bar_text = "   Download fertig, wartet auf Konvertierung"
+            elif phase_slot == "exists":
+                title_text = f"✓ {title}"
+                bar_text = "   bereits vorhanden"
+            else:
+                title_text = f"⬇ {title}"
+                bar_text = f"   {_progress_bar(pct)}  lädt"
+            try:
+                if row["title"].get_label() != title_text:
+                    row["title"].set_label(title_text)
+                if row["bar"].get_label() != bar_text:
+                    row["bar"].set_label(bar_text)
+            except Exception:
+                return False
+        return True
+
+    def _progress_tick(self) -> bool:
+        """Schreibt den laufenden Prozentstand in den Balken, ohne das Menü neu zu bauen."""
+        try:
+            rt = series_watch.read_runtime_status(self.app.base)
+            tip = self.app._tooltip(rt)[:80] or "Serien-Wächter"
+            phase = rt.get("phase") or "idle"
+            if self._xapp is not None:
+                try:
+                    self._xapp.set_tooltip_text(tip)
+                except Exception:
+                    pass
+            if self._apply_download_rows(rt):
+                return True
+            if phase != getattr(self, "_shown_phase", None) and not self._menu_open():
+                self._rebuild_menu()
+        except Exception as e:
+            _log(f"Linux-Tray Fortschritt: {e}")
+        return True
+
     def refresh(self) -> bool:
         try:
-            tip = self.app._tooltip()
+            hold = float(getattr(self, "_menu_hold_until", 0) or 0)
+            mapped = False
+            menu = self._menu
+            if menu is not None:
+                try:
+                    mapped = bool(menu.get_mapped())
+                except Exception:
+                    mapped = False
+            if mapped or time.time() < hold:
+                glib = self._GLib
+                if glib is not None:
+                    glib.timeout_add(300, self.refresh)
+                return False
+            rt = series_watch.read_runtime_status(self.app.base)
+            tip = self.app._tooltip(rt)
             if self._gtk_status is not None:
                 self._gtk_status.set_tooltip_text(tip)
             if self._xapp is not None:
                 self._xapp.set_tooltip_text(tip)
+            if self._apply_download_rows(rt):
+                return False
             self._rebuild_menu()
         except Exception as e:
             _log(f"Linux-Tray Refresh: {e}")
@@ -1448,17 +1654,19 @@ def remove_login_autostart() -> None:
         _log(f"Autostart entfernen: {e}")
 
 
-def run_check(base: Path, settings: Dict[str, Any]) -> List[Dict[str, Any]]:
+def run_check(base: Path, settings: Dict[str, Any], report_unowned: bool = False) -> List[Dict[str, Any]]:
     lock = series_watch.try_acquire_check_lock(base, "tray")
     if lock is None:
         _log("Prüfung übersprungen (Lock belegt).")
-        return []
+        return None
     try:
         series_watch.write_runtime_status(base, phase="checking")
         def on_err(name: str, err: str) -> None:
             _log(f"Fehler bei {name}: {err}")
 
-        _state, notifications = series_watch.check_all(base, on_item_error=on_err)
+        _state, notifications = series_watch.check_all(
+            base, on_item_error=on_err, report_unowned=report_unowned
+        )
         return notifications or []
     except Exception as e:
         _log(f"Prüfung fehlgeschlagen: {e}")
@@ -1514,7 +1722,8 @@ class TrayApp:
             if self._linux_status is not None:
                 glib = self._linux_status._GLib
                 if glib is not None:
-                    glib.idle_add(self._linux_status.refresh)
+                    # Nicht im selben Takt wie der Menüklick: sonst wird das Icon freigegeben.
+                    glib.timeout_add(500, self._linux_status.refresh)
                 else:
                     self._linux_status.refresh()
                 return
@@ -1523,7 +1732,11 @@ class TrayApp:
             phase = rt.get("phase") or "idle"
             dl = rt.get("download") if isinstance(rt.get("download"), dict) else {}
             pct = float(dl.get("percent") or 0)
-            has_new = bool(self._last_notifications) or bool(rt.get("new_alerts"))
+            try:
+                n_avail = series_watch.count_available_episodes(series_watch.load_state(self.base))
+            except Exception:
+                n_avail = 0
+            has_new = n_avail > 0 or bool(self._last_notifications) or bool(rt.get("new_alerts"))
             if phase == "downloading":
                 mode = "downloading"
             elif has_new:
@@ -1543,17 +1756,46 @@ class TrayApp:
         rt = rt or series_watch.read_runtime_status(self.base)
         phase = rt.get("phase") or "idle"
         if phase == "downloading":
-            dl = rt.get("download") or {}
-            title = _truncate(dl.get("title") or "Download", 36)
-            pct = float(dl.get("percent") or 0)
-            idx = dl.get("index") or 0
-            total = dl.get("total") or 0
-            return f"Serien-Wächter: {pct:.0f}% · {idx}/{total} · {title}"
+            slots = rt.get("downloads") if isinstance(rt.get("downloads"), list) else []
+            if not slots and isinstance(rt.get("download"), dict):
+                slots = [rt.get("download")]
+            bits = []
+            for slot in slots[:3]:
+                if not isinstance(slot, dict):
+                    continue
+                name = _truncate(slot.get("title") or "Folge", 28)
+                phase_slot = slot.get("phase") or "download"
+                if phase_slot == "convert":
+                    bits.append(f"{name} konv {float(slot.get('percent') or 0):.0f}%")
+                elif phase_slot == "convert_wait":
+                    bits.append(f"{name} wartet")
+                elif phase_slot == "exists":
+                    bits.append(f"{name} vorhanden")
+                else:
+                    speed = str(slot.get("speed") or "").strip()
+                    extra = f" · {speed}" if speed else ""
+                    bits.append(f"{name} {float(slot.get('percent') or 0):.0f}%{extra}")
+            extra = " · ".join(bits) if bits else "…"
+            return f"Serien-Wächter: {extra}"
         if phase == "checking":
             return "Serien-Wächter: prüft…"
+        try:
+            n_avail = series_watch.count_available_episodes(series_watch.load_state(self.base))
+        except Exception:
+            n_avail = 0
+        if n_avail:
+            return f"Serien-Wächter: {n_avail} verfügbare Folge(n)"
         if self._last_notifications:
             n = sum(len(x.get("new_episodes") or []) for x in self._last_notifications)
-            return f"Serien-Wächter: {n} neue Folge(n)"
+            gap = all(x.get("gap") for x in self._last_notifications)
+            word = "fehlende" if gap else "neue"
+            return f"Serien-Wächter: {n} {word} Folge(n)"
+        alerts = rt.get("new_alerts") if isinstance(rt.get("new_alerts"), list) else []
+        if alerts:
+            n = sum(int(a.get("count") or 0) for a in alerts if isinstance(a, dict))
+            gap = all(a.get("gap") for a in alerts if isinstance(a, dict))
+            word = "fehlende" if gap else "neue"
+            return f"Serien-Wächter: {n} {word} Folge(n)"
         return "Serien-Wächter"
 
     def _open_folder(self, folder: Path) -> None:
@@ -1575,6 +1817,159 @@ class TrayApp:
     def _open_music_folder(self, *_args) -> None:
         settings = self._settings()
         self._open_folder(Path(settings.get("default_music_path") or (self.base / "Musik")))
+
+    def open_episode_picker(self, series_url: str = "", *_args) -> None:
+        """Öffnet im Hauptprogramm die auswählbare Folgenliste."""
+        try:
+            flag = self.base / "series_watch_pick_episodes"
+            flag.write_text((series_url or "*").strip() or "*", encoding="utf-8")
+        except Exception as e:
+            _log(f"Folgenliste: {e}")
+            return
+        self.open_main()
+
+    def _found_episode_dicts(self, only_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Verfügbare Folgen als Download-Liste."""
+        out: List[Dict[str, Any]] = []
+        seen = set()
+        try:
+            state = series_watch.load_state(self.base)
+        except Exception:
+            state = {}
+
+        def add_ep(ep: Dict[str, Any], series_name: str, series_url: str) -> None:
+            eid = str(ep.get("id") or "")
+            if only_id and eid != str(only_id):
+                return
+            if eid and eid in series_watch.have_ids_for_series(state, series_url, series_name):
+                return
+            url = (ep.get("url") or "").strip()
+            if not url and eid:
+                for it in (state.get("items") or []):
+                    if not isinstance(it, dict):
+                        continue
+                    meta = (it.get("episodes") or {}).get(eid)
+                    if isinstance(meta, dict) and (meta.get("url") or "").strip():
+                        url = meta["url"].strip()
+                        series_name = series_name or (it.get("display_name") or it.get("playlist_title") or "")
+                        series_url = series_url or (it.get("url") or "")
+                        break
+            if not url or url in seen:
+                return
+            seen.add(url)
+            kind = "audio" if series_watch.is_audio_watch_url(series_url or url) else "video"
+            fmt = series_watch.download_format_for_series(state, series_url, series_name)
+            built = series_watch.episodes_for_video_download(
+                [{"id": eid, "title": ep.get("title") or "", "url": url}],
+                series_name,
+                kind=kind,
+                series_url=series_url,
+                output_format=fmt,
+            )
+            out.extend(built)
+
+        try:
+            groups = series_watch.available_groups(state)
+        except Exception:
+            groups = []
+        if groups:
+            for group in groups:
+                for ep in group.get("episodes") or []:
+                    if isinstance(ep, dict):
+                        add_ep(ep, group.get("name") or "", group.get("series_url") or "")
+            return out
+
+        if self._last_notifications:
+            for n in self._last_notifications:
+                if not isinstance(n, dict):
+                    continue
+                for ep in n.get("new_episodes") or []:
+                    if isinstance(ep, dict):
+                        add_ep(ep, n.get("watch_name") or "", n.get("series_url") or "")
+            return out
+
+        rt = series_watch.read_runtime_status(self.base)
+        for a in rt.get("new_alerts") or []:
+            if not isinstance(a, dict):
+                continue
+            for ep in a.get("episodes") or []:
+                if isinstance(ep, dict):
+                    add_ep(ep, a.get("name") or "", a.get("series_url") or "")
+        return out
+
+    def _prune_downloaded_alerts(self) -> bool:
+        """Hinweise auf Folgen entfernen, die in derselben Serie schon als vorhanden gelten."""
+        changed = False
+        try:
+            state = series_watch.load_state(self.base)
+        except Exception:
+            state = {}
+        if self._last_notifications:
+            kept = []
+            for n in self._last_notifications:
+                had = series_watch.have_ids_for_series(
+                    state, n.get("series_url") or "", n.get("watch_name") or ""
+                )
+                eps = [
+                    ep for ep in (n.get("new_episodes") or [])
+                    if isinstance(ep, dict) and str(ep.get("id") or "") not in had
+                ]
+                if len(eps) != len(n.get("new_episodes") or []):
+                    changed = True
+                if eps:
+                    row = dict(n)
+                    row["new_episodes"] = eps
+                    kept.append(row)
+                else:
+                    changed = True
+            self._last_notifications = kept
+        try:
+            if series_watch.prune_owned_alerts(self.base):
+                changed = True
+        except Exception:
+            pass
+        return changed
+
+    def _start_found_download(self, only_id: Optional[str] = None, *_args) -> None:
+        """Legt die Folgen in die Video-Queue. Das Hauptprogramm startet so viele parallel, wie eingestellt ist."""
+        episodes = self._found_episode_dicts(only_id=only_id)
+        if not episodes:
+            series_watch.desktop_notify("Serien-Wächter", "Keine ladbare Folge.")
+            return
+        n = series_watch.enqueue_gui_video_queue(self.base, episodes)
+        if not n:
+            series_watch.desktop_notify("Serien-Wächter", "Nichts für die Queue.")
+            return
+        settings = self._settings()
+        max_c = series_watch._max_parallel_from_settings(settings)
+        running = min(n, max_c)
+        waiting = n - running
+        series_watch.write_runtime_status(self.base, cancel_requested=False)
+        if waiting:
+            msg = (
+                f"{n} Folge(n): {running} starten, {waiting} warten in der Video-Queue "
+                f"(Einstellung: {max_c} gleichzeitig)."
+            )
+        else:
+            msg = f"{n} Folge(n) starten, bis zu {max_c} gleichzeitig."
+        series_watch.desktop_notify("Serien-Wächter", msg)
+        series_watch.open_main_app()
+        self._refresh_icon_and_menu()
+
+    def download_all_found(self, *_args) -> None:
+        self._start_found_download(only_id=None)
+
+    def enqueue_found(self, only_id: Optional[str] = None, *_args) -> None:
+        episodes = self._found_episode_dicts(only_id=only_id)
+        n = series_watch.enqueue_gui_video_queue(self.base, episodes)
+        if n:
+            series_watch.desktop_notify(
+                "Serien-Wächter",
+                f"{n} Folge(n) in der Video-Queue. Das Hauptprogramm startet sie nach der Einstellung für gleichzeitige Downloads.",
+            )
+            self.open_main()
+        else:
+            series_watch.desktop_notify("Serien-Wächter", "Nichts für die Queue.")
 
     def open_main(self, *_args) -> None:
         ok = series_watch.open_main_app()
@@ -1608,11 +2003,23 @@ class TrayApp:
                 _log("Keine überwachten Serien.")
                 series_watch.desktop_notify("Serien-Wächter", "Keine Serien eingetragen.")
                 return
-            notifications = run_check(self.base, settings)
+            notifications = run_check(self.base, settings, report_unowned=True)
+            if notifications is None:
+                return
             self._last_run = time.time()
             self._handle_notifications(settings, notifications)
             if not notifications:
-                series_watch.desktop_notify("Serien-Wächter", "Keine neuen Folgen.")
+                try:
+                    n_avail = series_watch.count_available_episodes(series_watch.load_state(self.base))
+                except Exception:
+                    n_avail = 0
+                if n_avail:
+                    series_watch.desktop_notify(
+                        "Serien-Wächter",
+                        f"Keine neuen Folgen. {n_avail} sind noch offen — im Menü auswählen.",
+                    )
+                else:
+                    series_watch.desktop_notify("Serien-Wächter", "Keine fehlenden Folgen.")
             self._refresh_icon_and_menu()
 
         self._check_thread = threading.Thread(target=work, daemon=True)
@@ -1621,7 +2028,11 @@ class TrayApp:
     def _handle_notifications(self, settings: Dict[str, Any], notifications: List[Dict[str, Any]]) -> None:
         if not notifications:
             _log("Keine neuen Folgen.")
-            series_watch.write_runtime_status(self.base, phase="idle", new_alerts=[])
+            rt_now = series_watch.read_runtime_status(self.base)
+            if (rt_now.get("phase") or "") == "downloading":
+                series_watch.write_runtime_status(self.base, new_alerts=[])
+            else:
+                series_watch.write_runtime_status(self.base, phase="idle", new_alerts=[])
             return
 
         self._last_notifications = list(notifications)
@@ -1629,14 +2040,23 @@ class TrayApp:
         for n in notifications:
             alerts.append({
                 "name": n.get("watch_name") or "",
+                "series_url": n.get("series_url") or "",
+                "gap": bool(n.get("gap")),
                 "count": len(n.get("new_episodes") or []),
                 "is_new_season": bool(n.get("is_new_season")),
                 "episodes": [
-                    {"title": (ep.get("title") or "")[:80], "id": ep.get("id")}
+                    {
+                        "title": (ep.get("title") or "")[:80],
+                        "id": ep.get("id"),
+                        "url": ep.get("url") or "",
+                    }
                     for ep in (n.get("new_episodes") or [])[:12]
                 ],
             })
-        series_watch.write_runtime_status(self.base, new_alerts=alerts, phase="idle")
+        series_watch.write_runtime_status(self.base, new_alerts=alerts)
+        rt_now = series_watch.read_runtime_status(self.base)
+        if (rt_now.get("phase") or "") != "downloading":
+            series_watch.write_runtime_status(self.base, phase="idle")
         self._refresh_icon_and_menu()
 
         auto_eps = series_watch.collect_auto_download_episodes(self.base, notifications, settings)
@@ -1650,7 +2070,7 @@ class TrayApp:
             def on_prog(percent, status_line, meta):
                 self._refresh_icon_and_menu()
 
-            downloaded_ok, downloaded_fail = series_watch.download_episodes_headless(
+            downloaded_ok, downloaded_fail, downloaded_abort = series_watch.download_episodes_headless(
                 self.base,
                 auto_eps,
                 settings,
@@ -1682,12 +2102,19 @@ class TrayApp:
 
     def _loop(self) -> None:
         time.sleep(8)
+        last_phase = ""
         while not self._stop.is_set():
             settings = self._settings()
-            # Icon/Menü bei laufendem Download aktualisieren
             rt = series_watch.read_runtime_status(self.base)
-            if (rt.get("phase") or "") == "downloading":
+            phase = rt.get("phase") or "idle"
+            pruned = False
+            try:
+                pruned = self._prune_downloaded_alerts()
+            except Exception:
+                pass
+            if phase == "downloading" or phase != last_phase or pruned:
                 self._refresh_icon_and_menu()
+            last_phase = phase
 
             if settings.get("series_watch_enabled", False):
                 st = series_watch.load_state(self.base)
@@ -1698,13 +2125,15 @@ class TrayApp:
                     if not (self._check_thread and self._check_thread.is_alive()):
                         def work():
                             notifications = run_check(self.base, settings)
+                            if notifications is None:
+                                return
                             self._last_run = time.time()
                             self._handle_notifications(settings, notifications)
                             self._refresh_icon_and_menu()
 
                         self._check_thread = threading.Thread(target=work, daemon=True)
                         self._check_thread.start()
-            self._stop.wait(5 if (rt.get("phase") == "downloading") else 30)
+            self._stop.wait(0.4 if (rt.get("phase") == "downloading") else 1)
 
     def quit_app(self, icon=None, *_args) -> None:
         self._stop.set()
@@ -1750,33 +2179,91 @@ class TrayApp:
             alerts = [
                 {
                     "name": n.get("watch_name") or "",
+                    "series_url": n.get("series_url") or "",
+                    "gap": bool(n.get("gap")),
                     "count": len(n.get("new_episodes") or []),
                     "is_new_season": bool(n.get("is_new_season")),
                     "episodes": [
-                        {"title": (ep.get("title") or "")[:80]}
+                        {
+                            "title": (ep.get("title") or "")[:80],
+                            "id": ep.get("id"),
+                            "url": ep.get("url") or "",
+                        }
                         for ep in (n.get("new_episodes") or [])[:8]
                     ],
                 }
                 for n in self._last_notifications
             ]
 
+        try:
+            state = series_watch.load_state(self.base)
+        except Exception:
+            state = {}
+        try:
+            groups = series_watch.available_groups(state)
+        except Exception:
+            groups = []
+        preview_limit = 8
+
+        flat_eps = []
+        if groups:
+            for group in groups:
+                for ep in group.get("episodes") or []:
+                    if isinstance(ep, dict):
+                        flat_eps.append(ep)
+        else:
+            filtered = []
+            for a in alerts:
+                if not isinstance(a, dict):
+                    continue
+                had = series_watch.have_ids_for_series(state, a.get("series_url") or "", a.get("name") or "")
+                eps = [
+                    ep for ep in (a.get("episodes") or [])
+                    if isinstance(ep, dict) and str(ep.get("id") or "") not in had
+                ]
+                if not eps:
+                    continue
+                row = dict(a)
+                row["episodes"] = eps
+                row["count"] = len(eps)
+                filtered.append(row)
+            alerts = filtered
+            for a in alerts:
+                for ep in a.get("episodes") or []:
+                    if isinstance(ep, dict):
+                        flat_eps.append(ep)
+        n_found = len(flat_eps)
+        found_word = "verfügbare" if groups else "neue"
+
         entries = []
 
         # Statuszeile
-        if phase == "downloading" and dl:
-            title = _truncate(dl.get("title") or "Download", 40)
-            series = _truncate(dl.get("series") or "", 36)
-            pct = float(dl.get("percent") or 0)
-            idx = dl.get("index") or 0
-            total = dl.get("total") or 0
-            entries.append(Item(f"⬇ {idx}/{total}: {title}", None, enabled=False))
-            if series:
-                entries.append(Item(f"   Serie: {series}", None, enabled=False))
-            entries.append(Item(f"   {_progress_bar(pct)}", None, enabled=False))
+        downloads = rt.get("downloads") if isinstance(rt.get("downloads"), list) else []
+        if phase == "downloading" and (downloads or dl):
+            if not downloads and dl:
+                downloads = [dl]
             entries.append(Item("⏹ Download abbrechen", self.cancel_download))
+            for slot in downloads[:4]:
+                if not isinstance(slot, dict):
+                    continue
+                title = _truncate(slot.get("title") or "Download", 36)
+                phase_slot = slot.get("phase") or "download"
+                pct = float(slot.get("percent") or 0)
+                if phase_slot == "convert":
+                    entries.append(Item(f"⟳ {title}", None, enabled=False))
+                    entries.append(Item(f"   {_progress_bar(pct)}  konvertiert", None, enabled=False))
+                elif phase_slot == "convert_wait":
+                    entries.append(Item(f"⏳ {title}", None, enabled=False))
+                    entries.append(Item("   Download fertig, wartet auf Konvertierung", None, enabled=False))
+                elif phase_slot == "exists":
+                    entries.append(Item(f"✓ {title}", None, enabled=False))
+                    entries.append(Item("   bereits vorhanden", None, enabled=False))
+                else:
+                    entries.append(Item(f"⬇ {title}", None, enabled=False))
+                    entries.append(Item(f"   {_progress_bar(pct)}  lädt", None, enabled=False))
             if pending:
                 entries.append(pystray.Menu.SEPARATOR)
-                entries.append(Item(f"Warteschlange ({len(pending)})", None, enabled=False))
+                entries.append(Item(f"Queue ({len(pending)} wartend)", None, enabled=False))
                 for p in pending[:6]:
                     if not isinstance(p, dict):
                         continue
@@ -1786,26 +2273,53 @@ class TrayApp:
                     entries.append(Item(f"  … +{len(pending) - 6} weitere", None, enabled=False))
         elif phase == "checking":
             entries.append(Item("Prüfe Serien…", None, enabled=False))
+        elif n_found:
+            entries.append(Item(f"{n_found} {found_word} Folge(n)", None, enabled=False))
         else:
             entries.append(Item("Bereit", None, enabled=False))
 
-        # Neue Folgen
+        # Verfügbare Folgen: ein paar direkt, der Rest über die Folgenliste
         entries.append(pystray.Menu.SEPARATOR)
-        if alerts:
-            entries.append(Item(f"Neue Folgen ({sum(int(a.get('count') or 0) for a in alerts if isinstance(a, dict))})", None, enabled=False))
-            for a in alerts[:8]:
-                if not isinstance(a, dict):
+        if groups:
+            if 1 < n_found <= preview_limit:
+                entries.append(Item(f"▶ Alle {n_found} jetzt laden", self.download_all_found))
+            for group in groups:
+                eps = [ep for ep in (group.get("episodes") or []) if isinstance(ep, dict)]
+                if not eps:
                     continue
-                name = _truncate(a.get("name") or "Serie", 32)
-                cnt = int(a.get("count") or 0)
-                flag = "🆕 Staffel · " if a.get("is_new_season") else ""
-                entries.append(Item(f"  {flag}{name} ({cnt})", None, enabled=False))
-                for ep in (a.get("episodes") or [])[:3]:
-                    if isinstance(ep, dict):
-                        entries.append(Item(f"     · {_truncate(ep.get('title') or '', 40)}", None, enabled=False))
+                name = _truncate(group.get("name") or "Serie", 34)
+                entries.append(Item(f"{name} ({len(eps)})", None, enabled=False))
+                for ep in eps[:preview_limit]:
+                    eid = str(ep.get("id") or "")
+                    label = _truncate(ep.get("title") or "Folge", 40)
+                    entries.append(Item(
+                        f"▶ {label}",
+                        lambda *_a, episode_id=eid: self._start_found_download(only_id=episode_id),
+                    ))
+                rest = len(eps) - preview_limit
+                if rest > 0:
+                    entries.append(Item(f"  … +{rest} weitere", None, enabled=False))
+                series_url = group.get("series_url") or ""
+                entries.append(Item(
+                    "Folgenliste öffnen…",
+                    lambda *_a, surl=series_url: self.open_episode_picker(surl),
+                ))
+        elif flat_eps:
+            if n_found > 1 and n_found <= preview_limit:
+                entries.append(Item(f"▶ Alle {n_found} jetzt laden", self.download_all_found))
+            for ep in flat_eps[:preview_limit]:
+                eid = str(ep.get("id") or "")
+                label = _truncate(ep.get("title") or "Folge", 42)
+                entries.append(Item(
+                    f"▶ {label}",
+                    lambda *_a, episode_id=eid: self._start_found_download(only_id=episode_id),
+                ))
+            if n_found > preview_limit:
+                entries.append(Item(f"  … +{n_found - preview_limit} weitere", None, enabled=False))
+                entries.append(Item("Folgenliste öffnen…", lambda *_a: self.open_episode_picker("")))
             entries.append(Item("Hinweise löschen", self.clear_new_alerts))
         else:
-            entries.append(Item("Keine neuen Folgen", None, enabled=False))
+            entries.append(Item("Keine fehlenden Folgen", None, enabled=False))
 
         # Überwachte Serien (Kurzliste)
         try:
@@ -2092,6 +2606,8 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     if args.once:
         notifications = run_check(base, settings)
+        if notifications is None:
+            return 0
         app = TrayApp(base)
         app._handle_notifications(settings, notifications)
         return 0
