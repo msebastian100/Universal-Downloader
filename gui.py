@@ -1242,11 +1242,11 @@ class DeezerDownloaderGUI:
             t = (nw_eff - min_w) / max(1, ref_w - min_w)  # 0 bei min_w, 1 bei ref_w
             t = max(0.0, min(1.2, t))  # leicht über 1 für große Fenster
             try:
-                font_size = max(12, min(16, int(12 + t * 4)))
-                pad_v = max(6, min(10, int(6 + t * 4)))
-                pad_h = max(16, min(28, int(16 + t * 12)))
-                pad_v_large = max(8, min(14, int(8 + t * 6)))
-                pad_h_large = max(18, min(32, int(18 + t * 14)))
+                font_size = max(10, min(12, int(10 + t * 2)))
+                pad_v = max(4, min(6, int(4 + t * 2)))
+                pad_h = max(10, min(16, int(10 + t * 6)))
+                pad_v_large = max(5, min(7, int(5 + t * 2)))
+                pad_h_large = max(12, min(18, int(12 + t * 6)))
                 _s = ttk.Style()
                 _bg = getattr(self, '_tk_bg_panel', '#383838')
                 _bg_card = getattr(self, '_tk_bg_card', '#424242')
@@ -1271,12 +1271,12 @@ class DeezerDownloaderGUI:
                     pass
                 _s.map("Download.TButton.Large", background=[("active", _btn_hover), ("pressed", _btn_press)], relief=[("pressed", "sunken")], foreground=[("active", _btn_fg), ("pressed", _btn_fg)])
                 _s.configure("Download.TLabel", font=("Arial", font_size), background=_bg, foreground=_fg)
-                choice_size = max(13, min(17, font_size + 1))
-                _s.configure("Download.TRadiobutton", font=("Arial", choice_size), padding=(10, 6), background=_bg, foreground=_fg)
+                choice_size = max(11, min(13, font_size + 1))
+                _s.configure("Download.TRadiobutton", font=("Arial", choice_size), padding=(2, 1), background=_bg, foreground=_fg)
                 _s.map("Download.TRadiobutton", background=[("active", _bg)], foreground=[("active", _fg)])
-                _s.configure("Download.TCheckbutton", font=("Arial", choice_size), padding=(6, 5), background=_bg, foreground=_fg)
+                _s.configure("Download.TCheckbutton", font=("Arial", choice_size), padding=(2, 1), background=_bg, foreground=_fg)
                 _s.map("Download.TCheckbutton", background=[("active", _bg)], foreground=[("active", _fg)])
-                url_size = max(15, min(20, font_size + 3))
+                url_size = max(12, min(14, font_size + 2))
                 for ent in getattr(self, "_url_entries", ()):
                     try:
                         if ent.winfo_exists():
@@ -1362,8 +1362,8 @@ class DeezerDownloaderGUI:
         url_frame.pack(fill=tk.X, padx=5, pady=2)
         
         self.music_url_var = tk.StringVar()
-        url_entry = ttk.Entry(url_frame, textvariable=self.music_url_var, font=("Arial", 16))
-        url_entry.pack(fill=tk.X, padx=(0, 5), ipady=8)
+        url_entry = ttk.Entry(url_frame, textvariable=self.music_url_var, font=("Arial", 13))
+        url_entry.pack(fill=tk.X, padx=(0, 5), ipady=3)
         self._url_entries = getattr(self, "_url_entries", [])
         self._url_entries.append(url_entry)
         url_entry.bind('<Return>', lambda e: self.start_music_download())
@@ -1386,14 +1386,14 @@ class DeezerDownloaderGUI:
         # _music_account_container nicht packen → Buttons existieren für State, Anzeige in Einstellungen
         
         # Format (Musik: meist MP3)
-        format_frame = ttk.LabelFrame(opt, text="Format", padding="8", style="Download.TLabelframe")
+        format_frame = ttk.LabelFrame(opt, text="Format", padding="4", style="Download.TLabelframe")
         format_frame.pack(fill=tk.X, padx=5, pady=2)
         default_music_format = self.settings.get('default_music_format', 'mp3')
         self.music_format_var = tk.StringVar(value=default_music_format)
         for col in range(3):
             format_frame.columnconfigure(col, weight=1)
         for index, (text, value) in enumerate([("MP3", "mp3"), ("MP4 (Audio)", "m4a"), ("Keine", "none")]):
-            ttk.Radiobutton(format_frame, text=text, variable=self.music_format_var, value=value, style="Download.TRadiobutton").grid(row=0, column=index, sticky=tk.W, padx=8, pady=4)
+            ttk.Radiobutton(format_frame, text=text, variable=self.music_format_var, value=value, style="Download.TRadiobutton").grid(row=0, column=index, sticky=tk.W, padx=4, pady=1)
         
         # Buttons: nebeneinander und untereinander, mit Abstand und Rand (Grid pady=2, Style mit Padding/Rand)
         button_frame = ttk.Frame(opt, style="Download.TFrame")
@@ -1620,8 +1620,8 @@ class DeezerDownloaderGUI:
         url_frame.pack(fill=tk.X, padx=5, pady=2)
         
         self.video_url_var = tk.StringVar()
-        url_entry = ttk.Entry(url_frame, textvariable=self.video_url_var, font=("Arial", 16))
-        url_entry.pack(fill=tk.X, padx=(0, 5), ipady=8)
+        url_entry = ttk.Entry(url_frame, textvariable=self.video_url_var, font=("Arial", 13))
+        url_entry.pack(fill=tk.X, padx=(0, 5), ipady=3)
         self._url_entries = getattr(self, "_url_entries", [])
         self._url_entries.append(url_entry)
         url_entry.bind('<Return>', lambda e: self.start_video_download())
@@ -1633,7 +1633,7 @@ class DeezerDownloaderGUI:
         ttk.Button(url_frame, text="📁 URLs aus Datei laden", command=self.load_urls_from_file, style="Download.TButton").pack(fill=tk.X, pady=(2, 0))
         
         # Format-Auswahl
-        format_frame = ttk.LabelFrame(opt, text="Format", padding="8", style="Download.TLabelframe")
+        format_frame = ttk.LabelFrame(opt, text="Format", padding="4", style="Download.TLabelframe")
         format_frame.pack(fill=tk.X, padx=5, pady=2)
         
         # Lade Format aus Einstellungen
@@ -1644,11 +1644,11 @@ class DeezerDownloaderGUI:
             format_frame.columnconfigure(col, weight=1)
         for index, (text, value) in enumerate(formats):
             ttk.Radiobutton(format_frame, text=text, variable=self.video_format_var, value=value, style="Download.TRadiobutton").grid(
-                row=index // 3, column=index % 3, sticky=tk.W, padx=8, pady=4
+                row=index // 3, column=index % 3, sticky=tk.W, padx=4, pady=1
             )
         
         # Qualität
-        quality_frame = ttk.LabelFrame(opt, text="Qualität", padding="8", style="Download.TLabelframe")
+        quality_frame = ttk.LabelFrame(opt, text="Qualität", padding="4", style="Download.TLabelframe")
         quality_frame.pack(fill=tk.X, padx=5, pady=2)
         
         # Lade Qualität aus Einstellungen
@@ -1659,7 +1659,7 @@ class DeezerDownloaderGUI:
             quality_frame.columnconfigure(col, weight=1)
         for index, (text, value) in enumerate(qualities):
             ttk.Radiobutton(quality_frame, text=text, variable=self.video_quality_var, value=value, style="Download.TRadiobutton").grid(
-                row=0, column=index, sticky=tk.W, padx=8, pady=4
+                row=0, column=index, sticky=tk.W, padx=4, pady=1
             )
         
         # Erweiterte Optionen
@@ -4065,14 +4065,14 @@ class DeezerDownloaderGUI:
             "Auto-Download: global in den Einstellungen oder pro Serie.\n"
             "Format pro Serie: Video standardmäßig MP4 (oder MKV). ARD Sounds als MP3. "
             "YouTube-Playlists als MP4, MKV oder MP3. Audio landet im Musik-Ordner, Video im Video-Ordner.",
-            style="Download.TLabel",
+            font=("Arial", 10),
             wraplength=900,
         ).pack(anchor=tk.W, pady=(0, 8))
 
         list_frame = ttk.LabelFrame(main, text="Überwachte Serien", padding="8", style="Download.TLabelframe")
         list_frame.pack(fill=tk.BOTH, expand=True, pady=5)
         lb = tk.Listbox(
-            list_frame, height=11, font=("Arial", 10), exportselection=False,
+            list_frame, height=11, font=("Arial", 12), exportselection=False,
             bg=getattr(self, '_tk_bg_card', '#424242'), fg=getattr(self, '_tk_fg_text', '#e8e8e8'),
             selectbackground=getattr(self, '_tk_btn_bg', '#4a4a4a'), highlightthickness=0,
         )
@@ -11009,8 +11009,8 @@ class DeezerDownloaderGUI:
         
         ttk.Label(search_frame, text="Suche:", font=("Arial", 16, "bold")).pack(side=tk.LEFT, padx=(0, 8))
         search_var = tk.StringVar()
-        search_entry = ttk.Entry(search_frame, textvariable=search_var, font=("Arial", 16))
-        search_entry.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True, ipady=10)
+        search_entry = ttk.Entry(search_frame, textvariable=search_var, font=("Arial", 14))
+        search_entry.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True, ipady=6)
         self._entry_place_caret(search_entry)
         self._entry_edit_menu(search_entry)
         
