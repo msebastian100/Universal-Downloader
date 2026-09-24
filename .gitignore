@@ -10,6 +10,19 @@ ENV/
 .venv
 .venv_build_mac
 
+# Build-Skripte (lokal behalten, nicht ins Repository)
+build_apt_repo.sh
+build_flatpak.sh
+build_installer.bat
+build_installer.py
+build_linux.sh
+build_mac.sh
+build_msix.ps1
+build_windows.py
+build_zip_windows.py
+zip_for_linux.sh
+zip_for_windows.sh
+
 # Build-Artefakte
 build/
 dist/
