@@ -10,6 +10,11 @@ ENV/
 .venv
 .venv_build_mac
 
+# Launcher (lokal behalten, nicht ins Repository)
+start_launcher.bat
+start_launcher.sh
+start_launcher.vbs
+
 # Build-Skripte (lokal behalten, nicht ins Repository)
 build_apt_repo.sh
 build_flatpak.sh
