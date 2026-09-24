@@ -35,8 +35,12 @@ if (-not (Test-Path (Join-Path $SourceDir "UniversalDownloader.exe"))) {
     Write-Error "UniversalDownloader.exe fehlt in $SourceDir. Zuerst build_windows.py ausführen."
 }
 
-$makeappx = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter makeappx.exe -ErrorAction SilentlyContinue |
+$makeappx = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\makeappx.exe" -ErrorAction SilentlyContinue |
     Sort-Object FullName -Descending | Select-Object -First 1
+if (-not $makeappx) {
+    $makeappx = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\arm64\makeappx.exe" -ErrorAction SilentlyContinue |
+        Sort-Object FullName -Descending | Select-Object -First 1
+}
 if (-not $makeappx) {
     Write-Error "makeappx.exe nicht gefunden. Windows SDK installieren."
 }
@@ -63,9 +67,11 @@ function New-Package([string] $Arch) {
     $out = Join-Path $outDir "UniversalDownloader-$VersionQuad-$Arch.msix"
     $log = Join-Path $env:TEMP "makeappx-$Arch.log"
     Write-Host "makeappx: $($makeappx.FullName)"
-    & $makeappx.FullName pack /v /d $layout /p $out /o /l $log
-    $code = $LASTEXITCODE
-    if (Test-Path $log) { Get-Content $log | Write-Host }
+    $proc = Start-Process -FilePath $makeappx.FullName -ArgumentList @("pack", "/v", "/h", "SHA256", "/d", $layout, "/p", $out, "/o") -Wait -PassThru -NoNewWindow -RedirectStandardOutput $log -RedirectStandardError "$log.err"
+    $code = $proc.ExitCode
+    foreach ($file in @($log, "$log.err")) {
+        if (Test-Path $file) { Get-Content $file | Write-Host }
+    }
     if ($code -ne 0) { Write-Error "makeappx pack für $Arch fehlgeschlagen (Exit $code)." }
     Remove-Item $layout -Recurse -Force
     Write-Host "Paket: $out"
