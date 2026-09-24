@@ -13,6 +13,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$PSNativeCommandUseErrorActionPreference = $false
 $Root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 Set-Location $Root
 
@@ -57,16 +58,22 @@ function New-Package([string] $Arch) {
         Replace("__PUBLISHER_DISPLAY__", $PublisherDisplayName).
         Replace("__VERSION__", $VersionQuad).
         Replace("__ARCH__", $Arch)
-    Set-Content -Path (Join-Path $layout "AppxManifest.xml") -Value $xml -Encoding UTF8
+    $manifestPath = Join-Path $layout "AppxManifest.xml"
+    [System.IO.File]::WriteAllText($manifestPath, $xml.TrimStart([char]0xFEFF))
     $out = Join-Path $outDir "UniversalDownloader-$VersionQuad-$Arch.msix"
-    & $makeappx.FullName pack /d $layout /p $out /o
-    if ($LASTEXITCODE -ne 0) { Write-Error "makeappx pack für $Arch fehlgeschlagen." }
+    $log = Join-Path $env:TEMP "makeappx-$Arch.log"
+    Write-Host "makeappx: $($makeappx.FullName)"
+    & $makeappx.FullName pack /v /d $layout /p $out /o /l $log
+    $code = $LASTEXITCODE
+    if (Test-Path $log) { Get-Content $log | Write-Host }
+    if ($code -ne 0) { Write-Error "makeappx pack für $Arch fehlgeschlagen (Exit $code)." }
     Remove-Item $layout -Recurse -Force
     Write-Host "Paket: $out"
     return $out
 }
 
 New-Package $Architecture | Out-Null
+Write-Host "Paket für $Architecture erzeugt."
 
 $x64 = Join-Path $outDir "UniversalDownloader-$VersionQuad-x64.msix"
 $arm = Join-Path $outDir "UniversalDownloader-$VersionQuad-arm64.msix"
