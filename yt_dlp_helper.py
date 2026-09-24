@@ -26,6 +26,41 @@ def _running_from_app_venv():
     return False
 
 
+def _version_parts(text):
+    parts = []
+    for piece in (text or "").strip().split("."):
+        number = ""
+        for char in piece:
+            if char.isdigit():
+                number += char
+            else:
+                break
+        if not number:
+            break
+        parts.append(int(number))
+    return tuple(parts)
+
+
+def _ytdlp_is_current(version_text):
+    """YouTube Music braucht mindestens yt-dlp 2026. Ältere Stände melden „The page needs to be reloaded“."""
+    return _version_parts(version_text) >= (2026, 1, 1)
+
+
+def _command_version(cmd):
+    try:
+        result = subprocess.run(
+            list(cmd) + ["--version"],
+            capture_output=True,
+            text=True,
+            timeout=8,
+        )
+        if result.returncode == 0:
+            return (result.stdout or result.stderr or "").strip()
+    except Exception:
+        return ""
+    return ""
+
+
 def _find_ytdlp_binary():
     """Eigenständiges yt-dlp (nicht python -m). Nur das liefert im .app laufenden Fortschritt."""
     candidates = []
@@ -53,7 +88,8 @@ def _find_ytdlp_binary():
             continue
         seen.add(path)
         if os.path.isfile(path) and os.access(path, os.X_OK):
-            return [path]
+            if _ytdlp_is_current(_command_version([path])):
+                return [path]
     return None
 
 
@@ -131,7 +167,9 @@ def _find_python_executable():
             result = subprocess.run([path, '--version'], **_kwargs)
             # Prüfe ob yt_dlp verfügbar ist
             result2 = subprocess.run([path, '-m', 'yt_dlp', '--version'], **_kwargs)
-            return path
+            version = (result2.stdout or b"").decode("utf-8", "replace") if isinstance(result2.stdout, bytes) else (result2.stdout or "")
+            if _ytdlp_is_current(version):
+                return path
         except Exception:
             continue
     
@@ -139,15 +177,8 @@ def _find_python_executable():
 
 
 def _check_ytdlp_system():
-    """Prüft ob yt-dlp als System-Befehl verfügbar ist"""
-    try:
-        subprocess.run(['yt-dlp', '--version'], 
-                      capture_output=True, 
-                      timeout=2, 
-                      check=True)
-        return True
-    except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError):
-        return False
+    """Prüft ob ein aktuelles yt-dlp als System-Befehl verfügbar ist."""
+    return _ytdlp_is_current(_command_version(["yt-dlp"]))
 
 
 def run_ytdlp(args, **kwargs):
@@ -185,7 +216,7 @@ def run_ytdlp(args, **kwargs):
             if platform.system() != 'Windows':
                 kwargs_with_flags['start_new_session'] = True
             return sp.Popen(cmd + args, **kwargs_with_flags)
-        return run_ytdlp_direct(args, **kwargs)
+        return _EmbeddedYtdlp(args, cwd=kwargs.get("cwd"))
     
     # Normale Python-Umgebung: Verwende subprocess
     cmd = get_ytdlp_command()
@@ -208,6 +239,107 @@ def run_ytdlp(args, **kwargs):
         if creation_flags:
             kwargs_with_flags['creationflags'] = creation_flags
         return sp.run(cmd + args, **kwargs_with_flags)
+
+
+class _QueueWriter:
+    """Schreibt yt-dlp-Zeilen in eine Queue, damit der Fortschritt live ankommt."""
+
+    def __init__(self, line_queue):
+        self._queue = line_queue
+        self._buf = ""
+
+    def write(self, text):
+        if not text:
+            return
+        self._buf += text.replace("\r\n", "\n").replace("\r", "\n")
+        while "\n" in self._buf:
+            line, self._buf = self._buf.split("\n", 1)
+            self._queue.put(line + "\n")
+
+    def flush(self):
+        if self._buf:
+            self._queue.put(self._buf + "\n")
+            self._buf = ""
+
+    def isatty(self):
+        return False
+
+
+class _LineReader:
+    def __init__(self, line_queue):
+        self._queue = line_queue
+
+    def __iter__(self):
+        while True:
+            item = self._queue.get()
+            if item is None:
+                return
+            yield item
+
+
+class _EmbeddedYtdlp:
+    """yt-dlp im Programm selbst, mit lesbarem Fortschritt wie bei einem eigenen Prozess."""
+
+    def __init__(self, args, cwd=None):
+        import queue
+        import threading
+        self._queue = queue.Queue()
+        self.stdout = _LineReader(self._queue)
+        self.returncode = None
+        self.pid = -1
+        self._cwd = cwd
+        self._thread = threading.Thread(target=self._run, args=(list(args),), daemon=True)
+        self._thread.start()
+
+    def poll(self):
+        return self.returncode
+
+    def wait(self, timeout=None):
+        self._thread.join(timeout)
+        if self._thread.is_alive():
+            raise subprocess.TimeoutExpired(["yt-dlp"], timeout)
+        return 0 if self.returncode is None else self.returncode
+
+    def terminate(self):
+        if self.returncode is None:
+            self.returncode = -1
+
+    def kill(self):
+        self.terminate()
+
+    def _run(self, args):
+        import yt_dlp
+        writer = _QueueWriter(self._queue)
+        old_argv = sys.argv
+        old_stdout = sys.stdout
+        old_stderr = sys.stderr
+        old_cwd = os.getcwd()
+        try:
+            if self._cwd:
+                os.chdir(self._cwd)
+            sys.argv = ["yt-dlp"] + args
+            sys.stdout = writer
+            sys.stderr = writer
+            try:
+                yt_dlp.main()
+                code = 0
+            except SystemExit as exc:
+                code = exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
+            except Exception as exc:
+                writer.write(str(exc) + "\n")
+                code = 1
+        finally:
+            writer.flush()
+            sys.argv = old_argv
+            sys.stdout = old_stdout
+            sys.stderr = old_stderr
+            try:
+                os.chdir(old_cwd)
+            except Exception:
+                pass
+            if self.returncode is None:
+                self.returncode = code
+            self._queue.put(None)
 
 
 def run_ytdlp_direct(args, **kwargs):

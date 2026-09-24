@@ -4009,7 +4009,8 @@ class DeezerDownloaderGUI:
         main.pack(fill=tk.BOTH, expand=True)
         ttk.Label(
             main,
-            text="Video (z. B. ARD Mediathek) und Hörbücher/Hörspiele (ARD Audiothek, ARD Sounds, LibriVox, …).\n"
+            text="Video (z. B. ARD Mediathek, YouTube-Playlist) und Musik (YouTube Music, ARD Audiothek, ARD Sounds, LibriVox, …).\n"
+            "Neue Lieder oder Folgen in der Playlist werden gemeldet und können automatisch geladen werden.\n"
             "ARD-Video: Auch bei „Staffel-x“-Links wird intern die Serien-URL genutzt.\n"
             "Audiodeskription wird ignoriert. Trailer/Making-of können Sie mit „Ignorieren“ ausblenden.\n"
             "Downloads werden als „habe ich“ abgehakt.\n"
@@ -5372,17 +5373,35 @@ class DeezerDownloaderGUI:
                         gui_instance=self
                     )
                 if self.video_downloader.is_series_or_season(url):
+                    reading = "Mix wird gelesen…" if "list=rd" in url.lower() else "Playlist wird gelesen…"
+                    self.root.after(0, lambda t=reading: self.music_status_var.set(t))
+                    self.root.after(0, lambda: self.music_progress_bar.config(mode='indeterminate'))
+                    self.root.after(0, lambda: self.music_progress_bar.start())
                     series_data = self.video_downloader.get_series_episodes(url)
                     if series_data and series_data.get('seasons'):
+                        if "music.youtube.com" in url.lower():
+                            series_data["playlist_kind"] = "music"
+                        elif "youtube.com" in url.lower() or "youtu.be" in url.lower():
+                            series_data["playlist_kind"] = "video"
                         self._audiothek_series_dialog_pending = True
-                        self.root.after(0, lambda: self._audiothek_series_dialog_and_download(series_data))
+                        self.root.after(0, lambda data=series_data: self._audiothek_series_dialog_and_download(data))
                         return
                 # Einzelfolge oder keine Serien-Daten
                 _music_log_last_p = [None]
                 _music_log_last_t = [None]
+                self.root.after(0, lambda: self.music_status_var.set("Verbindung wird aufgebaut…"))
+                self.root.after(0, lambda: self.music_progress_bar.config(mode='indeterminate'))
+                self.root.after(0, lambda: self.music_progress_bar.start())
                 def progress_cb(percent, msg):
                     _p, _m = percent, (msg or "Download läuft...")
-                    self.root.after(0, lambda p=_p, m=_m: (self.music_progress_var.set(min(100.0, p)), self.music_status_var.set(m)))
+                    def _apply(p=_p, m=_m):
+                        if p and p > 0:
+                            self.music_progress_bar.stop()
+                            self.music_progress_bar.config(mode='determinate', maximum=100)
+                            self.music_progress_var.set(min(100.0, p))
+                        if m:
+                            self.music_status_var.set(m)
+                    self.root.after(0, _apply)
                     if msg and ('at' in msg or 'ETA' in msg) and percent < 100:
                         import time
                         now = time.time()
@@ -5397,7 +5416,6 @@ class DeezerDownloaderGUI:
                             if eta_match:
                                 part += f" - ETA: {eta_match.group(1)}"
                             self.root.after(0, lambda: self.music_log(part))
-                self.root.after(0, lambda: self.music_progress_bar.config(mode='determinate', maximum=100))
                 success, file_path, error = self.video_downloader.download_video(
                     url,
                     output_dir=self.music_download_path,
@@ -5414,22 +5432,15 @@ class DeezerDownloaderGUI:
                     self.root.after(0, lambda: self.music_log(f"\n✓ Download erfolgreich: {file_path.name if file_path else 'Audio'}"))
                     def _show_music_success():
                         fp = file_path
+                        name = fp.name if fp else "Audio"
                         if fp and fp.exists():
                             if self.settings.get('auto_open_folder', False):
                                 self._open_folder(fp)
-                            tw = tk.Toplevel(self.root)
-                            tw.title("Erfolg")
-                            tw.transient(self.root)
-                            tw.geometry("420x200")
-                            ttk.Label(tw, text=f"Download abgeschlossen!\n\nDatei: {fp.name}\n\nGespeichert in:\n{fp.parent}", padding=15, wraplength=380).pack(pady=10)
-                            btn_f = ttk.Frame(tw)
-                            btn_f.pack(pady=5)
-                            ttk.Button(btn_f, text="OK", command=tw.destroy).pack(side=tk.LEFT, padx=3)
-                            ttk.Button(btn_f, text="📂 Ordner öffnen", command=lambda: self._open_folder(fp)).pack(side=tk.LEFT, padx=3)
                             if self.settings.get('play_after_download', False):
-                                ttk.Button(btn_f, text="▶ Abspielen", command=lambda: self._open_file_with_default_app(fp)).pack(side=tk.LEFT, padx=3)
+                                self._open_file_with_default_app(fp)
+                            self._show_system_notification("Download abgeschlossen", f"{name} — {fp.parent}")
                         else:
-                            messagebox.showinfo("Erfolg", f"Download abgeschlossen!\n{file_path.name if file_path else 'Audio'}")
+                            self._show_system_notification("Download abgeschlossen", name)
                     self.root.after(0, _show_music_success)
                 else:
                     self._update_statistics(success=False, file_path=None, url=url, kind="music", error=error)
@@ -5747,13 +5758,20 @@ class DeezerDownloaderGUI:
         self._audiothek_series_dialog_pending = False
         self.root.after(0, lambda: self.music_progress_bar.stop())
         try:
-            selected = self.show_series_selection_dialog(series_data, is_youtube_playlist=False)
+            kind = series_data.get("playlist_kind")
+            selected = self.show_series_selection_dialog(
+                series_data,
+                is_youtube_playlist=kind in ("music", "video"),
+            )
             if not selected:
                 self.root.after(0, lambda: self.music_download_button.config(state=tk.NORMAL))
-                self.music_log("Audiothek-Serie: Keine Folgen ausgewählt.")
+                self.music_log("Keine Einträge ausgewählt.")
                 return
-            self.music_log(f"ARD Audiothek: {len(selected)} Folgen ausgewählt.")
-            self.music_progress_bar.config(mode='determinate', maximum=100)
+            label = "Lieder" if kind == "music" else "Folgen"
+            self.music_log(f"{len(selected)} {label} ausgewählt.")
+            self.music_status_var.set("Verbindung wird aufgebaut…")
+            self.music_progress_bar.config(mode='indeterminate')
+            self.music_progress_bar.start()
             self.music_audiothek_episodes_total = len(selected)
             thread = threading.Thread(target=self._audiothek_episodes_download_thread, args=(selected,))
             thread.daemon = True
@@ -5792,12 +5810,17 @@ class DeezerDownloaderGUI:
                     ep_url = _normalize_ard_sounds_url(ep_url)
                 title = ep.get('title', f'Folge {i}')
                 self.root.after(0, lambda t=title, cur=i, tot=total: self.music_status_var.set(f"Download läuft ({cur}/{tot}): {t[:40]}..."))
+                self.root.after(0, lambda: self.music_progress_bar.config(mode='indeterminate'))
+                self.root.after(0, lambda: self.music_progress_bar.start())
                 def progress_cb(percent, msg):
                     _p, _m = percent, (msg or "Download läuft...")
-                    self.root.after(0, lambda p=_p, m=_m, c=i, t=total: (
-                        self.music_progress_var.set(min(100.0, p)),
-                        self.music_status_var.set(f"({c}/{t}) {m}")
-                    ))
+                    def _apply(p=_p, m=_m, c=i, tot=total):
+                        if p and p > 0:
+                            self.music_progress_bar.stop()
+                            self.music_progress_bar.config(mode='determinate', maximum=100)
+                            self.music_progress_var.set(min(100.0, p))
+                        self.music_status_var.set(f"({c}/{tot}) {m}")
+                    self.root.after(0, _apply)
                 # Metadaten aus Episoden-Auswahl für Serienordner und Dateinamen nutzen
                 ep_video_info = {
                     'title': ep.get('title') or f"Folge {ep.get('episode_number') or i}",
@@ -7545,21 +7568,14 @@ class DeezerDownloaderGUI:
                     if queue_count == 0 and not parallel_mode and not batch_file and not batch_series:
                         def _show_success_autoclose():
                             fp = file_path
-                            tw = tk.Toplevel(self.root)
-                            tw.title("Erfolg")
-                            tw.transient(self.root)
-                            tw.geometry("420x220")
-                            msg = f"Download erfolgreich!\n\nDatei: {fp.name}\n\nGespeichert in:\n{fp.parent}"
-                            ttk.Label(tw, text=msg, padding=15, wraplength=380).pack(pady=10)
-                            btn_frame = ttk.Frame(tw)
-                            btn_frame.pack(pady=5)
-                            ttk.Button(btn_frame, text="OK", command=tw.destroy).pack(side=tk.LEFT, padx=3)
-                            ttk.Button(btn_frame, text="📂 Ordner öffnen", command=lambda: self._open_folder(fp)).pack(side=tk.LEFT, padx=3)
-                            if self.settings.get('play_after_download', False):
-                                ttk.Button(btn_frame, text="▶ Abspielen", command=lambda: self._open_file_with_default_app(fp)).pack(side=tk.LEFT, padx=3)
-                            tw.after(10000, tw.destroy)
-                            if self.settings.get('auto_open_folder', False):
-                                self._open_folder(fp)
+                            if fp and getattr(fp, "exists", lambda: False)():
+                                if self.settings.get('auto_open_folder', False):
+                                    self._open_folder(fp)
+                                if self.settings.get('play_after_download', False):
+                                    self._open_file_with_default_app(fp)
+                                self._show_system_notification("Download abgeschlossen", f"{fp.name} — {fp.parent}")
+                            else:
+                                self._show_system_notification("Download abgeschlossen", "Die Datei wurde gespeichert.")
                         self.root.after(0, _show_success_autoclose)
                 else:
                     self.video_log(f"\n⚠ Download scheint erfolgreich, aber Datei nicht gefunden")
@@ -7867,7 +7883,11 @@ class DeezerDownloaderGUI:
         total_episodes = series_data.get('total_episodes', 0)
         seasons = series_data.get('seasons', {})
         
-        if is_youtube_playlist:
+        playlist_kind = series_data.get("playlist_kind")
+        if playlist_kind == "music":
+            title_text = f"Playlist: {series_name}"
+            info_text = f"{total_episodes} Lieder. Einzelne anhaken oder oben alle auswählen."
+        elif is_youtube_playlist:
             title_text = f"📺 Playlist: {series_name}"
             info_text = f"{len(seasons)} Playlist(en) mit insgesamt {total_episodes} Video(s) gefunden."
         else:
@@ -7916,7 +7936,10 @@ class DeezerDownloaderGUI:
             season_episodes = seasons[season_num]
             
             # Staffel/Playlist-Frame mit verbessertem Design
-            if is_youtube_playlist:
+            if playlist_kind == "music":
+                frame_text = f"Playlist ({len(season_episodes)} Lieder)"
+                checkbox_text = "Alle Lieder auswählen"
+            elif is_youtube_playlist:
                 frame_text = f"📋 Playlist {season_num} ({len(season_episodes)} Videos)"
                 checkbox_text = f"Alle Videos aus Playlist {season_num} auswählen"
             else:
@@ -8052,7 +8075,9 @@ class DeezerDownloaderGUI:
                         selected_episodes.append(episode)
             
             if not selected_episodes:
-                if is_youtube_playlist:
+                if playlist_kind == "music":
+                    messagebox.showwarning("Warnung", "Bitte wählen Sie mindestens ein Lied aus.")
+                elif is_youtube_playlist:
                     messagebox.showwarning("Warnung", "Bitte wählen Sie mindestens ein Video aus.")
                 else:
                     messagebox.showwarning("Warnung", "Bitte wählen Sie mindestens eine Folge aus.")
@@ -8067,13 +8092,17 @@ class DeezerDownloaderGUI:
         # Zähle ausgewählte Episoden/Videos für Button-Text
         def update_button_text():
             count = sum(1 for var in episode_vars.values() if var.get())
-            if is_youtube_playlist:
+            if playlist_kind == "music":
+                confirm_button.config(text=f"▶ Download ({count} Lieder)")
+            elif is_youtube_playlist:
                 confirm_button.config(text=f"▶ Download ({count} Video(s))")
             else:
                 confirm_button.config(text=f"▶ Download ({count} Folge(n))")
         
         # Initialisiere Button-Text
-        if is_youtube_playlist:
+        if playlist_kind == "music":
+            confirm_button = ttk.Button(right_buttons, text="▶ Download (0 Lieder)", command=confirm)
+        elif is_youtube_playlist:
             confirm_button = ttk.Button(right_buttons, text="▶ Download (0 Video(s))", command=confirm)
         else:
             confirm_button = ttk.Button(right_buttons, text="▶ Download (0 Folge(n))", command=confirm)
@@ -8963,16 +8992,10 @@ class DeezerDownloaderGUI:
                 all_done_in_loop = (success_count + failed_count) == len(episodes)
                 if queue_count == 0 and all_done_in_loop:
                     def _show_series_success_autoclose():
-                        tw = tk.Toplevel(self.root)
-                        tw.title("Erfolg")
-                        tw.transient(self.root)
-                        tw.geometry("420x160")
-                        msg = (f"Download abgeschlossen!\n\n"
-                               f"Erfolgreich: {success_count}/{len(episodes)} Folgen\n"
-                               f"Fehlgeschlagen: {failed_count} Folgen")
-                        ttk.Label(tw, text=msg, padding=15, wraplength=380).pack(pady=10)
-                        ttk.Button(tw, text="OK", command=tw.destroy).pack(pady=5)
-                        tw.after(10000, tw.destroy)  # Auto-Schließen nach 10 Sekunden
+                        self._show_system_notification(
+                            "Download abgeschlossen",
+                            f"Erfolgreich: {success_count}/{len(episodes)} Folgen. Fehlgeschlagen: {failed_count}.",
+                        )
                     self.root.after(0, _show_series_success_autoclose)
             
         except Exception as e:
@@ -10105,25 +10128,17 @@ class DeezerDownloaderGUI:
     
     def _show_batch_file_success(self, success_count: int, total: int):
         """Zeigt eine gemeinsame Erfolgsmeldung für alle Downloads aus einer URL-Liste (Datei)."""
-        msg = f"Alle Downloads aus URL-Liste abgeschlossen.\n\nErfolgreich: {success_count}/{total}"
-        tw = tk.Toplevel(self.root)
-        tw.title("Downloads abgeschlossen")
-        tw.transient(self.root)
-        tw.geometry("420x160")
-        ttk.Label(tw, text=msg, padding=15, wraplength=380).pack(pady=10)
-        ttk.Button(tw, text="OK", command=tw.destroy).pack(pady=5)
-        tw.after(10000, tw.destroy)
+        self._show_system_notification(
+            "Downloads abgeschlossen",
+            f"Aus der URL-Liste erfolgreich: {success_count}/{total}.",
+        )
     
     def _show_batch_series_success(self, success_count: int, total: int):
         """Zeigt eine gemeinsame Erfolgsmeldung für alle Folgen einer Serie."""
-        msg = f"Serien-Download abgeschlossen.\n\nErfolgreich: {success_count}/{total} Folgen"
-        tw = tk.Toplevel(self.root)
-        tw.title("Erfolg")
-        tw.transient(self.root)
-        tw.geometry("420x160")
-        ttk.Label(tw, text=msg, padding=15, wraplength=380).pack(pady=10)
-        ttk.Button(tw, text="OK", command=tw.destroy).pack(pady=5)
-        tw.after(10000, tw.destroy)
+        self._show_system_notification(
+            "Download abgeschlossen",
+            f"Serie erfolgreich: {success_count}/{total} Folgen.",
+        )
     
     def _trigger_system_shutdown(self) -> bool:
         """Führt Herunterfahren des Systems aus (Windows, Linux, macOS). Gibt True bei Erfolg zurück."""

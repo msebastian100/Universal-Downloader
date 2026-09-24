@@ -159,6 +159,12 @@ def episode_url_for_watch(series_url: str, eurl: str) -> str:
     eurl = (eurl or "").strip()
     if not eurl:
         return ""
+    sl = (series_url or "").lower()
+    if "youtube.com" in sl or "youtu.be" in sl:
+        if eurl.startswith("http://") or eurl.startswith("https://"):
+            return eurl
+        video_id = eurl.lstrip("/").split("?")[0]
+        return f"https://www.youtube.com/watch?v={video_id}"
     if eurl.startswith("http://") or eurl.startswith("https://"):
         if is_audio_watch_url(series_url) or is_audio_watch_url(eurl):
             return normalize_ard_audio_watch_url(eurl)

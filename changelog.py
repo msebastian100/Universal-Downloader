@@ -11,6 +11,13 @@ from typing import List, Optional, Dict, Any
 # Neueste Version zuerst – wird für „Erster Start“ und Upgrade-Anzeige genutzt
 RELEASE_NOTES: List[Dict[str, Any]] = [
     {
+        "version": "2.1.58",
+        "date": "2026-09-24",
+        "items": [
+            "YouTube-Music-Mixe öffnen die Liederauswahl, mit dem hinterlegten Konto. Der Fortschritt läuft während des Downloads.",
+        ],
+    },
+    {
         "version": "2.1.57",
         "date": "2026-09-24",
         "items": [

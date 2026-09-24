@@ -74,6 +74,7 @@ PY_FILES=(
     audiobook_providers.py audiobook_search.py stream_automation.py
     audio_recorder.py audio_device_detector.py setup_audio_recording.py
     series_watch.py series_watch_tray.py mac_platform.py
+    plugin_loader.py preview_player.py
 )
 
 echo "Kopiere Anwendungsdateien..."
@@ -86,6 +87,10 @@ for f in "${PY_FILES[@]}"; do
 done
 
 cp requirements.txt "$BUILD_DIR$INSTALL_DIR/" || exit 1
+if [ -d plugins ]; then
+    mkdir -p "$BUILD_DIR$INSTALL_DIR/plugins"
+    cp plugins/*.py "$BUILD_DIR$INSTALL_DIR/plugins/" 2>/dev/null || true
+fi
 
 # Icon: Pixmap, App-Ordner und hicolor (GNOME/Ubuntu „Software“ + Startmenü)
 if [ -f "icon.png" ]; then

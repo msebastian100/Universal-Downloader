@@ -1221,6 +1221,9 @@ class VideoDownloader:
                 if '/channel/' in url_lower or '/@' in url_lower:
                     self.log("YouTube/YouTube Music Kanal erkannt (alle Uploads als Playlist)")
                     return True
+                if 'list=rd' in url_lower:
+                    self.log("YouTube Music Mix erkannt – Titelauswahl, Account-Cookies falls hinterlegt")
+                    return True
                 if 'list=' in url_lower or '/playlist' in url_lower or '/browse/' in url_lower:
                     self.log("YouTube/YouTube Music Playlist/Album erkannt – Auswahl der Titel anzeigen")
                     return True
@@ -1591,12 +1594,15 @@ class VideoDownloader:
                     series_url
                 ]
             elif is_youtube and ('list=' in series_url or '/playlist' in series_url):
-                # YouTube-Playlist: ohne --flat-playlist, damit jedes Video playlist_title enthält (gemeinsamer Ordner)
+                # Flache Liste: Titel und playlist_title reichen für die Auswahl und sind deutlich schneller.
+                # Mixe (list=RD…) sind lang und ans Konto gebunden; 50 Titel entsprechen einer Mix-Sitzung.
+                playlist_end = '50' if 'list=rd' in series_url.lower() else '500'
                 cmd = [
                     'yt-dlp',
                     '--dump-json',
+                    '--flat-playlist',
                     '--yes-playlist',
-                    '--playlist-end', '500',
+                    '--playlist-end', playlist_end,
                     '--no-warnings',
                     '-4',
                     series_url
@@ -2838,6 +2844,11 @@ class VideoDownloader:
         url = self._normalize_ard_sounds_url(url)
         if url != original_url:
             self.log(f"URL normalisiert in download_video: {original_url} → {url}")
+        if progress_callback:
+            try:
+                progress_callback(0, "Verbindung wird aufgebaut…")
+            except Exception:
+                pass
         
         if output_dir is None:
             output_dir = self.download_path
