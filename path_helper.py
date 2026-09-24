@@ -222,6 +222,20 @@ def get_app_base_path():
         return app_path
 
 
+def is_microsoft_store() -> bool:
+    """True, wenn die App als MSIX aus dem Microsoft Store läuft."""
+    if sys.platform != "win32":
+        return False
+    try:
+        import ctypes
+        length = ctypes.c_uint(0)
+        rc = ctypes.windll.kernel32.GetCurrentPackageFullName(ctypes.byref(length), None)
+        # 122 = Puffer zu klein, Paket ist vorhanden. 15700 = kein Paket.
+        return rc == 122 or rc == 0
+    except Exception:
+        return False
+
+
 def win_hidden_kwargs() -> dict:
     """Windows: Subprozesse ohne CMD-/PowerShell-Fenster."""
     import subprocess

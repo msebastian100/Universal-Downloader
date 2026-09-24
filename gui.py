@@ -231,6 +231,32 @@ else:
     messagebox = _tk_messagebox
 
 
+def _store_edition() -> bool:
+    """Microsoft-Store-Paket: ohne Deezer, Spotify und Audible."""
+    try:
+        from path_helper import is_microsoft_store
+        return bool(is_microsoft_store())
+    except Exception:
+        return False
+
+
+def _is_store_blocked_music_url(url: str) -> bool:
+    if not _store_edition() or not url:
+        return False
+    ul = url.lower()
+    return any(
+        part in ul
+        for part in ("spotify.com", "deezer.com", "deezer.page.link", "link.deezer.com", "audible.")
+    )
+
+
+def _music_sources_for_ui():
+    sources = list(MUSIC_SOURCES_LIST)
+    if _store_edition():
+        sources = [item for item in sources if item[0] not in ("Deezer", "Spotify")]
+    return sources
+
+
 def _is_music_mediathek_url(url):
     """Prüft, ob die URL eine im Musik-Tab unterstützte Mediathek oder Hörbuch-/Hörspiel-Seite ist."""
     if not url or not isinstance(url, str):
@@ -784,7 +810,7 @@ class DeezerDownloaderGUI:
         self.music_frame = ttk.Frame(self.notebook, padding="0", style="Download.TFrame")
         self.create_music_tab()
         
-        if AudibleAuth:
+        if AudibleAuth and not _store_edition():
             self.audible_frame = ttk.Frame(self.notebook, padding="10", style="Download.TFrame")
             self.create_audible_tab()
         
@@ -843,7 +869,7 @@ class DeezerDownloaderGUI:
             enabled = {}
         flags = {
             "music": bool(enabled.get("music", True)),
-            "audible": bool(enabled.get("audible", False)),
+            "audible": bool(enabled.get("audible", False)) and not _store_edition(),
             "video": bool(enabled.get("video", True)),
         }
         specs = self._builtin_tab_specs()
@@ -1291,7 +1317,7 @@ class DeezerDownloaderGUI:
         info_row = ttk.Frame(options_container, style="Download.TFrame")
         info_row.pack(pady=(0, 2), padx=5, fill=tk.X)
         ttk.Label(info_row, text="Unterstützte Dienste und Mediatheken:", style="Download.TLabel").pack(side=tk.LEFT)
-        ttk.Button(info_row, text="Unterstützte Seiten anzeigen", command=lambda: self._show_supported_sources_dialog("Unterstützte Seiten (Musik)", list(MUSIC_SOURCES_LIST)), style="Download.TButton").pack(side=tk.LEFT, padx=(8, 0))
+        ttk.Button(info_row, text="Unterstützte Seiten anzeigen", command=lambda: self._show_supported_sources_dialog("Unterstützte Seiten (Musik)", _music_sources_for_ui()), style="Download.TButton").pack(side=tk.LEFT, padx=(8, 0))
         
         _bp = getattr(self, '_tk_bg_panel', '#383838')
         options_canvas = tk.Canvas(options_container, highlightthickness=0, bg=_bp)
@@ -4382,6 +4408,25 @@ class DeezerDownloaderGUI:
             _s.map("Download.TButton.Large", background=[("active", _btn_hover), ("pressed", _btn_press)], relief=[("pressed", "sunken")])
             _s.map("Download.TButton.Large", foreground=[("active", _btn_fg), ("pressed", _btn_fg)])
             _s.configure("Download.TLabel", font=("Arial", 9), background=_bg_panel, foreground=_fg_text)
+            # Standard-Widgets, damit Dialoge wie Statistik, Historie und Suche nicht hell bleiben.
+            for style_name in ("TFrame", "TLabel", "TLabelframe", "TLabelframe.Label"):
+                _s.configure(style_name, background=_bg_panel, foreground=_fg_text)
+            _s.configure("TRadiobutton", background=_bg_panel, foreground=_fg_text)
+            _s.map("TRadiobutton", background=[("active", _bg_panel)], foreground=[("active", _fg_text)])
+            _s.configure("TCheckbutton", background=_bg_panel, foreground=_fg_text)
+            _s.map("TCheckbutton", background=[("active", _bg_panel)], foreground=[("active", _fg_text)])
+            _s.configure("TButton", background=_btn_bg, foreground=_btn_fg, padding=(12, 4))
+            try:
+                _s.configure("TButton", lightcolor=_btn_light, darkcolor=_btn_dark)
+            except tk.TclError:
+                pass
+            _s.map("TButton", background=[("active", _btn_hover), ("pressed", _btn_press)], foreground=[("active", _btn_fg), ("pressed", _btn_fg)])
+            _s.configure("Treeview", background=_bg_card, foreground=_fg_text, fieldbackground=_bg_card)
+            _s.configure("Treeview.Heading", background=_btn_bg, foreground=_fg_text)
+            _s.map("Treeview", background=[("selected", _btn_bg)], foreground=[("selected", _btn_fg)])
+            _s.configure("TEntry", fieldbackground=_bg_card, foreground=_fg_text)
+            for scroll_style in ("Vertical.TScrollbar", "Horizontal.TScrollbar"):
+                _s.configure(scroll_style, background=_btn_bg, troughcolor=_bg_panel, arrowcolor=_fg_text)
             _s.configure("TNotebook", background=_bg_panel)
             _s.configure("TNotebook.Tab", background=_bg_card, foreground=_fg_text, padding=(10, 5), font=("Arial", 9))
             _s.map("TNotebook.Tab", background=[("selected", _bg_panel)], expand=[("selected", [1, 1, 1, 0])])
@@ -4415,6 +4460,13 @@ class DeezerDownloaderGUI:
             fg = getattr(self, '_tk_fg_text', '#e8e8e8')
             log_bg = getattr(self, '_tk_log_bg', bp)
             self.root.configure(bg=bp)
+            canvas = getattr(self, '_search_results_canvas', None)
+            if canvas is not None:
+                try:
+                    if canvas.winfo_exists():
+                        canvas.configure(bg=bp, highlightthickness=0)
+                except tk.TclError:
+                    pass
             for attr in ('_music_options_canvas', '_video_options_canvas'):
                 c = getattr(self, attr, None)
                 if c is not None:
@@ -4789,9 +4841,17 @@ class DeezerDownloaderGUI:
         is_spotify = 'spotify.com' in url.lower()
         is_deezer = 'deezer.com' in url.lower() or 'deezer.page.link' in url.lower() or 'link.deezer.com' in url.lower()
         is_mediathek_audio = _is_music_mediathek_url(url)
+        if _is_store_blocked_music_url(url):
+            messagebox.showinfo("Store-Version", "Deezer, Spotify und Audible sind in der Store-Version nicht enthalten.")
+            return
         
         if not (is_spotify or is_deezer or is_mediathek_audio):
-            messagebox.showwarning("Ungültige URL", "Bitte geben Sie eine gültige Deezer-, Spotify-, YouTube-Musik- oder Mediatheken-/Hörbuch-URL ein (z. B. ARD Audiothek, BR, NDR, WDR, LibriVox).")
+            hinweis = (
+                "Bitte geben Sie eine YouTube-Musik- oder Mediatheken-/Hörbuch-URL ein (z. B. ARD Audiothek, BR, NDR, WDR, LibriVox)."
+                if _store_edition()
+                else "Bitte geben Sie eine gültige Deezer-, Spotify-, YouTube-Musik- oder Mediatheken-/Hörbuch-URL ein (z. B. ARD Audiothek, BR, NDR, WDR, LibriVox)."
+            )
+            messagebox.showwarning("Ungültige URL", hinweis)
             return
         
         # Pfad aus Eingabefeld übernehmen
@@ -4825,9 +4885,17 @@ class DeezerDownloaderGUI:
         is_spotify = 'spotify.com' in url.lower()
         is_deezer = 'deezer.com' in url.lower() or 'deezer.page.link' in url.lower() or 'link.deezer.com' in url.lower()
         is_mediathek_audio = _is_music_mediathek_url(url)
+        if _is_store_blocked_music_url(url):
+            messagebox.showinfo("Store-Version", "Deezer, Spotify und Audible sind in der Store-Version nicht enthalten.")
+            return
         
         if not (is_spotify or is_deezer or is_mediathek_audio):
-            messagebox.showwarning("Ungültige URL", "Bitte geben Sie eine gültige Deezer-, Spotify-, YouTube-Musik- oder Mediatheken-/Hörbuch-URL ein (z. B. ARD Audiothek, BR, NDR, WDR, LibriVox).")
+            hinweis = (
+                "Bitte geben Sie eine YouTube-Musik- oder Mediatheken-/Hörbuch-URL ein (z. B. ARD Audiothek, BR, NDR, WDR, LibriVox)."
+                if _store_edition()
+                else "Bitte geben Sie eine gültige Deezer-, Spotify-, YouTube-Musik- oder Mediatheken-/Hörbuch-URL ein (z. B. ARD Audiothek, BR, NDR, WDR, LibriVox)."
+            )
+            messagebox.showwarning("Ungültige URL", hinweis)
             return
         
         # Füge zur Queue hinzu (keine Duplikate)
@@ -4887,6 +4955,8 @@ class DeezerDownloaderGUI:
                 skipped_queue = 0
                 skipped_archive = 0
                 for u in urls:
+                    if _is_store_blocked_music_url(u):
+                        continue
                     if u in existing:
                         skipped_queue += 1
                     elif self.settings.get('download_archive_enabled', False) and self._is_in_download_archive(u):
@@ -5300,6 +5370,10 @@ class DeezerDownloaderGUI:
     def music_download_thread(self, url: str):
         """Download-Thread für Musik (Deezer, Spotify oder Mediatheken/Hörbücher wie ARD Audiothek, BR, NDR, LibriVox, Hörspielprojekt)"""
         try:
+            if _is_store_blocked_music_url(url):
+                self.music_log("Übersprungen: Deezer, Spotify und Audible sind in der Store-Version nicht enthalten.")
+                self.root.after(0, self._music_queue_next)
+                return
             # Download-Archiv: Bereits heruntergeladene überspringen
             if self._is_in_download_archive(url):
                 self.music_log(f"Übersprungen (bereits im Download-Archiv): {url[:60]}…")
@@ -10475,6 +10549,7 @@ class DeezerDownloaderGUI:
         """Zeigt Dialog für geplante Downloads"""
         schedule_window = tk.Toplevel(self.root)
         schedule_window.title("Geplante Downloads")
+        self._apply_dark_toplevel(schedule_window)
         schedule_window.transient(self.root)
         self._fit_dialog(schedule_window, 860, 580, 640, 400)
         
@@ -10683,6 +10758,7 @@ class DeezerDownloaderGUI:
         history_window = tk.Toplevel(self.root)
         history_window.title("Download-Historie")
         history_window.transient(self.root)
+        self._apply_dark_toplevel(history_window)
         self._fit_dialog(history_window, 1100, 680, 860, 480)
         
         frame = ttk.Frame(history_window, padding="10")
@@ -10821,6 +10897,7 @@ class DeezerDownloaderGUI:
         fav_window = tk.Toplevel(self.root)
         fav_window.title("Favoriten")
         fav_window.transient(self.root)
+        self._apply_dark_toplevel(fav_window)
         self._fit_dialog(fav_window, 720, 500, 520, 360)
         
         frame = ttk.Frame(fav_window, padding="10")
@@ -10828,7 +10905,13 @@ class DeezerDownloaderGUI:
         
         ttk.Label(frame, text="Favoriten", font=("Arial", 12, "bold")).pack(anchor=tk.W, pady=(0, 10))
         
-        listbox = tk.Listbox(frame, height=15)
+        listbox = tk.Listbox(
+            frame, height=15,
+            bg=getattr(self, '_tk_bg_card', '#424242'), fg=getattr(self, '_tk_fg_text', '#e8e8e8'),
+            selectbackground=getattr(self, '_tk_btn_bg', '#4a4a4a'),
+            selectforeground=getattr(self, '_tk_fg_text', '#e8e8e8'),
+            highlightthickness=0,
+        )
         listbox.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
         
         for fav in self.video_favorites:
@@ -10841,6 +10924,7 @@ class DeezerDownloaderGUI:
             add_window = tk.Toplevel(fav_window)
             add_window.title("Favorit hinzufügen")
             add_window.transient(fav_window)
+            self._apply_dark_toplevel(add_window)
             self._fit_dialog(add_window, 500, 260, 400, 220)
             
             add_frame = ttk.Frame(add_window, padding="20")
@@ -10929,7 +11013,12 @@ class DeezerDownloaderGUI:
         results_container = ttk.Frame(main_frame)
         results_container.pack(fill=tk.BOTH, expand=True)
         
-        canvas = tk.Canvas(results_container)
+        canvas = tk.Canvas(
+            results_container,
+            bg=getattr(self, '_tk_bg_panel', '#383838'),
+            highlightthickness=0,
+        )
+        self._search_results_canvas = canvas
         scrollbar = ttk.Scrollbar(results_container, orient="vertical", command=canvas.yview)
         results_frame = ttk.Frame(canvas)
         
@@ -11603,6 +11692,7 @@ class DeezerDownloaderGUI:
         stats_window = tk.Toplevel(self.root)
         stats_window.title("Download-Statistiken")
         stats_window.transient(self.root)
+        self._apply_dark_toplevel(stats_window)
         self._fit_dialog(stats_window, 560, 560, 440, 420)
         
         frame = ttk.Frame(stats_window, padding="20")
@@ -12885,29 +12975,35 @@ Copyright (c) 2025 Universal Downloader Contributors
 
         tabs_frame = ttk.LabelFrame(scrollable_frame, text="🗂️ Sichtbare Tabs", padding="10", style="Download.TLabelframe")
         tabs_frame.pack(fill=tk.X, pady=5, padx=5)
+        tabs_hint = "Die Auswahl bleibt auf diesem Rechner gespeichert."
+        if not _store_edition():
+            tabs_hint = "Audible ist aus, bis du es hier einschaltest. " + tabs_hint
         ttk.Label(
             tabs_frame,
-            text="Audible ist aus, bis du es hier einschaltest. Die Auswahl bleibt auf diesem Rechner gespeichert.",
+            text=tabs_hint,
             style="Download.TLabel",
         ).pack(anchor=tk.W, pady=(0, 6))
         enabled_tabs = self.settings.get("enabled_tabs") if isinstance(self.settings.get("enabled_tabs"), dict) else {}
         tab_music_var = tk.BooleanVar(value=bool(enabled_tabs.get("music", True)))
-        tab_audible_var = tk.BooleanVar(value=bool(enabled_tabs.get("audible", False)))
+        tab_audible_var = tk.BooleanVar(value=bool(enabled_tabs.get("audible", False)) and not _store_edition())
         tab_video_var = tk.BooleanVar(value=bool(enabled_tabs.get("video", True)))
         ttk.Checkbutton(tabs_frame, text="Musik", variable=tab_music_var, style="Download.TCheckbutton").pack(anchor=tk.W, pady=2)
-        ttk.Checkbutton(tabs_frame, text="Audible", variable=tab_audible_var, style="Download.TCheckbutton").pack(anchor=tk.W, pady=2)
+        if not _store_edition():
+            ttk.Checkbutton(tabs_frame, text="Audible", variable=tab_audible_var, style="Download.TCheckbutton").pack(anchor=tk.W, pady=2)
         ttk.Checkbutton(tabs_frame, text="Video", variable=tab_video_var, style="Download.TCheckbutton").pack(anchor=tk.W, pady=2)
         
         # Musik – Account & Tools (Deezer, Spotify, Audio-Aufnahme)
         music_tools_frame = ttk.LabelFrame(scrollable_frame, text="🎵 Musik – Account & Tools", padding="10", style="Download.TLabelframe")
         music_tools_frame.pack(fill=tk.X, pady=5, padx=5)
-        ttk.Label(music_tools_frame, textvariable=self.auth_status_var, style="Download.TLabel").pack(anchor=tk.W)
+        if not _store_edition():
+            ttk.Label(music_tools_frame, textvariable=self.auth_status_var, style="Download.TLabel").pack(anchor=tk.W)
         music_btn_row = ttk.Frame(music_tools_frame, style="Download.TFrame")
         music_btn_row.pack(fill=tk.X, pady=(5, 0))
-        ttk.Button(music_btn_row, text="Deezer anmelden", command=self.show_login_dialog, style="Download.TButton").pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(music_btn_row, text="Abmelden", command=self.logout, style="Download.TButton").pack(side=tk.LEFT, padx=(0, 5))
-        if SpotifyDownloader:
-            ttk.Button(music_btn_row, text="⚙️ Spotify API", command=self.show_spotify_api_config, style="Download.TButton").pack(side=tk.LEFT, padx=(0, 5))
+        if not _store_edition():
+            ttk.Button(music_btn_row, text="Deezer anmelden", command=self.show_login_dialog, style="Download.TButton").pack(side=tk.LEFT, padx=(0, 5))
+            ttk.Button(music_btn_row, text="Abmelden", command=self.logout, style="Download.TButton").pack(side=tk.LEFT, padx=(0, 5))
+            if SpotifyDownloader:
+                ttk.Button(music_btn_row, text="⚙️ Spotify API", command=self.show_spotify_api_config, style="Download.TButton").pack(side=tk.LEFT, padx=(0, 5))
         ttk.Button(music_btn_row, text="🔧 Audio-Aufnahme Setup", command=self.show_audio_setup, style="Download.TButton").pack(side=tk.LEFT)
         
         # Video-Einstellungen
@@ -12945,7 +13041,13 @@ Copyright (c) 2025 Universal Downloader Contributors
         domain_presets_frame.pack(fill=tk.X, pady=5, padx=5)
         ttk.Label(domain_presets_frame, text="Für diese Domains werden beim Download automatisch Qualität und Format gesetzt.", style="Download.TLabel").pack(anchor=tk.W, pady=(0, 5))
         domain_presets_working = list(self.settings.get('domain_quality_format', []))
-        domain_presets_listbox = tk.Listbox(domain_presets_frame, height=4, width=60, font=("Arial", 9))
+        domain_presets_listbox = tk.Listbox(
+            domain_presets_frame, height=4, width=60, font=("Arial", 9),
+            bg=getattr(self, '_tk_bg_card', '#424242'), fg=getattr(self, '_tk_fg_text', '#e8e8e8'),
+            selectbackground=getattr(self, '_tk_btn_bg', '#4a4a4a'),
+            selectforeground=getattr(self, '_tk_fg_text', '#e8e8e8'),
+            highlightthickness=0,
+        )
         domain_presets_listbox.pack(fill=tk.X, pady=5)
         def refresh_domain_presets():
             domain_presets_listbox.delete(0, tk.END)
@@ -13093,10 +13195,12 @@ Copyright (c) 2025 Universal Downloader Contributors
             font=("Arial", 9),
             style="Download.TLabel"
         ).pack(anchor=tk.W, pady=(0, 4))
+        deezer_cookie = "" if _store_edition() else "Deezer: .deezer.com (Cookie „arl“). "
         cookie_hint = (
             "Welche Cookies? ORF: .orf.at (Altersverifikation). ARD Plus: .ardplus.de. "
-            "YouTube / YouTube Music: .youtube.com (für Playlists/Radio). Deezer: .deezer.com (Cookie „arl“). "
-            "Für YouTube/YouTube Music: Get cookies.txt LOCALLY auf youtube.com oder music.youtube.com ausführen (eingeloggt), „Nur diese Seite“ exportieren."
+            "YouTube / YouTube Music: .youtube.com (für Playlists/Radio). "
+            + deezer_cookie
+            + "Für YouTube/YouTube Music: Get cookies.txt LOCALLY auf youtube.com oder music.youtube.com ausführen (eingeloggt), „Nur diese Seite“ exportieren."
         )
         cookie_hint_lbl = ttk.Label(
             video_accounts_frame,
@@ -13497,7 +13601,7 @@ Copyright (c) 2025 Universal Downloader Contributors
             self.settings['series_discord_webhook_url'] = series_discord_url_var.get().strip()
             self.settings['enabled_tabs'] = {
                 'music': bool(tab_music_var.get()),
-                'audible': bool(tab_audible_var.get()),
+                'audible': bool(tab_audible_var.get()) and not _store_edition(),
                 'video': bool(tab_video_var.get()),
             }
             if not any(self.settings['enabled_tabs'].values()):

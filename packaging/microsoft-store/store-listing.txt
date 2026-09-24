@@ -1,0 +1,25 @@
+Name: Universal Downloader
+Herausgeber-Anzeigename: Plertanix
+Kategorie: Multimedia
+Preis: Kostenlos
+Altersfreigabe: PEGI 3 / alle Altersgruppen (keine anstößigen Inhalte)
+
+Kurzbeschreibung:
+Lädt Musik, Hörbücher und Videos aus Mediatheken wie ARD, ZDF und ORF.
+
+Beschreibung:
+Universal Downloader speichert Musik, Hörbücher und Videos im Download-Ordner.
+Die Suche findet Sendungen in der ARD-Mediathek, im ZDF und in der ARD Audiothek.
+Playlists öffnen eine Titelauswahl.
+Ein Serien-Wächter merkt sich Sendungen und holt neue Folgen.
+Die App gibt es für Windows (x64) und Windows auf ARM.
+
+Neu in dieser Version:
+Playlists öffnen die Titelauswahl. Der Fortschritt läuft während des Downloads.
+Die Mediathek-Suche ist enthalten. Dunkle Fenster für Statistiken, Historie und Favoriten.
+
+Bilder (packaging/microsoft-store/):
+- app-tile-300.png          300x300, Store-Kachel
+- poster-720x1080.png       720x1080, Poster
+- hero-1920x1080.png        1920x1080, Hero
+- screenshot-hauptfenster-1920x1080.png
