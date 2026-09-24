@@ -70,13 +70,50 @@ function New-Package([string] $Arch) {
     [System.IO.File]::WriteAllText($manifestPath, $xml.TrimStart([char]0xFEFF))
     $out = Join-Path $outDir "UniversalDownloader-$VersionQuad-$Arch.msix"
     $log = Join-Path $env:TEMP "makeappx-$Arch.log"
+    $err = "$log.err"
     Write-Host "makeappx: $($makeappx.FullName)"
-    $proc = Start-Process -FilePath $makeappx.FullName -ArgumentList @("pack", "/v", "/h", "SHA256", "/d", $layout, "/p", $out, "/o") -Wait -PassThru -NoNewWindow -RedirectStandardOutput $log -RedirectStandardError "$log.err"
-    $code = $proc.ExitCode
-    foreach ($file in @($log, "$log.err")) {
-        if (Test-Path $file) { Get-Content $file | Write-Host }
+    function Invoke-Pack([string] $Dir) {
+        if (Test-Path $log) { Remove-Item $log -Force }
+        if (Test-Path $err) { Remove-Item $err -Force }
+        $proc = Start-Process -FilePath $makeappx.FullName -ArgumentList @("pack", "/h", "SHA256", "/d", $Dir, "/p", $out, "/o") -Wait -PassThru -NoNewWindow -RedirectStandardOutput $log -RedirectStandardError $err
+        return $proc.ExitCode
     }
-    if ($code -ne 0) { Write-Error "makeappx pack für $Arch fehlgeschlagen (Exit $code)." }
+    $code = Invoke-Pack $layout
+    if ($code -ne 0) {
+        Write-Host "Packen fehlgeschlagen, suche die störende Datei."
+        $rootLen = $layout.Length
+        $rels = @(Get-ChildItem -LiteralPath $layout -Recurse -Force -File | Where-Object { $_.FullName -ne $manifestPath } | ForEach-Object { $_.FullName.Substring($rootLen).TrimStart('\') })
+        $removed = @()
+        for ($round = 0; $round -lt 12 -and $code -ne 0; $round++) {
+            $list = @($rels)
+            while ($list.Count -gt 1) {
+                $mid = [Math]::Floor($list.Count / 2)
+                $probeDir = Join-Path $env:TEMP "ud-probe-$Arch"
+                if (Test-Path $probeDir) { Remove-Item $probeDir -Recurse -Force }
+                New-Item -ItemType Directory -Force -Path (Join-Path $probeDir "Assets") | Out-Null
+                Copy-Item $manifestPath (Join-Path $probeDir "AppxManifest.xml")
+                foreach ($rel in $list[0..($mid - 1)]) {
+                    $dest = Join-Path $probeDir $rel
+                    New-Item -ItemType Directory -Force -Path (Split-Path $dest) | Out-Null
+                    Copy-Item -LiteralPath (Join-Path $layout $rel) -Destination $dest
+                }
+                $probeCode = Invoke-Pack $probeDir
+                Remove-Item $probeDir -Recurse -Force
+                if ($probeCode -ne 0) { $list = @($list[0..($mid - 1)]) } else { $list = @($list[$mid..($list.Count - 1)]) }
+            }
+            $bad = $list[0]
+            Write-Host "Störende Datei: $bad"
+            Remove-Item -LiteralPath (Join-Path $layout $bad) -Force
+            $removed += $bad
+            $rels = @($rels | Where-Object { $_ -ne $bad })
+            $code = Invoke-Pack $layout
+        }
+        if ($removed.Count -gt 0) { Write-Host ("Entfernt: " + ($removed -join ", ")) }
+        if ($code -ne 0) {
+            if (Test-Path $err) { Get-Content $err | Write-Host }
+            Write-Error "makeappx pack für $Arch fehlgeschlagen (Exit $code)."
+        }
+    }
     Remove-Item $layout -Recurse -Force
     Write-Host "Paket: $out"
     return $out
