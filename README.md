@@ -1,6 +1,6 @@
 # Universal Downloader
 
-Ein Universal-Downloader für Musik, Hörbücher, Videos und Serien – für privaten Gebrauch.
+Ein Downloader für Videos, Hörfunk und Serien – für privaten Gebrauch.
 
 Aktuelle Version: **2.1.55** (23. September 2026). Fertige Pakete liegen bei den [Releases](https://github.com/msebastian100/Universal-Downloader/releases/tag/v2.1.55). Neuere Versionen erscheinen auf der [Release-Übersicht](https://github.com/msebastian100/Universal-Downloader/releases). Die installierte App prüft dort selbst auf Updates.
 
@@ -10,10 +10,8 @@ Dieser Downloader ist nur für privaten Gebrauch bestimmt. Bitte beachten Sie di
 
 ## Funktionen
 
-- **Deezer:** Tracks, Alben und Playlists, Metadaten und Cover. Wenn Deezer wegen DRM nicht liefert, springt der Download auf YouTube um; Titeldaten kommen weiter von Deezer. Anmeldung per ARL-Token, Familienprofile und Qualität nach Abo (128 kbps, 320 kbps oder FLAC).
-- **Spotify:** Titel über die hinterlegten Download-Wege.
-- **Audible:** Hörbücher, Umwandlung von AAX nach MP3 oder MP4, kapitelweise.
 - **Video:** YouTube und öffentlich-rechtliche Mediatheken (ARD, ZDF, ORF, SWR, BR, WDR, MDR, NDR, HR, RBB, SR, Phoenix, Arte, Tagesschau, RocketBeans TV). Format MP4, MKV oder MP3, Qualitätsauswahl, Playlists.
+- **Hörfunk und Audiothek:** ARD Audiothek, ARD Sounds, die Audiotheken von BR, NDR, WDR, MDR, SWR, rbb, SR und HR, Deutschlandfunk, ORF-Radiothek, LibriVox. Ausgabe als MP3.
 - **Serien-Wächter:** prüft Sendungen und Playlists, zeigt offene Folgen in der Leiste und startet den Download von dort. Pro Serie eigenes Format, ARD Sounds als MP3.
 - Fortschritt mit Prozent und Geschwindigkeit, Protokoll, Update über die GitHub-Releases.
 
@@ -36,49 +34,35 @@ Ebenfalls unter [Release v2.1.55](https://github.com/msebastian100/Universal-Dow
 
 ### Linux (APT, empfohlen)
 
-Unter Linux Mint, Ubuntu und Debian installiert und aktualisiert das Paket wie andere Systempakete, auch in der Aktualisierungsverwaltung.
+Für Linux Mint, Ubuntu und Debian. Das Programm erscheint danach im Anwendungsmenü und aktualisiert sich wie andere Systempakete, auch in der Aktualisierungsverwaltung.
+
+Die Datei liegt auf GitHub, nicht auf dem eigenen Rechner. Der Befehl lädt sie zuerst herunter und startet sie dann. Nichts vorher klonen oder speichern.
+
+1. Terminal öffnen (unter Linux Mint und Ubuntu: Menü nach „Terminal“ suchen, oder `Strg+Alt+T`).
+2. Diesen Block komplett markieren, kopieren, im Terminal einfügen und Enter drücken:
 
 ```bash
-chmod +x install_apt_linux.sh
-sudo ./install_apt_linux.sh
+curl -fsSL -o /tmp/install_apt_linux.sh https://raw.githubusercontent.com/msebastian100/Universal-Downloader/main/install_apt_linux.sh && chmod +x /tmp/install_apt_linux.sh && sudo /tmp/install_apt_linux.sh
 ```
 
-Das Skript `install_apt_linux.sh` importiert den Schlüssel von `https://ppa.plertanix.de/apt`, trägt die Quelle ein und installiert `universal-downloader`. Schlägt der Schlüsselimport fehl (zum Beispiel wegen SSL), trägt es die Quelle mit `[trusted=yes]` ein. Fehler landen unter `/var/log/` oder `/tmp/` (`universal-downloader-install_ERROR_*.log`).
+3. Das Passwort eingeben. Im Terminal bleibt das Feld leer, die Zeichen werden nicht angezeigt. Danach Enter.
+4. Warten, bis das Skript fertig ist. **Universal Downloader** steht dann im Anwendungsmenü.
 
-Manuell:
+Das Skript holt den Schlüssel von `https://ppa.plertanix.de/apt`, trägt die Paketquelle ein und installiert `universal-downloader`. Schlägt der Schlüsselimport fehl, etwa wegen SSL, nutzt es die Quelle ohne Schlüsselprüfung. Fehler schreibt es nach `/var/log/` oder `/tmp/` (`universal-downloader-install_ERROR_*.log`).
 
-```bash
-curl -sS https://ppa.plertanix.de/apt/repo-key.asc -o /tmp/universal-downloader.asc
-sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/universal-downloader.gpg /tmp/universal-downloader.asc
-echo "deb [signed-by=/etc/apt/trusted.gpg.d/universal-downloader.gpg] https://ppa.plertanix.de/apt stable main" | sudo tee /etc/apt/sources.list.d/universal-downloader.list
-sudo apt update
-sudo apt install universal-downloader
-```
+Spätere Updates: in der Aktualisierungsverwaltung, oder im Terminal `sudo apt update && sudo apt install --only-upgrade universal-downloader`.
 
-Schlüssel und `sudo` nicht in eine Pipe legen: sonst liest `gpg` das Passwort statt des Schlüssels.
-
-Ohne Schlüsselprüfung, nur wenn der Import scheitert:
-
-```bash
-echo "deb [trusted=yes] https://ppa.plertanix.de/apt stable main" | sudo tee /etc/apt/sources.list.d/universal-downloader.list
-sudo apt update
-sudo apt install universal-downloader
-```
-
-Updates: `sudo apt update && sudo apt install --only-upgrade universal-downloader`  
-Entfernen: `sudo apt remove universal-downloader` und die Dateien `/etc/apt/sources.list.d/universal-downloader.list` sowie `/etc/apt/trusted.gpg.d/universal-downloader.gpg` löschen.
+Entfernen: `sudo apt remove universal-downloader`. Die Quelle liegt in `/etc/apt/sources.list.d/universal-downloader.list`, der Schlüssel in `/etc/apt/trusted.gpg.d/universal-downloader.gpg`.
 
 ### Linux (.deb aus dem Release)
 
-Das Paket von [Release v2.1.55](https://github.com/msebastian100/Universal-Downloader/releases/tag/v2.1.55):
-
-[universal-downloader_2.1.55_all.deb](https://github.com/msebastian100/Universal-Downloader/releases/download/v2.1.55/universal-downloader_2.1.55_all.deb)
+Wer das Paket einmalig von GitHub holen will, ohne die APT-Quelle: Terminal öffnen und diesen Befehl einfügen. Er lädt die Datei von [Release v2.1.55](https://github.com/msebastian100/Universal-Downloader/releases/tag/v2.1.55) nach `/tmp` und installiert sie.
 
 ```bash
-sudo apt install ./universal-downloader_2.1.55_all.deb
+curl -fL -o /tmp/universal-downloader_2.1.55_all.deb https://github.com/msebastian100/Universal-Downloader/releases/download/v2.1.55/universal-downloader_2.1.55_all.deb && sudo apt install /tmp/universal-downloader_2.1.55_all.deb
 ```
 
-Danach erscheint **Universal Downloader** im Anwendungsmenü. Das Paket legt eine eigene Umgebung unter `/usr/share/universal-downloader/venv` an.
+Direktlink, falls der Browser die Datei laden soll: [universal-downloader_2.1.55_all.deb](https://github.com/msebastian100/Universal-Downloader/releases/download/v2.1.55/universal-downloader_2.1.55_all.deb). Danach im Ordner der Datei `sudo apt install ./universal-downloader_2.1.55_all.deb`. Bei Updates über diesen Weg muss die neue `.deb` jedes Mal neu geladen werden. Mit der APT-Quelle oben kommt das von allein.
 
 ## Start aus dem Quellcode
 
@@ -92,17 +76,7 @@ python3 check_dependencies.py
 python3 start.py
 ```
 
-Unter Windows die Umgebung mit `venv\Scripts\activate` aktivieren. `install.sh` richtet Umgebung, Abhängigkeiten und eine Desktop-Verknüpfung ein.
-
-## Deezer-Anmeldung
-
-Für Premium- oder HiFi-Qualität in der Oberfläche auf **Anmelden** gehen und den ARL-Cookie eintragen:
-
-1. Deezer im Browser öffnen
-2. Entwicklertools (F12) → Application → Cookies → deezer.com
-3. Wert des Cookies `arl` kopieren
-
-Der Token ist persönlich und wird nicht geteilt. Die Qualität folgt dem Abo: FLAC bei HiFi, MP3 320 kbps bei Premium, MP3 128 kbps ohne Abo.
+Unter Windows die Umgebung mit `venv\Scripts\activate` aktivieren.
 
 ## Lizenz
 
