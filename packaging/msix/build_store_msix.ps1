@@ -56,6 +56,10 @@ function New-Package([string] $Arch) {
     New-Item -ItemType Directory -Force -Path $layout | Out-Null
     Copy-Item -Path (Join-Path $SourceDir "*") -Destination $layout -Recurse -Force
     Copy-Item -Path $assetDir -Destination (Join-Path $layout "Assets") -Recurse -Force
+    # makeappx lehnt + und [Content_Types].xml unterhalb der Wurzel ab (0x8007007b).
+    Get-ChildItem -LiteralPath $layout -Recurse -Force -File | Where-Object {
+        $_.Name -match '\+' -or ($_.Name -eq '[Content_Types].xml' -and $_.DirectoryName -ne $layout)
+    } | Remove-Item -Force
     $xml = $manifestTemplate.
         Replace("__IDENTITY_NAME__", $IdentityName).
         Replace("__PUBLISHER__", $Publisher).
