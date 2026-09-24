@@ -56,9 +56,12 @@ function New-Package([string] $Arch) {
     New-Item -ItemType Directory -Force -Path $layout | Out-Null
     Copy-Item -Path (Join-Path $SourceDir "*") -Destination $layout -Recurse -Force
     Copy-Item -Path $assetDir -Destination (Join-Path $layout "Assets") -Recurse -Force
-    # makeappx lehnt +, .rels und [Content_Types].xml unterhalb der Wurzel ab (0x8007007b).
+    # makeappx lehnt +, *.rels und [Content_Types].xml unterhalb der Wurzel ab.
+    # Die Word-Vorlagen enthalten genau solche Namen und werden zum Lesen von docx nicht gebraucht.
+    $docxTemplates = Join-Path $layout "_internal\docx\templates"
+    if (Test-Path $docxTemplates) { Remove-Item $docxTemplates -Recurse -Force }
     Get-ChildItem -LiteralPath $layout -Recurse -Force -File | Where-Object {
-        $_.Name -match '\+' -or $_.Name -eq '.rels' -or ($_.Name -eq '[Content_Types].xml' -and $_.DirectoryName -ne $layout)
+        $_.Name -match '\+' -or $_.Name -like '*.rels' -or ($_.Name -eq '[Content_Types].xml' -and $_.DirectoryName -ne $layout)
     } | Remove-Item -Force
     $xml = $manifestTemplate.
         Replace("__IDENTITY_NAME__", $IdentityName).
@@ -87,7 +90,9 @@ function New-Package([string] $Arch) {
             if ($full.StartsWith('\\?\')) { $full = $full.Substring(4) }
             $full = [System.IO.Path]::GetFullPath($full)
             if ($full -eq $manifestPath) { return }
-            $full.Substring($layoutFull.Length).TrimStart('\')
+            $relPath = $full.Substring($layoutFull.Length).TrimStart('\')
+            if ($relPath -like 'Assets\*' -or $relPath -eq 'UniversalDownloader.exe') { return }
+            $relPath
         } | Where-Object { $_ })
         $removed = @()
         for ($round = 0; $round -lt 12 -and $code -ne 0; $round++) {
@@ -96,8 +101,11 @@ function New-Package([string] $Arch) {
                 $mid = [Math]::Floor($list.Count / 2)
                 $probeDir = Join-Path $env:TEMP "ud-probe-$Arch"
                 if (Test-Path $probeDir) { Remove-Item $probeDir -Recurse -Force }
-                New-Item -ItemType Directory -Force -Path (Join-Path $probeDir "Assets") | Out-Null
+                New-Item -ItemType Directory -Force -Path $probeDir | Out-Null
                 Copy-Item $manifestPath (Join-Path $probeDir "AppxManifest.xml")
+                Copy-Item (Join-Path $layout "Assets") (Join-Path $probeDir "Assets") -Recurse -Force
+                $exe = Join-Path $layout "UniversalDownloader.exe"
+                if (Test-Path $exe) { Copy-Item $exe (Join-Path $probeDir "UniversalDownloader.exe") }
                 foreach ($rel in $list[0..($mid - 1)]) {
                     $dest = Join-Path $probeDir $rel
                     New-Item -ItemType Directory -Force -Path (Split-Path $dest) | Out-Null
@@ -105,7 +113,25 @@ function New-Package([string] $Arch) {
                 }
                 $probeCode = Invoke-Pack $probeDir
                 Remove-Item $probeDir -Recurse -Force
-                if ($probeCode -ne 0) { $list = @($list[0..($mid - 1)]) } else { $list = @($list[$mid..($list.Count - 1)]) }
+                $right = @($list[$mid..($list.Count - 1)])
+                if ($probeCode -ne 0) {
+                    $list = @($list[0..($mid - 1)])
+                } else {
+                    $rightDir = Join-Path $env:TEMP "ud-probe-r-$Arch"
+                    if (Test-Path $rightDir) { Remove-Item $rightDir -Recurse -Force }
+                    New-Item -ItemType Directory -Force -Path $rightDir | Out-Null
+                    Copy-Item $manifestPath (Join-Path $rightDir "AppxManifest.xml")
+                    Copy-Item (Join-Path $layout "Assets") (Join-Path $rightDir "Assets") -Recurse -Force
+                    if (Test-Path $exe) { Copy-Item $exe (Join-Path $rightDir "UniversalDownloader.exe") }
+                    foreach ($rel in $right) {
+                        $dest = Join-Path $rightDir $rel
+                        New-Item -ItemType Directory -Force -Path (Split-Path $dest) | Out-Null
+                        Copy-Item -LiteralPath (Join-Path $layout $rel) -Destination $dest
+                    }
+                    $rightCode = Invoke-Pack $rightDir
+                    Remove-Item $rightDir -Recurse -Force
+                    if ($rightCode -ne 0) { $list = $right } else { Write-Error "Beide Hälften lassen sich packen, das Gesamtverzeichnis nicht."; return }
+                }
             }
             $bad = $list[0]
             Write-Host "Störende Datei: $bad"
