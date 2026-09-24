@@ -64,20 +64,6 @@ curl -fL -o /tmp/universal-downloader_2.1.55_all.deb https://github.com/msebasti
 
 Direktlink, falls der Browser die Datei laden soll: [universal-downloader_2.1.55_all.deb](https://github.com/msebastian100/Universal-Downloader/releases/download/v2.1.55/universal-downloader_2.1.55_all.deb). Danach im Ordner der Datei `sudo apt install ./universal-downloader_2.1.55_all.deb`. Bei Updates über diesen Weg muss die neue `.deb` jedes Mal neu geladen werden. Mit der APT-Quelle oben kommt das von allein.
 
-## Start aus dem Quellcode
-
-Python 3.8 oder neuer, ffmpeg und tkinter (`python3-tk` unter Linux).
-
-```bash
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-python3 check_dependencies.py
-python3 start.py
-```
-
-Unter Windows die Umgebung mit `venv\Scripts\activate` aktivieren.
-
 ## Lizenz
 
 MIT. Siehe [LICENSE](LICENSE).
