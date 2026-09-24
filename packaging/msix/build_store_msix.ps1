@@ -81,8 +81,14 @@ function New-Package([string] $Arch) {
     $code = Invoke-Pack $layout
     if ($code -ne 0) {
         Write-Host "Packen fehlgeschlagen, suche die störende Datei."
-        $rootLen = $layout.Length
-        $rels = @(Get-ChildItem -LiteralPath $layout -Recurse -Force -File | Where-Object { $_.FullName -ne $manifestPath } | ForEach-Object { $_.FullName.Substring($rootLen).TrimStart('\') })
+        $layoutFull = [System.IO.Path]::GetFullPath($layout).TrimEnd('\')
+        $rels = @(Get-ChildItem -LiteralPath $layout -Recurse -Force -File | ForEach-Object {
+            $full = $_.FullName
+            if ($full.StartsWith('\\?\')) { $full = $full.Substring(4) }
+            $full = [System.IO.Path]::GetFullPath($full)
+            if ($full -eq $manifestPath) { return }
+            $full.Substring($layoutFull.Length).TrimStart('\')
+        } | Where-Object { $_ })
         $removed = @()
         for ($round = 0; $round -lt 12 -and $code -ne 0; $round++) {
             $list = @($rels)
