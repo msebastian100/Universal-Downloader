@@ -11,6 +11,15 @@ from typing import List, Optional, Dict, Any
 # Neueste Version zuerst – wird für „Erster Start“ und Upgrade-Anzeige genutzt
 RELEASE_NOTES: List[Dict[str, Any]] = [
     {
+        "version": "2.1.56",
+        "date": "2026-09-24",
+        "items": [
+            "Suche für ARD und ZDF mit Bild, Beschreibung und Folgenauswahl. Serien und Hörspiele lassen sich in der App ansehen oder anhören.",
+            "Audible für die eigene Bibliothek. Der Tab ist aus, bis er unter Einstellungen bei „Sichtbare Tabs“ eingeschaltet wird.",
+            "Plugins können Knöpfe, Tabs und Prüfungen ergänzen. Die Beispieldatei liegt im Ordner plugins neben den Downloads.",
+        ],
+    },
+    {
         "version": "2.1.55",
         "date": "2026-09-23",
         "items": [

@@ -11,6 +11,8 @@ if os.path.exists('icon.ico'):
     datas_list.append(('icon.ico', '.'))
 elif os.path.exists('icon.png'):
     datas_list.append(('icon.png', '.'))
+if os.path.isdir('plugins'):
+    datas_list.append(('plugins', 'plugins'))
 
 a = Analysis(
     ['start.py'],
@@ -26,6 +28,7 @@ a = Analysis(
         'yt_dlp_helper',
         'auto_install_dependencies',
         'path_helper',
+        'plugin_loader',
         'requests',
         'urllib3',
         'certifi',
@@ -53,6 +56,8 @@ a = Analysis(
         'update_from_github',
         'create_shortcut',
         'setup_audio_recording',
+        'mediathek_search',
+        'preview_player',
         'series_watch',
         'series_watch_tray',
         'pystray',

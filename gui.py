@@ -47,6 +47,11 @@ except ImportError:
     VideoDownloader = None
     SUPPORTED_SENDERS = {}
 
+try:
+    import mediathek_search
+except ImportError:
+    mediathek_search = None
+
 # Anzeigenamen für Video-Sender (Dialog "Unterstützte Sender")
 VIDEO_SENDER_DISPLAY_NAMES = {
     "youtube": "YouTube",
@@ -525,7 +530,8 @@ class DeezerDownloaderGUI:
         # Prüfe ob bereits angemeldet (Audible)
         if AudibleAuth:
             try:
-                temp_audible_auth = AudibleAuth()
+                from path_helper import get_app_base_path
+                temp_audible_auth = AudibleAuth(str(get_app_base_path() / ".audible_config.json"))
                 if temp_audible_auth.is_logged_in():
                     self.audible_auth = temp_audible_auth
                     self.audible_library = AudibleLibrary(temp_audible_auth)
@@ -740,6 +746,7 @@ class DeezerDownloaderGUI:
         except tk.TclError:
             pass
         self._apply_theme(self.settings.get('theme', 'dark'))
+        self._windows_round_window(self.root)
         
         # Hauptframe
         main_frame = ttk.Frame(self.root, padding="10", style="Download.TFrame")
@@ -757,9 +764,11 @@ class DeezerDownloaderGUI:
         self._title_label.grid(row=0, column=0, sticky=tk.W)
         buttons_frame = ttk.Frame(title_frame, style="Download.TFrame")
         buttons_frame.grid(row=0, column=1, sticky=tk.E)
+        self.header_buttons = buttons_frame
+        self._register_plugin_area("kopf", buttons_frame)
+        ttk.Button(buttons_frame, text="🔍 Suche", command=self.show_search_dialog, style="Download.TButton").pack(side=tk.LEFT, padx=2)
         if series_watch is not None:
             ttk.Button(buttons_frame, text="📺 Serien-Wächter", command=self.show_series_watch_dialog, style="Download.TButton").pack(side=tk.LEFT, padx=2)
-        ttk.Button(buttons_frame, text="🔍 Suche", command=self.show_search_dialog, style="Download.TButton").pack(side=tk.LEFT, padx=2)
         ttk.Button(buttons_frame, text="📝 Historie", command=self.show_download_history, style="Download.TButton").pack(side=tk.LEFT, padx=2)
         ttk.Button(buttons_frame, text="⭐ Favoriten", command=self.show_favorites, style="Download.TButton").pack(side=tk.LEFT, padx=2)
         ttk.Button(buttons_frame, text="📊 Statistiken", command=self.show_statistics, style="Download.TButton").pack(side=tk.LEFT, padx=2)
@@ -773,21 +782,16 @@ class DeezerDownloaderGUI:
         
         # Musik Tab (padding=0 damit Container bis zum Rand reicht, kein Hintergrund sichtbar)
         self.music_frame = ttk.Frame(self.notebook, padding="0", style="Download.TFrame")
-        self.notebook.add(self.music_frame, text="🎵 Musik")
-        # Verwende die umbenannte create_deezer_tab als Basis für create_music_tab
         self.create_music_tab()
         
-        # Audible Tab (vorübergehend ausgeblendet – funktioniert derzeit nicht)
-        # if AudibleAuth:
-        #     self.audible_frame = ttk.Frame(self.notebook, padding="10")
-        #     self.notebook.add(self.audible_frame, text="📚 Audible")
-        #     self.create_audible_tab()
+        if AudibleAuth:
+            self.audible_frame = ttk.Frame(self.notebook, padding="10", style="Download.TFrame")
+            self.create_audible_tab()
         
-        # Video Downloader Tab (padding=0 damit Container bis zum Rand reicht)
         if VideoDownloader:
             self.video_frame = ttk.Frame(self.notebook, padding="0", style="Download.TFrame")
-            self.notebook.add(self.video_frame, text="🎬 Video Downloader")
             self.create_video_tab()
+        self._apply_enabled_tabs()
         
         # Zuletzt geöffneten Tab wiederherstellen und Tab-Wechsel speichern
         last_tab = self.settings.get('last_tab', '🎵 Musik')
@@ -796,8 +800,85 @@ class DeezerDownloaderGUI:
                 self.notebook.select(tab_id)
                 break
         self.notebook.bind("<<NotebookTabChanged>>", self._on_notebook_tab_changed)
+        try:
+            from plugin_loader import activate_plugins
+            activate_plugins(self)
+        except Exception as exc:
+            print(f"Plugins konnten nicht geladen werden: {exc}")
+        self._ensure_audible_library()
         self.root.after(150, self._resize_download_panels)
     
+    def account_status(self, service: str) -> dict:
+        """Für Plugins: ob ein Dienst angemeldet ist und ob die Audible-Bücher schon da sind."""
+        name = (service or "").strip().lower()
+        if name == "audible":
+            signed_in = bool(self.audible_auth and self.audible_auth.is_logged_in())
+            books = getattr(self, "audible_books", {}) or {}
+            return {
+                "signed_in": signed_in,
+                "books_loaded": bool(books),
+                "book_count": len(books),
+            }
+        if name == "deezer":
+            signed_in = bool(getattr(self, "auth", None) and self.auth.is_logged_in())
+            return {"signed_in": signed_in, "books_loaded": False, "book_count": 0}
+        for account in self.settings.get("video_accounts", []):
+            service_name = str(account.get("service") or "")
+            if name and name in service_name.lower():
+                cookies = str(account.get("cookies") or "").strip()
+                return {"signed_in": bool(cookies), "books_loaded": False, "book_count": 0}
+        return {"signed_in": False, "books_loaded": False, "book_count": 0}
+
+    def _builtin_tab_specs(self):
+        """Feste Tabs in der Reihenfolge Musik, Audible, Video."""
+        specs = [("music", getattr(self, "music_frame", None), "🎵 Musik")]
+        specs.append(("audible", getattr(self, "audible_frame", None), "📚 Audible"))
+        specs.append(("video", getattr(self, "video_frame", None), "🎬 Video Downloader"))
+        return [(key, frame, title) for key, frame, title in specs if frame is not None]
+
+    def _apply_enabled_tabs(self):
+        """Zeigt nur die Tabs, die in den Einstellungen an sind. Audible ist standardmäßig aus."""
+        enabled = self.settings.get("enabled_tabs")
+        if not isinstance(enabled, dict):
+            enabled = {}
+        flags = {
+            "music": bool(enabled.get("music", True)),
+            "audible": bool(enabled.get("audible", False)),
+            "video": bool(enabled.get("video", True)),
+        }
+        specs = self._builtin_tab_specs()
+        if specs and not any(flags.get(key, False) for key, _frame, _title in specs):
+            flags["music"] = True
+        builtin_ids = {str(frame) for _key, frame, _title in specs}
+        plugin_tabs = []
+        for tab_id in list(self.notebook.tabs()):
+            if tab_id not in builtin_ids:
+                plugin_tabs.append((tab_id, self.notebook.tab(tab_id, "text")))
+            self.notebook.forget(tab_id)
+        for key, frame, title in specs:
+            if flags.get(key, False):
+                self.notebook.add(frame, text=title)
+        for tab_id, title in plugin_tabs:
+            self.notebook.add(tab_id, text=title)
+
+    def _ensure_audible_library(self):
+        """Lädt die Hörbücher einmal, wenn der Audible-Tab offen ist."""
+        try:
+            tab_id = self.notebook.select()
+            if "Audible" not in self.notebook.tab(tab_id, "text"):
+                return
+        except Exception:
+            return
+        if getattr(self, "_audible_library_loaded", False) or getattr(self, "_audible_library_loading", False):
+            return
+        self.load_audible_library(manual=False)
+
+    def _register_plugin_area(self, name, frame):
+        """Benannte Stelle, an der Plugins Knöpfe hinzufügen oder entfernen."""
+        if not hasattr(self, "plugin_areas"):
+            self.plugin_areas = {}
+        self.plugin_areas[name] = frame
+
     def _schedule_resize_download_panels(self):
         """Plant Anpassung (entprellt), danach ggf. Nachlauf bis Größe stabil."""
         if getattr(self, '_resize_panels_timer', None) is not None:
@@ -814,6 +895,8 @@ class DeezerDownloaderGUI:
             if tab_id:
                 self.settings['last_tab'] = self.notebook.tab(tab_id, "text")
                 self._save_settings()
+                if "Audible" in self.notebook.tab(tab_id, "text"):
+                    self._ensure_audible_library()
             self._schedule_resize_download_panels()
         except Exception:
             pass
@@ -839,6 +922,56 @@ class DeezerDownloaderGUI:
             win.configure(bg=getattr(self, '_tk_bg_panel', '#383838'))
         except tk.TclError:
             pass
+        self._windows_round_window(win)
+
+    def _windows_round_window(self, win) -> None:
+        """Windows-11-Rahmen mit runden Ecken.
+
+        Ältere Windows-11-Versionen (auf der ARM-VM 25H2) runden Programmfenster von
+        selbst. Neuere (auf dem AMD-Rechner 26H2) lassen sie eckig, bis das Programm
+        die runde Ecke ausdrücklich anfordert.
+        """
+        if sys.platform != "win32":
+            return
+
+        def apply(_event=None):
+            try:
+                import ctypes
+                from ctypes import wintypes
+                user32 = ctypes.windll.user32
+                dwmapi = ctypes.windll.dwmapi
+                user32.GetAncestor.argtypes = [wintypes.HWND, wintypes.UINT]
+                user32.GetAncestor.restype = wintypes.HWND
+                dwmapi.DwmSetWindowAttribute.argtypes = [
+                    wintypes.HWND, wintypes.DWORD, ctypes.c_void_p, wintypes.DWORD,
+                ]
+                dwmapi.DwmSetWindowAttribute.restype = ctypes.c_long
+                user32.SetWindowPos.argtypes = [
+                    wintypes.HWND, wintypes.HWND,
+                    ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+                    wintypes.UINT,
+                ]
+                hwnd = user32.GetAncestor(win.winfo_id(), 2)  # GA_ROOT
+                if not hwnd:
+                    return
+                pref = ctypes.c_int(2)  # DWMWCP_ROUND
+                dwmapi.DwmSetWindowAttribute(hwnd, 33, ctypes.byref(pref), ctypes.sizeof(pref))
+                theme = (getattr(self, "settings", None) or {}).get("theme", "dark")
+                dark = ctypes.c_int(0 if str(theme).lower() == "light" else 1)
+                for attr in (20, 19):  # DWMWA_USE_IMMERSIVE_DARK_MODE
+                    dwmapi.DwmSetWindowAttribute(hwnd, attr, ctypes.byref(dark), ctypes.sizeof(dark))
+                user32.SetWindowPos(hwnd, None, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0004 | 0x0020)
+            except Exception:
+                pass
+
+        try:
+            win.bind("<Map>", apply, add="+")
+        except Exception:
+            pass
+        try:
+            win.after(80, apply)
+        except Exception:
+            pass
 
     def _fit_dialog(self, win, width, height, min_width=None, min_height=None):
         """Dialoggröße setzen und auf den Bildschirm begrenzen (macOS/Windows/Linux)."""
@@ -854,7 +987,141 @@ class DeezerDownloaderGUI:
         if min_width is not None or min_height is not None:
             win.minsize(int(min_width or min(w, 400)), int(min_height or min(h, 280)))
         return w, h
-    
+
+    def _scroll_wheel_step(self, event):
+        delta = getattr(event, "delta", 0) or 0
+        if delta:
+            if abs(delta) >= 120:
+                step = int(-delta / 120)
+            else:
+                step = int(-delta)
+            if step == 0:
+                step = -1 if delta > 0 else 1
+            return step
+        if getattr(event, "num", None) == 4:
+            return -1
+        if getattr(event, "num", None) == 5:
+            return 1
+        return 0
+
+    def _on_global_scroll_wheel(self, event):
+        """Scrollt die Fläche unter dem Mauszeiger, auch wenn ein Eingabefeld den Fokus hat."""
+        step = self._scroll_wheel_step(event)
+        if not step:
+            return
+        try:
+            px, py = self.root.winfo_pointerxy()
+            target = self.root.winfo_containing(px, py)
+        except tk.TclError:
+            return
+        if target is None:
+            return
+        try:
+            if target.winfo_class() in ("Scrollbar", "TScrollbar"):
+                return
+        except tk.TclError:
+            return
+        canvases = []
+        for canvas in getattr(self, "_scroll_canvases", []):
+            try:
+                if canvas.winfo_exists():
+                    canvases.append(canvas)
+            except tk.TclError:
+                pass
+        self._scroll_canvases = canvases
+        widget = target
+        while widget is not None:
+            if widget in canvases:
+                widget.yview_scroll(step, "units")
+                return "break"
+            widget = getattr(widget, "master", None)
+
+    def _bind_scroll_wheel(self, canvas, inner=None):
+        """Mausrad scrollt die Fläche, auch über den Einträgen und nicht nur an der Leiste."""
+        if not hasattr(self, "_scroll_canvases"):
+            self._scroll_canvases = []
+        if canvas not in self._scroll_canvases:
+            self._scroll_canvases.append(canvas)
+        if not getattr(self, "_scroll_wheel_installed", False):
+            self._scroll_wheel_installed = True
+            self.root.bind_all("<MouseWheel>", self._on_global_scroll_wheel, add="+")
+            self.root.bind_all("<Button-4>", self._on_global_scroll_wheel, add="+")
+            self.root.bind_all("<Button-5>", self._on_global_scroll_wheel, add="+")
+
+    def _entry_place_caret(self, entry):
+        """Klick setzt die Schreibmarke an die Stelle, statt den ganzen Text zu markieren."""
+        def _fix(event):
+            widget = event.widget
+            click_x = event.x
+
+            def place():
+                try:
+                    text = widget.get()
+                    if widget.selection_present() and widget.index("sel.first") == 0 and widget.index("sel.last") == len(text):
+                        widget.icursor(f"@{click_x}")
+                        widget.selection_clear()
+                except tk.TclError:
+                    pass
+
+            widget.after_idle(place)
+
+        entry.bind("<Button-1>", _fix, add="+")
+
+    def _entry_edit_menu(self, entry):
+        """Rechtsklick: Ausschneiden, Kopieren, Einfügen, Alles markieren."""
+        menu = tk.Menu(entry, tearoff=0)
+
+        def cut():
+            copy()
+            try:
+                entry.delete("sel.first", "sel.last")
+            except tk.TclError:
+                pass
+
+        def copy():
+            try:
+                text = entry.selection_get()
+            except tk.TclError:
+                return
+            self.root.clipboard_clear()
+            self.root.clipboard_append(text)
+
+        def paste():
+            entry.focus_set()
+            try:
+                text = self.root.clipboard_get()
+            except tk.TclError:
+                return
+            try:
+                entry.delete("sel.first", "sel.last")
+            except tk.TclError:
+                pass
+            entry.insert("insert", text)
+
+        def select_all():
+            entry.selection_range(0, tk.END)
+            entry.icursor(tk.END)
+
+        menu.add_command(label="Ausschneiden", command=cut)
+        menu.add_command(label="Kopieren", command=copy)
+        menu.add_command(label="Einfügen", command=paste)
+        menu.add_separator()
+        menu.add_command(label="Alles markieren", command=select_all)
+
+        def popup(event):
+            entry.focus_set()
+            try:
+                entry.icursor(f"@{event.x}")
+            except tk.TclError:
+                pass
+            try:
+                menu.tk_popup(event.x_root, event.y_root)
+            finally:
+                menu.grab_release()
+
+        entry.bind("<Button-2>", popup, add="+")
+        entry.bind("<Button-3>", popup, add="+")
+
     def _style_log_scrolledtext(self, st_widget):
         """Log-Widget (Hintergrund/Scrollbar) ans aktuelle Theme anpassen."""
         try:
@@ -1036,6 +1303,7 @@ class DeezerDownloaderGUI:
         self._music_options_canvas = options_canvas
         self._music_options_canvas_cw_id = cw_id
         options_canvas.configure(yscrollcommand=options_scrollbar.set)
+        self._bind_scroll_wheel(options_canvas, scrollable_options)
         # Form- und Button-Breite an Fenster anpassen (beim Größer/Kleiner-Schieben)
         def _on_music_canvas_configure(e):
             options_canvas.itemconfig(cw_id, width=max(400, e.width))
@@ -1063,10 +1331,8 @@ class DeezerDownloaderGUI:
         url_entry = ttk.Entry(url_frame, textvariable=self.music_url_var)
         url_entry.pack(fill=tk.X, padx=(0, 5))
         url_entry.bind('<Return>', lambda e: self.start_music_download())
-        def handle_paste(event):
-            return None
-        url_entry.bind('<Control-v>', handle_paste)
-        url_entry.bind('<Command-v>', handle_paste)
+        self._entry_place_caret(url_entry)
+        self._entry_edit_menu(url_entry)
         url_entry.focus_set()
         
         ttk.Button(url_frame, text="📁 URLs aus Datei laden", command=self.load_music_urls_from_file, style="Download.TButton").pack(fill=tk.X, pady=(2, 0))
@@ -1150,6 +1416,12 @@ class DeezerDownloaderGUI:
         self.music_status_var = tk.StringVar(value="Bereit")
         music_status_label = ttk.Label(status_frame, textvariable=self.music_status_var, relief=tk.SUNKEN, anchor=tk.W, font=("Arial", 9), style="Download.TLabel")
         music_status_label.pack(fill=tk.X)
+        self.music_jobs_var = tk.StringVar(value="")
+        self.music_jobs_label = ttk.Label(
+            status_frame, textvariable=self.music_jobs_var, anchor=tk.W, justify=tk.LEFT,
+            font=("Arial", 9), style="Download.TLabel",
+        )
+        self.music_jobs_label.pack(fill=tk.X, pady=(4, 0))
     
     def create_audible_tab(self):
         """Erstellt den Audible-Tab"""
@@ -1157,7 +1429,9 @@ class DeezerDownloaderGUI:
         
         # Konfiguriere Grid
         main_frame.columnconfigure(0, weight=1)
+        main_frame.rowconfigure(1, weight=0)
         main_frame.rowconfigure(2, weight=1)
+        self.audible_books = {}
         
         # Authentifizierung
         auth_frame = ttk.Frame(main_frame)
@@ -1168,6 +1442,7 @@ class DeezerDownloaderGUI:
         
         button_container = ttk.Frame(auth_frame)
         button_container.pack(side=tk.RIGHT, padx=5)
+        self._register_plugin_area("audible", button_container)
         
         ttk.Button(
             button_container,
@@ -1183,41 +1458,65 @@ class DeezerDownloaderGUI:
         )
         self.audible_load_button.pack(side=tk.LEFT, padx=2)
         
-        ttk.Button(
-            button_container,
-            text="Activation Bytes",
-            command=self.show_activation_bytes_dialog
-        ).pack(side=tk.LEFT, padx=2)
-        
-        # Bibliothek-Liste
-        library_frame = ttk.LabelFrame(main_frame, text="Meine Hörbücher (sortiert nach zuletzt gekauft)", padding="10")
-        library_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=5)
+        detail = ttk.LabelFrame(main_frame, text="Hörbuch", padding="10")
+        detail.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=5)
+        detail.columnconfigure(1, weight=1)
+        self.audible_cover_image = tk.PhotoImage(width=180, height=180)
+        self.audible_cover_label = tk.Label(detail, image=self.audible_cover_image, background="#e8e8e8")
+        self.audible_cover_label.grid(row=0, column=0, rowspan=2, sticky=tk.N, padx=(0, 12))
+        info = ttk.Frame(detail)
+        info.grid(row=0, column=1, sticky=(tk.W, tk.E, tk.N))
+        info.columnconfigure(1, weight=1)
+        self.audible_detail_vars = {}
+        for row, (key, label) in enumerate((
+            ("title", "Titel"),
+            ("author", "Autor"),
+            ("narrators", "Gelesen von"),
+            ("duration", "Dauer"),
+            ("release_date", "Erscheinungsdatum"),
+            ("purchase_date", "Kaufdatum"),
+            ("genre", "Genre"),
+        )):
+            ttk.Label(info, text=label).grid(row=row, column=0, sticky=tk.W, padx=(0, 8))
+            var = tk.StringVar(value="–")
+            self.audible_detail_vars[key] = var
+            ttk.Label(info, textvariable=var, wraplength=520).grid(row=row, column=1, sticky=tk.W)
+        actions = ttk.Frame(detail)
+        actions.grid(row=0, column=2, sticky=tk.NE, padx=(12, 0))
+        self._register_plugin_area("audible_aktionen", actions)
+        ttk.Button(actions, text="▶ Abspielen", command=self.play_selected_audible_book).pack(fill=tk.X, pady=(0, 6))
+        ttk.Button(actions, text="Herunterladen", command=self.download_selected_audible_books).pack(fill=tk.X)
+        summary_bg = ttk.Style().lookup("TFrame", "background") or self.root.cget("background")
+        summary_fg = ttk.Style().lookup("TLabel", "foreground") or "#1d1d1f"
+        self.audible_summary = tk.Text(
+            detail, height=4, wrap=tk.WORD, state=tk.DISABLED,
+            background=summary_bg, foreground=summary_fg,
+            relief=tk.FLAT, borderwidth=0, highlightthickness=0,
+        )
+        self.audible_summary.grid(row=1, column=1, columnspan=2, sticky=(tk.W, tk.E), pady=(8, 0))
+
+        library_frame = ttk.Frame(main_frame)
+        library_frame.grid(row=2, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=5)
         library_frame.columnconfigure(0, weight=1)
         library_frame.rowconfigure(0, weight=1)
-        
-        # Treeview für Hörbücher
-        columns = ('Titel', 'Autor', 'Dauer', 'Gekauft')
-        self.audible_tree = ttk.Treeview(library_frame, columns=columns, show='headings', height=15)
-        
+
+        columns = ('Titel', 'Autor', 'Gelesen von', 'Dauer', 'Kaufdatum')
+        self.audible_tree = ttk.Treeview(library_frame, columns=columns, show='headings', height=12)
+        widths = {'Titel': 280, 'Autor': 160, 'Gelesen von': 200, 'Dauer': 80, 'Kaufdatum': 110}
         for col in columns:
             self.audible_tree.heading(col, text=col)
-            self.audible_tree.column(col, width=200)
-        
+            self.audible_tree.column(col, width=widths[col], stretch=col == 'Titel')
         scrollbar = ttk.Scrollbar(library_frame, orient=tk.VERTICAL, command=self.audible_tree.yview)
         self.audible_tree.configure(yscrollcommand=scrollbar.set)
-        
         self.audible_tree.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         scrollbar.grid(row=0, column=1, sticky=(tk.N, tk.S))
-        
-        # Download-Button
-        button_frame = ttk.Frame(main_frame)
-        button_frame.grid(row=2, column=0, pady=10)
-        
-        ttk.Button(
-            button_frame,
-            text="Ausgewählte Hörbücher herunterladen",
-            command=self.download_selected_audible_books
-        ).pack(side=tk.LEFT, padx=5)
+        self.audible_tree.bind("<<TreeviewSelect>>", self._audible_on_select)
+        self.audible_tree.bind("<Double-1>", lambda _event: self.play_selected_audible_book())
+
+        if self.audible_auth and self.audible_auth.is_logged_in():
+            email = self.audible_auth.email or "Gespeicherte Anmeldung"
+            self.audible_status_var.set(f"✓ Angemeldet ({email})")
+            self.audible_load_button.config(state=tk.NORMAL)
     
     def create_video_tab(self):
         """Erstellt den Video-Downloader-Tab (Layout: links Optionen, rechts Log; roter Bereich bis Trennstrich)."""
@@ -1257,6 +1556,7 @@ class DeezerDownloaderGUI:
         self._video_options_canvas = options_canvas
         self._video_options_canvas_cw_id = cw_id
         options_canvas.configure(yscrollcommand=options_scrollbar.set)
+        self._bind_scroll_wheel(options_canvas, scrollable_options)
         # Form- und Button-Breite an Fenster anpassen (beim Größer/Kleiner-Schieben)
         def _on_video_canvas_configure(e):
             options_canvas.itemconfig(cw_id, width=max(400, e.width))
@@ -1285,13 +1585,8 @@ class DeezerDownloaderGUI:
         url_entry = ttk.Entry(url_frame, textvariable=self.video_url_var)
         url_entry.pack(fill=tk.X, padx=(0, 5))
         url_entry.bind('<Return>', lambda e: self.start_video_download())
-        # Unterstützung für Paste (Strg+V / Cmd+V) - verhindere doppelte Auslösung
-        def handle_paste(event):
-            # Erlaube Standard-Paste-Verhalten
-            return None  # None erlaubt Standard-Verhalten
-        url_entry.bind('<Control-v>', handle_paste)
-        url_entry.bind('<Command-v>', handle_paste)
-        # Stelle sicher, dass das Feld fokussierbar ist
+        self._entry_place_caret(url_entry)
+        self._entry_edit_menu(url_entry)
         url_entry.focus_set()
         
         # Batch-Download Button
@@ -1390,6 +1685,13 @@ class DeezerDownloaderGUI:
         self.video_download_history = []  # Liste von Download-Historien
         self.video_favorites = []  # Liste von Favoriten
         self.video_statistics = {
+            'total_downloads': 0,
+            'total_size': 0,
+            'successful_downloads': 0,
+            'failed_downloads': 0,
+            'last_download': None
+        }
+        self.music_statistics = {
             'total_downloads': 0,
             'total_size': 0,
             'successful_downloads': 0,
@@ -2755,6 +3057,7 @@ class DeezerDownloaderGUI:
         scrollable.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
         canvas.create_window((0, 0), window=scrollable, anchor="nw")
         canvas.configure(yscrollcommand=sb.set)
+        self._bind_scroll_wheel(canvas, scrollable)
         canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         sb.pack(side=tk.RIGHT, fill=tk.Y)
         episode_vars = {}
@@ -2898,7 +3201,7 @@ class DeezerDownloaderGUI:
         rows: List[Dict] = []
         for group in series_watch.available_groups(state):
             surl = (group.get("series_url") or "").strip()
-            if want and surl != want:
+            if want and series_watch._normalize_url_key(surl) != series_watch._normalize_url_key(want):
                 continue
             name = group.get("name") or ""
             kind = series_watch.watch_item_kind(None, surl)
@@ -2912,112 +3215,627 @@ class DeezerDownloaderGUI:
             ))
         return rows
 
+    def _series_watch_cached_series_data(self, url: str) -> Optional[Dict]:
+        """Folgen aus dem letzten Prüfstand, ohne die Mediathek noch einmal zu laden."""
+        if series_watch is None:
+            return None
+        it = self._series_watch_watch_item_for_url(url)
+        if not isinstance(it, dict):
+            return None
+        stored = it.get("episodes")
+        if not isinstance(stored, dict) or not stored:
+            return None
+        name = (it.get("display_name") or it.get("playlist_title") or "").strip() or "Serie"
+        kind = series_watch.watch_item_kind(it, url)
+        fmt = series_watch.effective_download_format(it, url)
+        raw: List[Dict] = []
+        for eid, meta in stored.items():
+            if not isinstance(meta, dict):
+                meta = {}
+            title = (meta.get("title") or "").strip()
+            if not title or "audiodeskription" in title.lower():
+                continue
+            raw.append({
+                "id": str(eid),
+                "title": title,
+                "url": (meta.get("url") or "").strip(),
+                "series": name,
+                "series_name": name,
+                "series_url": url,
+                "kind": kind,
+                "output_format": fmt,
+            })
+        if not raw:
+            return None
+        # Die Sendungsseite liefert die neuesten Folgen zuerst.
+        if series_watch.is_ard_audio_show_url(url):
+            raw.reverse()
+        seasons: Dict[Any, List[Dict]] = {}
+        loose: List[Dict] = []
+        counters: Dict[int, int] = {}
+        any_season = False
+        for ep in raw:
+            s, e_num = series_watch.episode_s_e_from_title(ep.get("title") or "")
+            if s is None:
+                s = series_watch.season_from_title(ep.get("title") or "")
+            if s is None:
+                loose.append(ep)
+                continue
+            any_season = True
+            if e_num is None:
+                counters[s] = counters.get(s, 0) + 1
+                e_num = counters[s]
+            row = dict(ep)
+            row["season_number"] = s
+            row["episode_number"] = e_num
+            seasons.setdefault(s, []).append(row)
+        if not any_season:
+            # Podcasts ohne S/E im Titel: eine Staffel, älteste Folge zuerst.
+            # Video-Serien brauchen dafür die Mediathek, sonst landen alle in Staffel 1.
+            if not series_watch.is_ard_audio_show_url(url):
+                return None
+            for i, ep in enumerate(raw, start=1):
+                row = dict(ep)
+                row["season_number"] = 1
+                row["episode_number"] = i
+                seasons.setdefault(1, []).append(row)
+        else:
+            for ep in loose:
+                seasons.setdefault(None, []).append(ep)
+        return {
+            "series_name": name,
+            "seasons": seasons,
+            "total_episodes": sum(len(v) for v in seasons.values()),
+        }
+
+    def _series_watch_picker_urls(self, flat_eps: List[Dict]) -> List[str]:
+        urls: List[str] = []
+        for ep in flat_eps:
+            u = (ep.get("series_url") or "").strip()
+            if u and u not in urls:
+                urls.append(u)
+        if urls:
+            return urls
+        ids = {str(ep.get("id") or "") for ep in flat_eps if ep.get("id")}
+        if not ids or series_watch is None:
+            return []
+        state = series_watch.load_state(self.base_download_path)
+        for it in state.get("items") or []:
+            if not isinstance(it, dict):
+                continue
+            known = {str(k) for k in (it.get("episodes") or {})}
+            if ids.intersection(known):
+                u = (it.get("url") or "").strip()
+                if u and u not in urls:
+                    urls.append(u)
+        return urls
+
+    def _series_watch_watch_item_for_url(self, url: str) -> Optional[Dict]:
+        if series_watch is None:
+            return None
+        want = series_watch._normalize_url_key(url)
+        if not want:
+            return None
+        state = series_watch.load_state(self.base_download_path)
+        for it in state.get("items") or []:
+            if not isinstance(it, dict):
+                continue
+            if series_watch._normalize_url_key(it.get("url") or "") == want:
+                return it
+        return None
+
+    def _series_watch_picker_row(self, ep: Dict, *, have_ids: set, ignore_ids: set) -> Dict:
+        """Eine Zeile: verfügbar, vorhanden oder ignoriert — gleiche IDs wie „Folgen habe ich“."""
+        title = (ep.get("title") or ep.get("url") or "?").strip()
+        eid = str(ep.get("id") or "")
+        extra = bool(series_watch and series_watch.is_likely_extra_title(title))
+        have_on = bool(eid and eid in have_ids)
+        ign_on = bool(eid and eid in ignore_ids) or (extra and not have_on)
+        if have_on:
+            ign_on = False
+        url = (ep.get("url") or "").strip()
+        available = (not have_on) and (not ign_on) and bool(url)
+        if have_on:
+            status = "vorhanden"
+        elif ign_on:
+            status = "ignoriert"
+        elif not url:
+            status = "ohne Link"
+        else:
+            status = "verfügbar"
+        s, e_num = (None, None)
+        if series_watch is not None:
+            s, e_num = series_watch.episode_s_e_from_title(title)
+        season = ep.get("season_number")
+        if season is None:
+            season = s
+        episode_number = ep.get("episode_number")
+        if episode_number is None:
+            episode_number = e_num
+        row_ep = dict(ep)
+        row_ep["title"] = title
+        row_ep["id"] = eid
+        row_ep["url"] = url
+        if season is not None:
+            row_ep["season_number"] = season
+        if episode_number is not None:
+            row_ep["episode_number"] = episode_number
+        return {
+            "ep": row_ep,
+            "title": title,
+            "available": available,
+            "had": have_on,
+            "ignored": ign_on,
+            "status": status,
+            "episode_number": episode_number if isinstance(episode_number, int) else 0,
+        }
+
+    def _series_watch_picker_sections(self, flat_eps: List[Dict], fetched: Dict[str, Optional[Dict]]) -> List[Dict]:
+        """Staffeln wie im Dialog „Bereits vorhandene Folgen markieren“."""
+        sections: List[Dict] = []
+        used_ids: set = set()
+
+        def rows_for_item(url: str, series_data: Optional[Dict], only_eps: List[Dict]) -> Dict:
+            it = self._series_watch_watch_item_for_url(url) if url else None
+            hid = set(str(x) for x in ((it or {}).get("have_ids") or []) if x)
+            ign = set(str(x) for x in ((it or {}).get("ignore_ids") or []) if x)
+            name = ""
+            if isinstance(series_data, dict):
+                name = (series_data.get("series_name") or "").strip()
+            if not name and it:
+                name = (it.get("display_name") or it.get("playlist_title") or "").strip()
+            if not name and only_eps:
+                name = (only_eps[0].get("series") or only_eps[0].get("series_name") or "").strip()
+            kind = "video"
+            fmt = ""
+            if series_watch is not None and it is not None:
+                kind = series_watch.watch_item_kind(it, url)
+                fmt = series_watch.effective_download_format(it, url)
+            elif series_watch is not None and url:
+                kind = series_watch.watch_item_kind(None, url)
+                fmt = series_watch.download_format_for_series(
+                    series_watch.load_state(self.base_download_path), url, name
+                )
+            seasons: Dict[Any, List[Dict]] = {}
+
+            def add_row(raw: Dict, season_hint) -> None:
+                if "audiodeskription" in (raw.get("title") or "").lower():
+                    return
+                eid = str(raw.get("id") or "")
+                eurl = (raw.get("url") or "").strip()
+                if eid and eid in used_ids:
+                    return
+                if eurl and any(
+                    (r.get("ep") or {}).get("url") == eurl
+                    for bucket in seasons.values()
+                    for r in bucket
+                ):
+                    return
+                raw = dict(raw)
+                raw.setdefault("series", name)
+                raw.setdefault("series_name", name)
+                raw.setdefault("series_url", url)
+                raw.setdefault("kind", kind)
+                raw.setdefault("output_format", fmt)
+                if season_hint is not None:
+                    raw["season_number"] = season_hint
+                row = self._series_watch_picker_row(raw, have_ids=hid, ignore_ids=ign)
+                sn = season_hint if season_hint is not None else raw.get("season_number")
+                if sn is None and series_watch is not None:
+                    sn = series_watch.season_from_title(row["title"])
+                seasons.setdefault(sn, []).append(row)
+                if eid:
+                    used_ids.add(eid)
+
+            def prepared_flat(ep: Dict) -> Dict:
+                """Staffel nur aus dem Titel. Ein gesetztes season_number=1 ist oft nur der Download-Platzhalter."""
+                raw = dict(ep)
+                s, e_num = (None, None)
+                if series_watch is not None:
+                    s, e_num = series_watch.episode_s_e_from_title(raw.get("title") or "")
+                    if s is None:
+                        s = series_watch.season_from_title(raw.get("title") or "")
+                if s is None:
+                    raw.pop("season_number", None)
+                    raw.pop("episode_number", None)
+                else:
+                    raw["season_number"] = s
+                    if e_num is not None:
+                        raw["episode_number"] = e_num
+                return raw
+
+            if isinstance(series_data, dict) and series_data.get("seasons"):
+                for sn, eps in (series_data.get("seasons") or {}).items():
+                    for ep in eps or []:
+                        if isinstance(ep, dict):
+                            add_row(ep, sn)
+            else:
+                for ep in only_eps:
+                    if isinstance(ep, dict):
+                        flat = prepared_flat(ep)
+                        add_row(flat, flat.get("season_number"))
+
+            known_titles = {
+                (r.get("title") or "").strip().lower()
+                for bucket in seasons.values()
+                for r in bucket
+            }
+            for ep in only_eps:
+                if not isinstance(ep, dict):
+                    continue
+                title_key = (ep.get("title") or "").strip().lower()
+                if title_key and title_key in known_titles:
+                    continue
+                flat = prepared_flat(ep)
+                add_row(flat, flat.get("season_number"))
+
+            visible: Dict[Any, List[Dict]] = {}
+            for sn, rows in seasons.items():
+                rows.sort(key=lambda r: (r.get("episode_number") or 0, (r.get("title") or "").lower()))
+                if rows:
+                    visible[sn] = rows
+            return {
+                "series_name": name or "Serie",
+                "series_url": url,
+                "seasons": visible,
+            }
+
+        if fetched:
+            for url, series_data in fetched.items():
+                only = [ep for ep in flat_eps if (ep.get("series_url") or "").strip() == url]
+                if not only and len(fetched) == 1:
+                    only = list(flat_eps)
+                sections.append(rows_for_item(url, series_data, only))
+        else:
+            by_name: Dict[str, List[Dict]] = {}
+            for ep in flat_eps:
+                key = (ep.get("series") or ep.get("series_name") or "").strip() or "Serie"
+                by_name.setdefault(key, []).append(ep)
+            for name, eps in by_name.items():
+                section = rows_for_item("", None, eps)
+                section["series_name"] = name
+                sections.append(section)
+        return [s for s in sections if s.get("seasons")]
+
     def _series_watch_new_episodes_actions_dialog(self, parent, flat_eps: List[Dict], heading: str = "Neue Folgen"):
-        """Auswahl: zur Video-Queue, herunterladen oder ignorieren. Der Rest bleibt für später."""
+        """Auswahl nach Staffeln, wie „Bereits vorhandene Folgen markieren“."""
         if not flat_eps:
             messagebox.showinfo("Serien-Wächter", "Keine Folgen in der Liste.", parent=parent)
             return
+        urls = self._series_watch_picker_urls(flat_eps)
+        fetched: Dict[str, Optional[Dict]] = {}
+        missing_urls: List[str] = []
+        for url in urls:
+            cached = self._series_watch_cached_series_data(url)
+            if cached and cached.get("seasons"):
+                fetched[url] = cached
+            else:
+                missing_urls.append(url)
+        sections: List[Dict] = []
+        if fetched:
+            sections.extend(self._series_watch_picker_sections(flat_eps, fetched))
+        missing_set = set(missing_urls)
+        leftover = [
+            ep for ep in flat_eps
+            if (ep.get("series_url") or "").strip() in missing_set or not fetched
+        ]
+        if leftover and (missing_urls or not fetched):
+            sections.extend(self._series_watch_picker_sections(leftover, {}))
+        if sections:
+            self._series_watch_picker_checkbox_ui(parent, heading, sections)
+            return
+        if not urls or not VideoDownloader:
+            self._series_watch_picker_checkbox_ui(parent, heading, sections)
+            return
+
+        wait = tk.Toplevel(parent)
+        wait.title("Lade Folgenliste…")
+        wait.geometry("360x110")
+        wait.transient(parent)
+        ttk.Label(wait, text="Mediathek wird nach Staffeln sortiert…", padding=20).pack()
+        wait.update_idletasks()
+
+        def work():
+            for url in missing_urls:
+                series_data = None
+                try:
+                    vd = self._series_watch_get_video_downloader()
+                    if vd is not None:
+                        series_data = vd.get_series_episodes(url)
+                except Exception as e:
+                    self._write_to_log_file(f"[Serien-Wächter] Folgenliste: {e}", "WARNING")
+                    series_data = None
+                fetched[url] = series_data if isinstance(series_data, dict) else None
+
+            def show():
+                try:
+                    wait.destroy()
+                except Exception:
+                    pass
+                try:
+                    sections = self._series_watch_picker_sections(flat_eps, fetched)
+                except Exception as e:
+                    self._write_to_log_file(f"[Serien-Wächter] Folgenliste aufbauen: {e}", "ERROR")
+                    sections = self._series_watch_picker_sections(flat_eps, {})
+                if not sections:
+                    messagebox.showinfo("Serien-Wächter", "Keine Folgen in der Liste.", parent=parent)
+                    return
+                self._series_watch_picker_checkbox_ui(parent, heading, sections)
+
+            self.root.after(0, show)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _series_watch_picker_checkbox_ui(self, parent, heading: str, sections: List[Dict]):
+        """Checkbox-Liste nach Staffeln. Ignorieren schreibt in dieselben ignore_ids."""
         d = tk.Toplevel(parent)
         d.title(heading)
         d.transient(parent)
         d.grab_set()
         self._apply_dark_toplevel(d)
-        self._fit_dialog(d, 760, 560, 560, 360)
-        mf = ttk.Frame(d, padding="10", style="Download.TFrame")
-        mf.pack(fill=tk.BOTH, expand=True)
-        if "Verfügbar" in (heading or ""):
-            lead = "Verfügbare Folgen"
-        elif "Fehlend" in (heading or ""):
-            lead = "Fehlende Folgen"
-        else:
-            lead = "Folgen"
+        self._fit_dialog(d, 960, 740, 720, 520)
+        main_frame = ttk.Frame(d, padding="12", style="Download.TFrame")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        names = [s.get("series_name") or "" for s in sections if s.get("series_name")]
+        name_bit = names[0] if len(names) == 1 else ", ".join(n for n in names if n)
         ttk.Label(
-            mf,
+            main_frame,
             text=(
-                f"{lead} ({len(flat_eps)}) — markieren, was geladen werden soll. "
-                "Doppelklick lädt diese eine Folge. Der Rest bleibt für später."
+                f"Serie: {name_bit} — Haken links = laden.\n"
+                "Kreuz rechts = ignorieren (Trailer, Making-of, …): dieselbe Liste wie unter „Folgen habe ich“.\n"
+                "Pro Staffel: „Gesamte Staffel markieren“ wählt alle Folgen dieser Staffel zum Laden."
             ),
+            wraplength=900,
             style="Download.TLabel",
-            wraplength=700,
-        ).pack(anchor=tk.W, side=tk.TOP)
+        ).pack(anchor=tk.W, pady=(0, 8))
 
-        list_fr = ttk.Frame(mf, style="Download.TFrame")
-        lb = tk.Listbox(
-            list_fr,
-            selectmode=tk.EXTENDED,
-            activestyle="none",
-            font=("Arial", 10),
-            bg=getattr(self, "_tk_bg_card", "#424242"),
-            fg=getattr(self, "_tk_fg_text", "#e8e8e8"),
-            selectbackground=getattr(self, "_tk_btn_bg", "#4a4a4a"),
-            highlightthickness=0,
-        )
-        scroll = ttk.Scrollbar(list_fr, orient=tk.VERTICAL, command=lb.yview)
-        lb.configure(yscrollcommand=scroll.set)
-        lb.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        quick_fr = ttk.Frame(main_frame, style="Download.TFrame")
+        quick_fr.pack(fill=tk.X, pady=(0, 6))
+        list_frame = ttk.Frame(main_frame)
+        list_frame.pack(fill=tk.BOTH, expand=True)
+        canvas = tk.Canvas(list_frame, highlightthickness=0)
+        sb = ttk.Scrollbar(list_frame, orient="vertical", command=canvas.yview)
+        scrollable = ttk.Frame(canvas)
+        scrollable.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        win_id = canvas.create_window((0, 0), window=scrollable, anchor="nw")
+        canvas.configure(yscrollcommand=sb.set)
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        sb.pack(side=tk.RIGHT, fill=tk.Y)
 
-        series_names = {
-            (ep.get("series") or ep.get("series_name") or "").strip()
-            for ep in flat_eps
-        }
-        one_series = len([s for s in series_names if s]) <= 1
-        for ep in flat_eps:
-            t = ep.get("title") or ep.get("url") or "?"
-            series = (ep.get("series") or ep.get("series_name") or "").strip()
-            if series and series not in t and not one_series:
-                t = f"{series}: {t}"
-            if len(t) > 140:
-                t = t[:137] + "…"
-            lb.insert(tk.END, t)
-        if len(flat_eps) <= 10:
-            lb.selection_set(0, tk.END)
+        def _stretch(event):
+            canvas.itemconfig(win_id, width=event.width)
 
-        def set_all(value: bool) -> None:
-            if value and flat_eps:
-                lb.selection_set(0, tk.END)
+        canvas.bind("<Configure>", _stretch)
+        self._bind_scroll_wheel(canvas, scrollable)
+
+        def _on_destroy(event=None):
+            if event is not None and getattr(event, "widget", None) is not d:
+                return
+            self._series_watch_episode_picker_open = False
+
+        d.bind("<Destroy>", _on_destroy)
+        self._series_watch_episode_picker_open = True
+
+        download_vars = {}
+        ignore_vars = {}
+        rows_by_key = {}
+        season_vars = {}
+
+        def _exclusive(have_var, ign_var, which):
+            if which == "have" and have_var.get():
+                ign_var.set(False)
+            elif which == "ign" and ign_var.get():
+                have_var.set(False)
+
+        def select_all_episodes():
+            for var in download_vars.values():
+                var.set(True)
+            for iv in ignore_vars.values():
+                iv.set(False)
+            for svar in season_vars.values():
+                svar.set(True)
+
+        def select_none_episodes():
+            for var in download_vars.values():
+                var.set(False)
+            for svar in season_vars.values():
+                svar.set(False)
+
+        def ignore_extras():
+            for key, iv in ignore_vars.items():
+                row = rows_by_key.get(key) or {}
+                title = row.get("title") or ""
+                if series_watch is not None and series_watch.is_likely_extra_title(title):
+                    iv.set(True)
+                    if key in download_vars:
+                        download_vars[key].set(False)
+
+        ttk.Button(quick_fr, text="Alle Folgen auswählen", command=select_all_episodes, style="Download.TButton").pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(quick_fr, text="Alle abwählen", command=select_none_episodes, style="Download.TButton").pack(side=tk.LEFT, padx=6)
+        ttk.Button(quick_fr, text="Trailer/Making-of ignorieren", command=ignore_extras, style="Download.TButton").pack(side=tk.LEFT, padx=6)
+
+        multi = len([s for s in sections if s.get("seasons")]) > 1
+        key_n = 0
+        row_queue = []
+        for section in sections:
+            seasons = section.get("seasons") or {}
+            series_name = (section.get("series_name") or "").strip()
+
+            def season_key(sn):
+                if sn is None:
+                    return (1, 0)
+                try:
+                    return (0, int(sn))
+                except (TypeError, ValueError):
+                    return (0, 0)
+
+            for sn in sorted(seasons.keys(), key=season_key):
+                rows = seasons.get(sn) or []
+                if not rows:
+                    continue
+                if sn is None:
+                    frame_title = f"Weitere Folgen ({len(rows)})"
+                    toggle_text = f"Gesamte Liste markieren ({len(rows)} Folgen)"
+                else:
+                    frame_title = f"Staffel {sn} ({len(rows)} Folgen)"
+                    toggle_text = f"Gesamte Staffel {sn} markieren ({len(rows)} Folgen)"
+                if multi and series_name:
+                    frame_title = f"{series_name} — {frame_title}"
+                lf = ttk.LabelFrame(scrollable, text=frame_title, padding="8")
+                lf.pack(fill=tk.X, padx=4, pady=6)
+                season_var = tk.BooleanVar(value=False)
+                season_vars[key_n] = season_var
+                season_index = key_n
+                row_keys = []
+
+                def make_season_toggle(keys, svar):
+                    def toggle():
+                        on = svar.get()
+                        for k in keys:
+                            if k in download_vars:
+                                download_vars[k].set(on)
+                            if on and k in ignore_vars:
+                                ignore_vars[k].set(False)
+                    return toggle
+
+                toggle_btn = ttk.Checkbutton(lf, text=toggle_text, variable=season_var)
+                toggle_btn.pack(anchor=tk.W, pady=(0, 6), padx=4)
+                pending_rows = []
+                for row in rows:
+                    key_n += 1
+                    key = key_n
+                    rows_by_key[key] = row
+                    row_keys.append(key)
+                    title = row.get("title") or "?"
+                    if len(title) > 70:
+                        title = title[:67] + "…"
+                    ign_on = bool(row.get("ignored"))
+                    var = tk.BooleanVar(value=False)
+                    ivar = tk.BooleanVar(value=ign_on)
+                    download_vars[key] = var
+                    ignore_vars[key] = ivar
+                    pending_rows.append((lf, key, title, var, ivar, bool((row.get("ep") or {}).get("id"))))
+                toggle_btn.configure(command=make_season_toggle(row_keys, season_var))
+                season_vars[season_index] = season_var
+                row_queue.extend(pending_rows)
+
+        def _add_row_chunk(start: int = 0, size: int = 24) -> None:
+            try:
+                if not d.winfo_exists():
+                    return
+            except Exception:
+                return
+            end = min(start + size, len(row_queue))
+            for lf, key, title, var, ivar, has_id in row_queue[start:end]:
+                line = ttk.Frame(lf, style="Download.TFrame")
+                line.pack(fill=tk.X, padx=8, pady=1)
+                ttk.Checkbutton(
+                    line,
+                    text=title,
+                    variable=var,
+                    command=lambda h=var, g=ivar: _exclusive(h, g, "have"),
+                ).pack(side=tk.LEFT, fill=tk.X, expand=True, anchor=tk.W)
+                if has_id:
+                    ttk.Checkbutton(
+                        line,
+                        text="Ignorieren",
+                        variable=ivar,
+                        command=lambda h=var, g=ivar: _exclusive(h, g, "ign"),
+                    ).pack(side=tk.RIGHT)
+            if end < len(row_queue):
+                d.after(1, lambda n=end: _add_row_chunk(n))
             else:
-                lb.selection_clear(0, tk.END)
+                try:
+                    canvas.configure(scrollregion=canvas.bbox("all"))
+                except Exception:
+                    pass
+
+        def persist_ignore() -> None:
+            if series_watch is None:
+                return
+            by_url: Dict[str, Dict[str, List[str]]] = {}
+            for key, iv in ignore_vars.items():
+                row = rows_by_key.get(key) or {}
+                ep = row.get("ep") or {}
+                eid = str(ep.get("id") or "")
+                if not eid:
+                    continue
+                surl = (ep.get("series_url") or "").strip()
+                bucket = by_url.setdefault(surl, {"on": [], "off": []})
+                if iv.get():
+                    bucket["on"].append(eid)
+                else:
+                    bucket["off"].append(eid)
+            for surl, bucket in by_url.items():
+                series_watch.apply_ignore_selection(
+                    self.base_download_path,
+                    series_url=surl,
+                    ignore_on=bucket["on"],
+                    ignore_off=bucket["off"],
+                )
 
         def collect_selected() -> List[Dict]:
-            return [flat_eps[i] for i in lb.curselection() if 0 <= i < len(flat_eps)]
+            out = []
+            for key, var in download_vars.items():
+                if not var.get():
+                    continue
+                g = ignore_vars.get(key)
+                if g is not None and g.get():
+                    continue
+                row = rows_by_key.get(key) or {}
+                ep = dict(row.get("ep") or {})
+                if not (ep.get("url") or "").strip():
+                    continue
+                if "audiodeskription" in (ep.get("title") or "").lower():
+                    continue
+                out.append(ep)
+            return out
 
         def to_queue():
+            persist_ignore()
             eps = collect_selected()
             if not eps:
-                messagebox.showinfo("Hinweis", "Nichts ausgewählt.", parent=d)
+                messagebox.showinfo("Hinweis", "Nichts zum Laden ausgewählt.", parent=d)
                 return
             self._series_watch_add_episodes_to_video_queue(eps)
             d.destroy()
-            messagebox.showinfo("Serien-Wächter", f"{len(eps)} Folge(n) zur Video-Queue hinzugefügt.", parent=parent)
+            audio_n = sum(1 for ep in eps if self._queue_item_is_audio(ep, ep.get("url") or ""))
+            if audio_n and audio_n == len(eps):
+                where = "Musik-Queue"
+            elif audio_n:
+                where = "Musik- und Video-Queue"
+            else:
+                where = "Video-Queue"
+            messagebox.showinfo("Serien-Wächter", f"{len(eps)} Folge(n) zur {where} hinzugefügt.", parent=parent)
 
         def download_now():
+            persist_ignore()
             eps = collect_selected()
             if not eps:
-                messagebox.showinfo("Hinweis", "Nichts ausgewählt.", parent=d)
+                messagebox.showinfo("Hinweis", "Nichts zum Laden ausgewählt.", parent=d)
                 return
             norm_eps = []
             for ep in eps:
-                if "audiodeskription" in (ep.get("title") or "").lower():
-                    continue
                 ep2 = dict(ep)
                 if not ep2.get("series"):
                     ep2["series"] = ep2.get("series_name") or ""
-                s, e_num = series_watch.episode_s_e_from_title(ep2.get("title") or "")
-                if ep2.get("season_number") is None and s is not None:
-                    ep2["season_number"] = s
-                if ep2.get("episode_number") is None and e_num is not None:
-                    ep2["episode_number"] = e_num
+                if series_watch is not None:
+                    s, e_num = series_watch.episode_s_e_from_title(ep2.get("title") or "")
+                    if ep2.get("season_number") is None and s is not None:
+                        ep2["season_number"] = s
+                    if ep2.get("episode_number") is None and e_num is not None:
+                        ep2["episode_number"] = e_num
                 norm_eps.append(ep2)
             if not norm_eps:
                 messagebox.showinfo("Serien-Wächter", "Keine gültigen Folgen.", parent=parent)
                 return
             d.destroy()
+            audio_n = sum(1 for ep in norm_eps if self._queue_item_is_audio(ep, ep.get("url") or ""))
             try:
-                for tab_id in self.notebook.tabs():
-                    if "Video" in self.notebook.tab(tab_id, "text"):
-                        self.notebook.select(tab_id)
-                        break
+                if audio_n:
+                    self._select_music_tab()
+                else:
+                    self.notebook.select(self.notebook.index(self.video_frame))
             except Exception:
                 pass
             self._series_watch_add_episodes_to_video_queue(norm_eps)
@@ -3031,50 +3849,26 @@ class DeezerDownloaderGUI:
                 parent=parent,
             )
 
-        def on_double(event):
-            idx = lb.nearest(event.y)
-            if idx < 0 or idx >= len(flat_eps):
-                return
-            lb.selection_clear(0, tk.END)
-            lb.selection_set(idx)
-            download_now()
-
-        lb.bind("<Double-Button-1>", on_double)
-
-        pick_row = ttk.Frame(mf, style="Download.TFrame")
-        pick_row.pack(fill=tk.X, side=tk.BOTTOM, pady=(0, 4))
-        ttk.Button(pick_row, text="Alle markieren", command=lambda: set_all(True), style="Download.TButton").pack(side=tk.LEFT, padx=(0, 6))
-        ttk.Button(pick_row, text="Keine", command=lambda: set_all(False), style="Download.TButton").pack(side=tk.LEFT)
-
-        bf = ttk.Frame(mf, style="Download.TFrame")
-        bf.pack(fill=tk.X, side=tk.BOTTOM, pady=(4, 0))
-        ttk.Button(bf, text="➕ Ausgewählte zur Queue", command=to_queue, style="Download.TButton").pack(side=tk.LEFT, padx=(0, 6))
-        ttk.Button(bf, text="▶ Ausgewählte herunterladen", command=download_now, style="Download.TButton").pack(side=tk.LEFT, padx=6)
-
-        def ignore_selected():
-            eps = collect_selected()
-            if not eps:
-                messagebox.showinfo("Hinweis", "Nichts ausgewählt.", parent=d)
-                return
-            ids = [str(ep.get("id") or "") for ep in eps if ep.get("id")]
-            series_url = ""
-            for ep in eps:
-                series_url = (ep.get("series_url") or "").strip()
-                if series_url:
-                    break
-            n = series_watch.mark_ignored_episodes(
-                self.base_download_path, episode_ids=ids, series_url=series_url
-            )
+        def save_ignore():
+            persist_ignore()
             d.destroy()
             messagebox.showinfo(
                 "Serien-Wächter",
-                f"{n} Folge(n) ignoriert (Trailer/Making-of o. Ä.). Keine Hinweise mehr dafür.",
+                "Ignorieren ist gespeichert und steht auch unter „Folgen habe ich“.",
                 parent=parent,
             )
 
-        ttk.Button(bf, text="Ignorieren", command=ignore_selected, style="Download.TButton").pack(side=tk.LEFT, padx=6)
+        bf = ttk.Frame(main_frame, style="Download.TFrame")
+        bf.pack(fill=tk.X, pady=8)
+        ttk.Button(bf, text="Ausgewählte zur Queue", command=to_queue, style="Download.TButton").pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(bf, text="Ausgewählte herunterladen", command=download_now, style="Download.TButton").pack(side=tk.LEFT, padx=6)
+        ttk.Button(bf, text="Ignorieren speichern", command=save_ignore, style="Download.TButton").pack(side=tk.LEFT, padx=6)
         ttk.Button(bf, text="Später", command=d.destroy, style="Download.TButton").pack(side=tk.RIGHT)
-        list_fr.pack(fill=tk.BOTH, expand=True, pady=8)
+        try:
+            d.update_idletasks()
+        except Exception:
+            pass
+        d.after(1, _add_row_chunk)
 
     def _series_watch_add_episodes_to_video_queue(self, episodes: List[Dict]):
         """Fügt Episoden-Dicts (url, title, series, season_number, …) zur Video-Queue hinzu."""
@@ -3119,11 +3913,23 @@ class DeezerDownloaderGUI:
         url = (it.get("url") or "").strip()
         if not url:
             return []
-        try:
-            _pid, _pt, cur = series_watch.fetch_playlist_episodes(url)
-        except Exception as e:
-            messagebox.showerror("Serien-Wächter", str(e), parent=parent)
-            return []
+        stored = it.get("episodes") if isinstance(it.get("episodes"), dict) else {}
+        cur: List[Dict] = []
+        if stored:
+            for eid, meta in stored.items():
+                if not isinstance(meta, dict):
+                    meta = {}
+                cur.append({
+                    "id": str(eid),
+                    "title": (meta.get("title") or "").strip(),
+                    "url": (meta.get("url") or "").strip(),
+                })
+        else:
+            try:
+                _pid, _pt, cur = series_watch.fetch_playlist_episodes(url)
+            except Exception as e:
+                messagebox.showerror("Serien-Wächter", str(e), parent=parent)
+                return []
         missing = []
         for ep in cur:
             if series_watch.is_episode_had(ep, it):
@@ -3217,7 +4023,7 @@ class DeezerDownloaderGUI:
         list_frame = ttk.LabelFrame(main, text="Überwachte Serien", padding="8", style="Download.TLabelframe")
         list_frame.pack(fill=tk.BOTH, expand=True, pady=5)
         lb = tk.Listbox(
-            list_frame, height=11, font=("Arial", 10),
+            list_frame, height=11, font=("Arial", 10), exportselection=False,
             bg=getattr(self, '_tk_bg_card', '#424242'), fg=getattr(self, '_tk_fg_text', '#e8e8e8'),
             selectbackground=getattr(self, '_tk_btn_bg', '#4a4a4a'), highlightthickness=0,
         )
@@ -3326,6 +4132,20 @@ class DeezerDownloaderGUI:
             lb.selection_set(idx)
 
         def run_check_now():
+            sel = lb.curselection()
+            if not sel:
+                messagebox.showinfo("Hinweis", "Bitte einen Eintrag wählen.", parent=win)
+                return
+            data = series_watch.load_state(self.base_download_path)
+            items = data.get("items") or []
+            idx = sel[0]
+            if not (0 <= idx < len(items)) or not isinstance(items[idx], dict):
+                return
+            only_url = (items[idx].get("url") or "").strip()
+            only_name = (items[idx].get("display_name") or items[idx].get("playlist_title") or only_url).strip()
+            if not only_url:
+                return
+
             def work():
                 lock = series_watch.try_acquire_check_lock(self.base_download_path, "gui-manual")
                 if lock is None:
@@ -3341,6 +4161,7 @@ class DeezerDownloaderGUI:
                             self.base_download_path,
                             on_item_error=lambda n, e: self._write_to_log_file(f"[Serien-Wächter] {n}: {e}", "WARNING"),
                             report_unowned=True,
+                            only_url=only_url,
                         )
                     except Exception as e:
                         self.root.after(0, lambda: messagebox.showerror("Serien-Wächter", str(e), parent=win))
@@ -3348,18 +4169,23 @@ class DeezerDownloaderGUI:
                         return
                     self._series_watch_last_run = time.time()
                     self.root.after(0, refresh_list)
+                    notifications = [
+                        n for n in (notifications or [])
+                        if series_watch._normalize_url_key(n.get("series_url") or "")
+                        == series_watch._normalize_url_key(only_url)
+                    ]
                     if not notifications:
-                        open_rows = self._series_watch_rows_for_picker()
+                        open_rows = self._series_watch_rows_for_picker(only_url)
                         if open_rows:
                             self.root.after(0, lambda rows=list(open_rows): self._series_watch_new_episodes_actions_dialog(
                                 win,
                                 rows,
-                                "Verfügbare Folgen",
+                                f"Fehlende Folgen — {only_name}",
                             ))
                             return
                         self.root.after(0, lambda: messagebox.showinfo(
                             "Serien-Wächter",
-                            "Keine fehlenden Folgen (angehakt oder ignoriert).",
+                            f"Keine fehlenden Folgen bei „{only_name}“.",
                             parent=win,
                         ))
                         return
@@ -3911,6 +4737,32 @@ class DeezerDownloaderGUI:
             command=setup_window.destroy
         ).pack(side=tk.LEFT, padx=5)
     
+    def _start_plugin_download(self, url: str, output_dir: Path) -> bool:
+        """Gibt den Download an ein Plugin ab, wenn eines die Adresse kennt."""
+        try:
+            from plugin_loader import plugin_for_url
+            plugin = plugin_for_url(url)
+        except Exception:
+            return False
+        if plugin is None:
+            return False
+        name = getattr(plugin, "name", "Plugin")
+
+        def work():
+            try:
+                self.log(f"Plugin {name}: {url}")
+                ok = bool(plugin.download(url, Path(output_dir)))
+                if ok:
+                    self.root.after(0, lambda: messagebox.showinfo("Plugin", f"{name} hat den Download abgeschlossen."))
+                else:
+                    self.root.after(0, lambda: messagebox.showerror("Plugin", f"{name} konnte die Adresse nicht laden."))
+            except Exception as exc:
+                message = str(exc)
+                self.root.after(0, lambda message=message: messagebox.showerror("Plugin", message))
+
+        threading.Thread(target=work, daemon=True).start()
+        return True
+
     def start_music_download(self):
         """Startet den Musik-Download (Deezer oder Spotify)"""
         url = self.music_url_var.get().strip()
@@ -3926,6 +4778,10 @@ class DeezerDownloaderGUI:
         
         if not url:
             messagebox.showwarning("Keine URL", "Bitte geben Sie eine URL ein.")
+            return
+
+        self.music_download_path = Path(self.music_path_var.get())
+        if self._start_plugin_download(url, self.music_download_path):
             return
         
         # Erkenne URL-Typ
@@ -4245,8 +5101,10 @@ class DeezerDownloaderGUI:
         self.music_batch_success = 0
         self._music_queue_next()
 
-    def _music_batch_record_success(self):
-        """Zählt einen erfolgreichen Queue-Download (für Fehler-Benachrichtigung am Ende)."""
+    def _music_batch_record_success(self, count_stat=True):
+        """Zählt einen erfolgreichen Musik-Download."""
+        if count_stat:
+            self._update_statistics(success=True, file_path=None, url="", kind="music")
         if getattr(self, 'music_queue_processing', False):
             self.music_batch_success = getattr(self, 'music_batch_success', 0) + 1
 
@@ -4444,7 +5302,7 @@ class DeezerDownloaderGUI:
             # Download-Archiv: Bereits heruntergeladene überspringen
             if self._is_in_download_archive(url):
                 self.music_log(f"Übersprungen (bereits im Download-Archiv): {url[:60]}…")
-                self.root.after(0, self._music_batch_record_success)  # Als „erledigt“ zählen (kein Fehler)
+                self.root.after(0, lambda: self._music_batch_record_success(count_stat=False))
                 self.root.after(0, self._music_queue_next)
                 return
             
@@ -4574,6 +5432,7 @@ class DeezerDownloaderGUI:
                             messagebox.showinfo("Erfolg", f"Download abgeschlossen!\n{file_path.name if file_path else 'Audio'}")
                     self.root.after(0, _show_music_success)
                 else:
+                    self._update_statistics(success=False, file_path=None, url=url, kind="music", error=error)
                     self.root.after(0, lambda: self.music_status_var.set("✗ Download fehlgeschlagen"))
                     self.root.after(0, lambda: self.music_log(f"\n✗ Fehler: {error}"))
                     err_lower = (error or "").lower()
@@ -4973,9 +5832,11 @@ class DeezerDownloaderGUI:
                         time.sleep(3)
                 if success:
                     self.music_log(f"✓ {i}/{total}: {file_path.name if file_path else title}")
+                    self._update_statistics(success=True, file_path=file_path, url=ep_url, kind="music")
                     self._series_watch_mark_downloaded(ep_url, episode_id=ep.get('id'))
                 else:
                     self.music_log(f"✗ {i}/{total}: {error}")
+                    self._update_statistics(success=False, file_path=None, url=ep_url, kind="music", error=error)
                 if getattr(self, 'music_download_cancel_current_only', False):
                     self.music_log("⚠ Nur aktuelle Folge abgebrochen.")
                     break
@@ -5124,9 +5985,8 @@ class DeezerDownloaderGUI:
         info_text = (
             "Wählen Sie eine Anmeldemethode:\n\n"
             "🌐 Browser-Anmeldung (empfohlen):\n"
-            "   Öffnet einen Browser, Sie können sich dort\n"
-            "   normal anmelden (inkl. 2FA). Cookies werden\n"
-            "   automatisch aus dem Browser-Profil extrahiert.\n\n"
+            "   Öffnet Audible im Browser. Nach dem Login\n"
+            "   die Adresse der Fehlerseite hier einfügen.\n\n"
             "🍪 Cookie-Anmeldung (manuell):\n"
             "   Manuelle Cookie-Extraktion aus Browser\n"
             "   (falls Browser-Anmeldung nicht funktioniert)"
@@ -5155,132 +6015,156 @@ class DeezerDownloaderGUI:
         ttk.Button(login_frame, text="Abbrechen", command=login_window.destroy).pack(pady=10)
     
     def do_browser_login(self, login_window):
-        """Führt Browser-Anmeldung durch"""
-        login_window.destroy()
-        
-        # Zeige Info-Dialog
-        messagebox.showinfo(
-            "Browser-Anmeldung",
-            "Ein Browser-Fenster wird jetzt geöffnet.\n\n"
-            "Bitte:\n"
-            "1. Melden Sie sich bei Audible an (inkl. 2FA falls aktiviert)\n"
-            "2. Gehen Sie nach erfolgreicher Anmeldung zu:\n"
-            "   https://www.audible.de/library\n"
-            "3. Stellen Sie sicher, dass Sie eingeloggt sind\n"
-            "4. Kehren Sie hier zurück und klicken Sie auf 'Weiter'\n"
-            "5. Cookies werden automatisch aus Ihrem Browser-Profil extrahiert\n\n"
-            "💡 Die Cookies werden direkt aus Safari/Chrome/Firefox gelesen,\n"
-            "   sodass sie genau so sind, wie der Browser sie verwendet.\n\n"
-            "Klicken Sie auf OK, um fortzufahren."
-        )
-        
-        # Verwende Event für Thread-Haupt-Thread-Kommunikation
-        # Der Dialog wird VOR dem Thread-Start geöffnet
-        continue_event = threading.Event()
-        result_queue = queue.Queue()
-        
-        # Erstelle Dialog für Bestätigung nach Browser-Anmeldung
-        # Dieser Dialog wird im Haupt-Thread geöffnet, BEVOR der Thread startet
-        continue_window = tk.Toplevel(self.root)
-        continue_window.title("Browser-Anmeldung")
-        continue_window.transient(self.root)
-        continue_window.grab_set()
-        self._fit_dialog(continue_window, 580, 380, 480, 280)
-        
-        continue_frame = ttk.Frame(continue_window, padding="20")
-        continue_frame.pack(fill=tk.BOTH, expand=True)
-        
-        info_text = (
-            "Bitte folgen Sie diesen Schritten:\n\n"
-            "1. Melden Sie sich im geöffneten Browser an (inkl. 2FA)\n"
-            "2. Gehen Sie nach erfolgreicher Anmeldung zu:\n"
-            "   https://www.audible.de/library\n"
-            "3. Stellen Sie sicher, dass Sie eingeloggt sind\n"
-            "4. Klicken Sie dann auf 'Weiter'"
-        )
-        
-        ttk.Label(continue_frame, text=info_text, justify=tk.LEFT).pack(pady=10)
-        
-        def continue_login():
-            result_queue.put(True)
-            continue_event.set()
-            continue_window.destroy()
-        
-        def cancel():
-            result_queue.put(False)
-            continue_event.set()
-            continue_window.destroy()
-        
-        button_frame = ttk.Frame(continue_frame)
-        button_frame.pack(pady=20)
-        
-        ttk.Button(button_frame, text="Weiter", command=continue_login).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_frame, text="Abbrechen", command=cancel).pack(side=tk.LEFT, padx=5)
-        
-        # GUI-Callback, der auf das Event wartet (wird im Thread aufgerufen)
-        def gui_callback_safe() -> bool:
-            """Thread-sicherer GUI-Callback - wartet auf Event"""
-            # Warte auf das Event (blockierend, aber OK im Thread)
-            timeout = 300  # 5 Minuten
-            if continue_event.wait(timeout=timeout):
-                # Event wurde gesetzt, hole Ergebnis
-                try:
-                    return result_queue.get_nowait()
-                except queue.Empty:
-                    return False
-            else:
-                # Timeout
-                return False
-        
-        def login_thread():
+        """Schließt die Auswahl und zeigt danach sofort das Anmeldungsfenster."""
+        try:
+            login_window.grab_release()
+        except tk.TclError:
+            pass
+        try:
+            login_window.destroy()
+        except tk.TclError:
+            pass
+        self.root.after(30, self._open_audible_browser_login)
+
+    def _open_audible_browser_login(self):
+        """Fenster zuerst, Browser danach. Sonst bleibt der Klick auf dem Mac ohne Dialog."""
+        result = {"url": "", "done": False}
+        win = tk.Toplevel(self.root)
+        win.title("Audible Anmeldung")
+        try:
+            win.attributes("-topmost", True)
+        except tk.TclError:
+            pass
+        self._fit_dialog(win, 680, 420, 560, 340)
+        frame = ttk.Frame(win, padding="16")
+        frame.pack(fill=tk.BOTH, expand=True)
+        status = ttk.Label(frame, text="Fenster ist da. Der Browser öffnet sich gleich.", wraplength=620, justify=tk.LEFT)
+        status.pack(anchor=tk.W, pady=(0, 8))
+        ttk.Label(
+            frame,
+            text=(
+                "Im Browser anmelden, auch die zweite Abfrage und ein Captcha.\n"
+                "Danach kommt eine Fehlerseite. Die komplette Adresse daraus hier einfügen."
+            ),
+            justify=tk.LEFT,
+            wraplength=620,
+        ).pack(anchor=tk.W, pady=(0, 8))
+        link = tk.Text(frame, height=3, wrap=tk.WORD)
+        link.pack(fill=tk.X, pady=(0, 8))
+        link.insert("1.0", "Anmeldelink wird vorbereitet…")
+        ttk.Label(frame, text="Adresse nach dem Login:").pack(anchor=tk.W)
+        entry = tk.Text(frame, height=4, wrap=tk.WORD)
+        entry.pack(fill=tk.BOTH, expand=True, pady=(4, 8))
+
+        def open_link():
+            import webbrowser
+            url = link.get("1.0", "end").strip()
+            if url.startswith("http"):
+                webbrowser.open(url)
+
+        def pasted_text():
+            return "\n".join((
+                entry.get("1.0", "end"),
+                link.get("1.0", "end"),
+            ))
+
+        def paste_into(_event=None):
             try:
-                # Wechsle zum Deezer-Tab für Logs
-                self.root.after(0, lambda: self.notebook.select(0))
-                self.log("Starte Browser-Anmeldung...")
-                self.log("=" * 60)
-                
-                auth = AudibleAuth()
-                
-                # Führe Browser-Anmeldung durch mit GUI-Callback
-                # Dies öffnet einen Browser und wartet auf GUI-Bestätigung
-                success = auth.login_with_browser(gui_callback=gui_callback_safe)
-                
-                if success:
-                    self.audible_auth = auth
-                    self.audible_library = AudibleLibrary(auth)
-                    
-                    # Bestimme Email falls verfügbar
-                    email = auth.email if auth.email else "Browser-Anmeldung"
-                    self.audible_status_var.set(f"✓ Angemeldet ({email})")
-                    self.audible_load_button.config(state=tk.NORMAL)
-                    
-                    self.log("✓ Browser-Anmeldung erfolgreich!")
-                    self.log("=" * 60)
-                    
-                    # Wechsle zurück zum Audible-Tab
-                    self.notebook.select(1)
-                    
-                    messagebox.showinfo("Erfolg", "Erfolgreich angemeldet über Browser!")
-                else:
-                    self.log("✗ Browser-Anmeldung fehlgeschlagen")
-                    self.log("=" * 60)
-                    self.notebook.select(1)
-                    
-                    messagebox.showwarning(
-                        "Anmeldung fehlgeschlagen",
-                        "Browser-Anmeldung konnte Cookies nicht automatisch extrahieren.\n\n"
-                        "Bitte verwenden Sie stattdessen:\n"
-                        "• Cookie-Anmeldung (manuell) - Kopieren Sie Cookies aus dem Browser\n"
-                        "• Oder versuchen Sie es erneut"
-                    )
-            except Exception as e:
-                self.log(f"✗ Fehler bei Browser-Anmeldung: {e}")
-                self.notebook.select(1)
-                messagebox.showerror("Fehler", f"Fehler bei der Browser-Anmeldung: {e}")
-        
-        thread = threading.Thread(target=login_thread)
-        thread.daemon = True
-        thread.start()
+                entry.insert("insert", self.root.clipboard_get())
+            except tk.TclError:
+                pass
+            return "break"
+
+        entry.bind("<Command-v>", paste_into)
+        entry.bind("<Control-v>", paste_into)
+
+        pending = {}
+
+        def close_window():
+            result["done"] = True
+            try:
+                win.destroy()
+            except tk.TclError:
+                pass
+
+        def logged_in(account):
+            self.audible_auth = account
+            self.audible_library = AudibleLibrary(account)
+            self.audible_status_var.set("✓ Angemeldet")
+            self.audible_load_button.config(state=tk.NORMAL)
+            try:
+                self.notebook.select(self.audible_frame)
+            except Exception:
+                pass
+            close_window()
+            try:
+                self.log("✓ Audible-Anmeldung erfolgreich")
+            except Exception:
+                pass
+            messagebox.showinfo("Audible", "Angemeldet. Die Bibliothek kann jetzt geladen werden.", parent=self.root)
+
+        def login_failed(exc):
+            self.log(f"✗ Audible-Anmeldung fehlgeschlagen: {exc}")
+            status.config(text=str(exc))
+            for child in buttons.winfo_children():
+                try:
+                    child.config(state=tk.NORMAL)
+                except tk.TclError:
+                    pass
+
+        def finish(ok):
+            if not ok:
+                result["url"] = ""
+                close_window()
+                return
+            text = pasted_text()
+            if not AudibleAuth.authorization_code_from_text(text):
+                status.config(text="In dem Text ist kein Anmeldecode. Die komplette Adresse der Fehlerseite ins untere Feld einfügen.")
+                return
+            result["url"] = text
+            status.config(text="Anmeldung läuft…")
+            for child in buttons.winfo_children():
+                try:
+                    child.config(state=tk.DISABLED)
+                except tk.TclError:
+                    pass
+
+            def work():
+                try:
+                    from path_helper import get_app_base_path
+                    account = AudibleAuth(str(get_app_base_path() / ".audible_config.json"))
+                    account.finish_browser_login(result["url"], pending)
+                    self.root.after(0, lambda account=account: logged_in(account))
+                except Exception as exc:
+                    message = str(exc)
+                    self.root.after(0, lambda message=message: login_failed(message))
+
+            threading.Thread(target=work, daemon=True).start()
+
+        buttons = ttk.Frame(frame)
+        buttons.pack(anchor=tk.E)
+        ttk.Button(buttons, text="Browser erneut öffnen", command=open_link).pack(side=tk.LEFT, padx=(0, 8))
+        ttk.Button(buttons, text="Anmelden", command=lambda: finish(True)).pack(side=tk.RIGHT, padx=4)
+        ttk.Button(buttons, text="Abbrechen", command=lambda: finish(False)).pack(side=tk.RIGHT)
+        win.protocol("WM_DELETE_WINDOW", lambda: finish(False))
+        win.update_idletasks()
+        try:
+            win.lift()
+            win.focus_force()
+        except tk.TclError:
+            pass
+
+        try:
+            pending.update(AudibleAuth.prepare_browser_login())
+        except Exception as exc:
+            status.config(text=f"Anmeldelink fehlgeschlagen: {exc}")
+            win.wait_window()
+            return
+        link.delete("1.0", "end")
+        link.insert("1.0", pending["url"])
+        status.config(text="Adresse der Fehlerseite ins untere Feld einfügen und auf Anmelden klicken.")
+        open_link()
+        win.wait_window()
     
     def show_cookie_login(self, parent_window):
         """Zeigt Dialog für Cookie-Anmeldung"""
@@ -5474,7 +6358,8 @@ class DeezerDownloaderGUI:
                     return
             
             try:
-                auth = AudibleAuth()
+                from path_helper import get_app_base_path
+                auth = AudibleAuth(str(get_app_base_path() / ".audible_config.json"))
                 if auth.login_with_cookies(normalized_cookies):
                     self.audible_auth = auth
                     self.audible_library = AudibleLibrary(auth)
@@ -5494,49 +6379,185 @@ class DeezerDownloaderGUI:
         ttk.Button(button_frame, text="Anmelden", command=do_cookie_login).pack(side=tk.LEFT, padx=5)
         ttk.Button(button_frame, text="Abbrechen", command=cookie_window.destroy).pack(side=tk.LEFT, padx=5)
     
-    def load_audible_library(self):
-        """Lädt die Audible-Bibliothek"""
+    def load_audible_library(self, manual=True):
+        """Lädt die Audible-Bibliothek. Beim Start ohne Tab-Wechsel und ohne Erfolgsfenster."""
         if not self.audible_auth or not self.audible_auth.is_logged_in():
-            messagebox.showwarning("Warnung", "Bitte zuerst anmelden.")
+            if manual:
+                messagebox.showwarning("Warnung", "Bitte zuerst anmelden.")
+            return
+        if not self.audible_library:
+            self.audible_library = AudibleLibrary(self.audible_auth)
+        if not manual:
+            self._audible_library_loading = True
+        try:
+            from plugin_loader import ask_plugins
+            answers = ask_plugins(self.plugin_host, "can_load_books")
+        except Exception:
+            answers = []
+        if any(answer is False for answer in answers):
+            self._audible_library_loading = False
+            if manual:
+                messagebox.showwarning("Audible", "Ein Plugin hat das Laden der Bücher abgelehnt.")
             return
         
+        def show_books(books):
+            if manual:
+                try:
+                    self.notebook.select(self.audible_frame)
+                except Exception:
+                    pass
+            for item in self.audible_tree.get_children():
+                self.audible_tree.delete(item)
+            self.audible_books = {}
+            for book in books:
+                asin = book.get('asin') or ''
+                if asin:
+                    self.audible_books[asin] = book
+                self.audible_tree.insert(
+                    '',
+                    tk.END,
+                    **({"iid": asin} if asin else {}),
+                    values=(
+                        book.get('title') or 'Unbekannt',
+                        book.get('author') or 'Unbekannt',
+                        book.get('narrators') or '–',
+                        book.get('duration') or '–',
+                        book.get('purchase_date') or '–',
+                    ),
+                    tags=(asin,),
+                )
+            children = self.audible_tree.get_children()
+            if children:
+                self.audible_tree.selection_set(children[0])
+                self.audible_tree.focus(children[0])
+                self._audible_show_book(self.audible_books.get(children[0]))
+            try:
+                self.log(f"✓ Bibliothek geladen: {len(books)} Hörbücher")
+            except Exception:
+                pass
+            if manual:
+                messagebox.showinfo("Erfolg", f"Bibliothek geladen: {len(books)} Hörbücher")
+            else:
+                self.audible_status_var.set(f"✓ Angemeldet, {len(books)} Hörbücher")
+            self._audible_library_loaded = True
+            self._audible_library_loading = False
+
+        def load_failed(message):
+            self._audible_library_loading = False
+            if manual:
+                messagebox.showerror("Fehler", f"Fehler beim Laden der Bibliothek: {message}")
+            else:
+                self.audible_status_var.set("Bibliothek konnte nicht geladen werden")
+
         def load_thread():
             try:
-                # Wechsle zum Deezer-Tab für Logs
-                self.notebook.select(0)
-                self.log("Lade Audible-Bibliothek...")
                 books = self.audible_library.fetch_library()
-                
-                # Lösche alte Einträge
-                for item in self.audible_tree.get_children():
-                    self.audible_tree.delete(item)
-                
-                # Füge Hörbücher hinzu (sortiert nach zuletzt gekauft)
-                for book in books:
-                    self.audible_tree.insert(
-                        '',
-                        tk.END,
-                        values=(
-                            book.get('title', 'Unbekannt'),
-                            book.get('author', 'Unbekannt'),
-                            book.get('duration', 'Unbekannt'),
-                            book.get('purchase_date', 'Unbekannt')[:10] if book.get('purchase_date') else 'Unbekannt'
-                        ),
-                        tags=(book.get('asin', ''),)
-                    )
-                
-                self.log(f"✓ Bibliothek geladen: {len(books)} Hörbücher")
-                # Wechsle zurück zum Audible-Tab
-                self.notebook.select(1)
-                messagebox.showinfo("Erfolg", f"Bibliothek geladen: {len(books)} Hörbücher")
-            except Exception as e:
-                self.log(f"✗ Fehler beim Laden der Bibliothek: {e}")
-                messagebox.showerror("Fehler", f"Fehler beim Laden der Bibliothek: {e}")
+                self.root.after(0, lambda books=books: show_books(books))
+            except Exception as exc:
+                message = str(exc)
+                self.root.after(0, lambda message=message: load_failed(message))
         
         thread = threading.Thread(target=load_thread)
         thread.daemon = True
         thread.start()
-    
+
+    def _audible_selected_book(self):
+        selected = self.audible_tree.selection()
+        if not selected:
+            return None
+        return self.audible_books.get(selected[0])
+
+    def _audible_on_select(self, _event=None):
+        self._audible_show_book(self._audible_selected_book())
+
+    def _audible_show_book(self, book):
+        book = book or {}
+        for key, var in self.audible_detail_vars.items():
+            var.set(book.get(key) or "–")
+        self.audible_summary.config(state=tk.NORMAL)
+        self.audible_summary.delete("1.0", tk.END)
+        self.audible_summary.insert("1.0", book.get("summary") or "")
+        self.audible_summary.config(state=tk.DISABLED)
+        cover_url = book.get("cover_url") or ""
+        if not cover_url:
+            return
+
+        def load_cover():
+            try:
+                import io
+                import subprocess
+                from PIL import Image
+                raw = subprocess.check_output(["/usr/bin/curl", "-fsS", "-A", "Mozilla/5.0", cover_url], timeout=20)
+                image = Image.open(io.BytesIO(raw))
+                image.thumbnail((180, 180))
+                buffer = io.BytesIO()
+                image.convert("RGB").save(buffer, format="PNG")
+                png = buffer.getvalue()
+            except Exception:
+                return
+
+            def apply():
+                if self._audible_selected_book() and self._audible_selected_book().get("cover_url") != cover_url:
+                    return
+                photo = tk.PhotoImage(data=png)
+                self.audible_cover_image = photo
+                self.audible_cover_label.config(image=photo)
+
+            self.root.after(0, apply)
+
+        threading.Thread(target=load_cover, daemon=True).start()
+
+    def _audible_local_files(self, book):
+        title = (book or {}).get("title") or ""
+        if not title or not self.audible_library:
+            return []
+        folder = Path(self.audible_download_path) / self.audible_library._sanitize_filename(title)
+        if not folder.is_dir():
+            return []
+        files = []
+        for pattern in ("*.mp3", "*.m4a", "*.m4b"):
+            files.extend(folder.glob(pattern))
+        return sorted(files)
+
+    def play_selected_audible_book(self):
+        book = self._audible_selected_book()
+        if not book:
+            messagebox.showwarning("Audible", "Bitte zuerst ein Hörbuch auswählen.")
+            return
+        files = self._audible_local_files(book)
+        if not files:
+            messagebox.showinfo(
+                "Audible",
+                "Dieses Hörbuch liegt noch nicht als Datei vor.\nZuerst herunterladen, danach kann der Player es abspielen.",
+            )
+            return
+        if len(files) == 1:
+            self._preview_video(files[0].as_uri(), book.get("title") or "Hörbuch", image=book.get("cover_url") or "", stream_url=str(files[0]))
+            return
+        try:
+            import preview_player
+        except ImportError:
+            messagebox.showerror("Wiedergabe", "Der eingebaute Player ist nicht verfügbar.")
+            return
+        entries = [
+            {"title": path.stem, "url": path.as_uri(), "image": book.get("cover_url") or "", "stream_url": str(path)}
+            for path in files
+        ]
+        preview_player.open_preview_list(entries, self.root.after, lambda msg: messagebox.showerror("Wiedergabe", msg), self._ask_resume_playback)
+
+    def show_activation_bytes_placeholder(self):
+        """Der Knopf bleibt. Die alte Funktion ist noch nicht brauchbar, Plugins können sie füllen."""
+        try:
+            from plugin_loader import ask_plugins
+            answers = ask_plugins(getattr(self, "plugin_host", None), "activation_bytes")
+        except Exception:
+            answers = []
+        text = next((answer for answer in answers if isinstance(answer, str) and answer.strip()), "")
+        messagebox.showinfo(
+            "Activation Bytes",
+            text or "Platzhalter. Diese Funktion ist noch nicht brauchbar.",
+        )
+
     def show_activation_bytes_dialog(self):
         """Zeigt Dialog zur manuellen Eingabe von Activation Bytes"""
         if not self.audible_auth:
@@ -5932,6 +6953,10 @@ class DeezerDownloaderGUI:
         if not url:
             messagebox.showwarning("Warnung", "Bitte geben Sie eine Video-URL ein.")
             return
+
+        self.video_download_path = Path(self.video_path_var.get())
+        if self._start_plugin_download(url, self.video_download_path):
+            return
         
         # Voreinstellung Qualität/Format pro Sender anwenden
         self._apply_domain_preset(url)
@@ -6195,7 +7220,15 @@ class DeezerDownloaderGUI:
 
         try:
             # Wechsle zum Video-Tab für Logs
-            self.notebook.select(self.notebook.index(self.video_frame))
+            audio_ui = self._queue_item_is_audio(queue_item, url)
+            if not hasattr(self, "_download_surface_for_url"):
+                self._download_surface_for_url = {}
+            self._download_surface_for_url[url] = "music" if audio_ui else "video"
+            if audio_ui:
+                self._select_music_tab()
+                self.music_log(f"Starte Hörbuch-/Audio-Download: {(url or '')[:80]}")
+            else:
+                self.notebook.select(self.notebook.index(self.video_frame))
             
             # Download-Archiv: Bereits heruntergeladene überspringen
             if self._is_in_download_archive(url):
@@ -6292,12 +7325,7 @@ class DeezerDownloaderGUI:
             
             # Starte Download mit Fortschritts-Callback
             self.video_log("\nStarte Download...")
-            _job_title = ""
-            if isinstance(qi, dict):
-                _epi = qi.get("episode_info") if isinstance(qi.get("episode_info"), dict) else {}
-                _job_title = (_epi.get("title") or qi.get("episode_title") or "").strip()
-            if not _job_title:
-                _job_title = (url or "Download")[:70]
+            _job_title = self._queue_item_label(qi, url)
             self._video_job_update(url, title=_job_title, phase="download", percent=0, create=True)
 
             def progress_callback(percent, status_line):
@@ -6473,6 +7501,7 @@ class DeezerDownloaderGUI:
                             else:
                                 success, error = False, err_c or "Konvertierung fehlgeschlagen"
             
+            stat_kind = "music" if self._queue_item_is_audio(qi if isinstance(qi, dict) else None, url) else "video"
             if success:
                 if file_path:
                     self.video_log(f"\n✓ Download erfolgreich!")
@@ -6481,7 +7510,7 @@ class DeezerDownloaderGUI:
                     self.video_status_var.set(f"✓ Download erfolgreich: {file_path.name}")
                     
                     # Aktualisiere Statistiken
-                    self._update_statistics(success=True, file_path=file_path, url=url)
+                    self._update_statistics(success=True, file_path=file_path, url=url, kind=stat_kind)
                     
                     # Füge zur Historie hinzu
                     self._add_to_history(url, file_path.name, "Erfolgreich")
@@ -6537,7 +7566,7 @@ class DeezerDownloaderGUI:
                     self.video_status_var.set("⚠ Download abgeschlossen (Datei nicht gefunden)")
                     
                     # Aktualisiere Statistiken
-                    self._update_statistics(success=True, file_path=None, url=url)
+                    self._update_statistics(success=True, file_path=None, url=url, kind=stat_kind)
                     
                     # Füge zur Historie hinzu
                     self._add_to_history(url, "N/A", "Datei nicht gefunden")
@@ -6549,18 +7578,26 @@ class DeezerDownloaderGUI:
                             "Download abgeschlossen, aber Datei nicht gefunden.\nBitte prüfen Sie das Download-Verzeichnis."
                         )
             else:
-                self.video_log(f"\n✗ Download fehlgeschlagen: {error}")
-                self.video_status_var.set(f"✗ Download fehlgeschlagen")
+                failed_title = self._queue_item_label(qi, url)
+                self.video_log(f"\n✗ Download fehlgeschlagen ({failed_title}): {error}")
+                self.video_status_var.set(f"✗ {failed_title}: fehlgeschlagen")
                 
                 # Aktualisiere Statistiken
-                self._update_statistics(success=False, file_path=None, url=url)
+                self._update_statistics(success=False, file_path=None, url=url, kind=stat_kind, error=error)
                 
                 # Füge zur Historie hinzu
                 self._add_to_history(url, "N/A", f"Fehlgeschlagen: {error}")
                 
                 if error != "Abgebrochen":
-                    err_msg = f"Download fehlgeschlagen:\n\n{error}"
-                    self.root.after(0, lambda: messagebox.showerror("Fehler", err_msg))
+                    if "404" in (error or "") or "Unable to download JSON metadata" in (error or ""):
+                        err_msg = (
+                            f"„{failed_title}“ ist in der Mediathek gerade nicht abrufbar.\n\n"
+                            "Die Seite dazu wurde nicht gefunden. Ein fehlendes Cover "
+                            "bricht den Download nicht ab."
+                        )
+                    else:
+                        err_msg = f"„{failed_title}“\n\nDownload fehlgeschlagen:\n\n{error}"
+                    self.root.after(0, lambda m=err_msg: messagebox.showerror("Fehler", m))
             
         except Exception as e:
             self.video_log(f"\n✗ Fehler: {e}")
@@ -6868,6 +7905,7 @@ class DeezerDownloaderGUI:
         
         canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
+        self._bind_scroll_wheel(canvas, scrollable_frame)
         
         # Variablen für Checkboxen
         season_vars = {}  # {season_num: BooleanVar}
@@ -7105,6 +8143,7 @@ class DeezerDownloaderGUI:
         
         canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
+        self._bind_scroll_wheel(canvas, scrollable_frame)
         
         # Variablen für Checkboxen
         track_vars = {}  # {track_index: BooleanVar}
@@ -7256,6 +8295,7 @@ class DeezerDownloaderGUI:
         
         canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
+        self._bind_scroll_wheel(canvas, scrollable_frame)
         
         # Variablen für Checkboxen
         album_vars = {}  # {album_index: BooleanVar}
@@ -7868,6 +8908,7 @@ class DeezerDownloaderGUI:
                             pass
                     continue  # Überspringe aktuelle Folge, aber lade nächste
                 
+                ep_kind = "music" if self._queue_item_is_audio(episode, url) else "video"
                 if success:
                     if file_path:
                         self.video_log(f"  ✓ Erfolgreich: {file_path.name}")
@@ -7875,10 +8916,13 @@ class DeezerDownloaderGUI:
                     else:
                         self.video_log(f"  ⚠ Download scheint erfolgreich, aber Datei nicht gefunden")
                         success_count += 1
+                    self._update_statistics(success=True, file_path=file_path, url=url, kind=ep_kind)
                     self._series_watch_mark_downloaded(url, episode_id=episode.get('id'))
                 else:
                     self.video_log(f"  ✗ Fehlgeschlagen: {error}")
                     failed_count += 1
+                    if error != "Abgebrochen":
+                        self._update_statistics(success=False, file_path=None, url=url, kind=ep_kind, error=error)
                 
                 # Wenn erste Episode heruntergeladen wurde und restliche zur Queue hinzugefügt wurden,
                 # beende die Schleife hier, damit die restlichen Episoden über die Queue verarbeitet werden
@@ -8470,7 +9514,19 @@ class DeezerDownloaderGUI:
         except Exception as e:
             messagebox.showerror("Fehler", f"Queue konnte nicht geladen werden:\n{e}")
     
-    def _add_to_download_queue(self, url: str, episode_info: Optional[Dict] = None, show_dialog: bool = True):
+    def _queue_item_label(self, queue_item, url: str = "") -> str:
+        """Anzeigename eines Queue-Eintrags, sonst ein kurzes Stück der Adresse."""
+        if isinstance(queue_item, dict):
+            title = (queue_item.get("display_title") or "").strip()
+            if not title:
+                epi = queue_item.get("episode_info") if isinstance(queue_item.get("episode_info"), dict) else {}
+                title = (epi.get("title") or queue_item.get("episode_title") or "").strip()
+            if title:
+                return title
+        text = (url or "").strip()
+        return text[:70] if text else "Download"
+
+    def _add_to_download_queue(self, url: str, episode_info: Optional[Dict] = None, show_dialog: bool = True, display_title: str = ""):
         """Fügt einen Download zur Queue hinzu
         
         Args:
@@ -8502,7 +9558,8 @@ class DeezerDownloaderGUI:
             'thumbnail': self.video_thumbnail_var.get(),
             'resume': self.video_resume_var.get(),
             'added': datetime.now(),
-            'status': 'Wartend'
+            'status': 'Wartend',
+            'display_title': (display_title or "").strip(),
         }
         
         # Füge Episode-Informationen hinzu falls vorhanden
@@ -8533,9 +9590,14 @@ class DeezerDownloaderGUI:
             else:
                 log_text = f"📋 Zur Queue hinzugefügt: {url[:60]}..."
         else:
-            log_text = f"📋 Zur Queue hinzugefügt: {url[:60]}..."
+            shown = (display_title or "").strip() or url[:60]
+            log_text = f"📋 Zur Queue hinzugefügt: {shown}..."
         
-        self.video_log(log_text)
+        if self._queue_item_is_audio(queue_item, url):
+            self.music_log(log_text)
+            self._select_music_tab()
+        else:
+            self.video_log(log_text)
         
         # Zeige Dialog nur wenn gewünscht (nicht bei Batch-Hinzufügung von Episoden)
         if show_dialog:
@@ -8630,14 +9692,53 @@ class DeezerDownloaderGUI:
         # Normales einzelnes Video
         self._add_to_download_queue(url)
     
+    def _select_music_tab(self):
+        try:
+            self.notebook.select(self.notebook.index(self.music_frame))
+        except Exception:
+            pass
+
+    def _queue_item_is_audio(self, qi, url: str = "") -> bool:
+        """Hörbuch/Audiothek gehört in den Musik-Tab, nicht in die Video-Anzeige."""
+        epi = {}
+        if isinstance(qi, dict):
+            raw = qi.get("episode_info")
+            epi = raw if isinstance(raw, dict) else {}
+            if epi.get("kind") == "audio" or qi.get("kind") == "audio":
+                return True
+        check = " ".join([
+            url or "",
+            (epi.get("url") or "") if isinstance(epi, dict) else "",
+            (epi.get("series_url") or "") if isinstance(epi, dict) else "",
+            (qi.get("series_url") or "") if isinstance(qi, dict) else "",
+            (qi.get("url") or "") if isinstance(qi, dict) else "",
+        ])
+        if series_watch is not None and series_watch.is_audio_watch_url(check):
+            return True
+        try:
+            return bool(_is_music_mediathek_url(url or (epi.get("url") if isinstance(epi, dict) else "") or ""))
+        except Exception:
+            return False
+
     def _update_queue_status(self):
-        """Aktualisiert die Queue-Status-Anzeige"""
+        """Aktualisiert die Queue-Status-Anzeige. Audio zählt im Musik-Tab."""
+        items = list(getattr(self, "video_download_queue", []) or [])
+        audio_n = 0
+        video_n = 0
+        for item in items:
+            u = item.get("url") if isinstance(item, dict) else str(item)
+            if self._queue_item_is_audio(item if isinstance(item, dict) else None, u):
+                audio_n += 1
+            else:
+                video_n += 1
         if hasattr(self, 'video_queue_status_label'):
-            queue_count = len(self.video_download_queue)
-            if queue_count > 0:
-                self.video_queue_status_label.config(text=f"📋 Queue: {queue_count} Download{'s' if queue_count != 1 else ''} wartend")
+            if video_n > 0:
+                self.video_queue_status_label.config(text=f"📋 Queue: {video_n} Download{'s' if video_n != 1 else ''} wartend")
             else:
                 self.video_queue_status_label.config(text="📋 Queue: 0 Downloads")
+        music_n = len(getattr(self, "music_download_queue", []) or []) + audio_n
+        if hasattr(self, "music_queue_status_label"):
+            self.music_queue_status_label.config(text=f"📋 Queue: {music_n} Einträge")
     
     def _video_job_update(self, job_id, title=None, phase=None, percent=None, status_line=None, remove=False, create=False):
         """Merkt den Zustand einer laufenden Folge für Programm und Menü.
@@ -8648,15 +9749,20 @@ class DeezerDownloaderGUI:
         key = str(job_id or "")
         if not key:
             return
+        surface = (getattr(self, "_download_surface_for_url", {}) or {}).get(key, "video")
         with self._video_jobs_lock:
             if remove:
                 self._video_active_jobs.pop(key, None)
+                getattr(self, "_download_surface_for_url", {}).pop(key, None)
             elif key not in self._video_active_jobs:
                 if not create:
                     return
-                self._video_active_jobs[key] = {"title": "Folge", "phase": "download", "percent": 0.0}
+                self._video_active_jobs[key] = {
+                    "title": "Folge", "phase": "download", "percent": 0.0, "surface": surface,
+                }
             if not remove and key in self._video_active_jobs:
                 slot = self._video_active_jobs[key]
+                slot["surface"] = surface
                 if title:
                     slot["title"] = str(title)[:80]
                 if phase:
@@ -8736,11 +9842,9 @@ class DeezerDownloaderGUI:
                 return
             self._video_jobs_tick_on = False
 
-    def _video_jobs_render(self):
-        with self._video_jobs_lock:
-            snapshot = [dict(v) for v in self._video_active_jobs.values()]
+    def _job_lines(self, slots, waiting):
         lines = []
-        for slot in snapshot:
+        for slot in slots:
             title = (slot.get("title") or "Folge").strip()
             phase = slot.get("phase") or "download"
             pct = float(slot.get("percent") or 0)
@@ -8754,51 +9858,85 @@ class DeezerDownloaderGUI:
                 lines.append(f"✓ {title} — bereits vorhanden")
             else:
                 lines.append(f"⬇ {title} — lädt {pct:.0f}%{speed_bit}")
-        pending = []
-        for item in list(getattr(self, "video_download_queue", []) or [])[:8]:
-            if isinstance(item, dict):
-                epi = item.get("episode_info") if isinstance(item.get("episode_info"), dict) else {}
-                t = (epi.get("title") or item.get("episode_title") or item.get("url") or "Folge")
+        for title in waiting:
+            if len(lines) >= 8:
+                break
+            lines.append(f"· {str(title)[:70]} — wartet in der Queue")
+        return lines
+
+    def _paint_job_surface(self, slots, waiting, jobs_var, status_var, progress_var, progress_bar):
+        lines = self._job_lines(slots, waiting)
+        if jobs_var is not None:
+            jobs_var.set("\n".join(lines) if (slots or waiting) else "")
+        if not slots or status_var is None or progress_var is None:
+            return
+        bits = []
+        for slot in slots[:3]:
+            title = (slot.get("title") or "Folge").strip()[:36]
+            pct = float(slot.get("percent") or 0)
+            phase = slot.get("phase") or "download"
+            speed = (slot.get("speed") or "").strip()
+            speed_bit = f" · {speed}" if speed and phase == "download" else ""
+            if phase == "convert":
+                bits.append(f"{title} — konvertiert {pct:.0f}%")
+            elif phase == "convert_wait":
+                bits.append(f"{title} — wartet auf Konvertierung")
+            elif phase == "exists":
+                bits.append(f"{title} — bereits vorhanden")
             else:
-                t = str(item)
-            pending.append({"title": str(t)[:80]})
-            if len(lines) < 8:
-                lines.append(f"· {str(t)[:70]} — wartet in der Queue")
-        if hasattr(self, "video_jobs_var"):
-            self.video_jobs_var.set("\n".join(lines))
-        if snapshot:
-            bits = []
-            for slot in snapshot[:3]:
-                title = (slot.get("title") or "Folge").strip()[:36]
-                pct = float(slot.get("percent") or 0)
-                phase = slot.get("phase") or "download"
-                speed = (slot.get("speed") or "").strip()
-                speed_bit = f" · {speed}" if speed and phase == "download" else ""
-                if phase == "convert":
-                    bits.append(f"{title} — konvertiert {pct:.0f}%")
-                elif phase == "convert_wait":
-                    bits.append(f"{title} — wartet auf Konvertierung")
-                elif phase == "exists":
-                    bits.append(f"{title} — bereits vorhanden")
-                else:
-                    bits.append(f"{title} — {pct:.0f}%{speed_bit}")
-            if pending:
-                bits.append(f"{len(self.video_download_queue)} in der Queue")
-            self.video_status_var.set(" · ".join(bits))
-            show = None
-            for slot in snapshot:
-                if (slot.get("phase") or "download") == "download":
-                    show = float(slot.get("percent") or 0)
-                    break
-            if show is None:
-                show = float(snapshot[0].get("percent") or 0)
-            self.video_progress_var.set(show)
+                bits.append(f"{title} — {pct:.0f}%{speed_bit}")
+        if waiting:
+            bits.append(f"{len(waiting)} in der Queue")
+        status_var.set(" · ".join(bits))
+        show = None
+        for slot in slots:
+            if (slot.get("phase") or "download") == "download":
+                show = float(slot.get("percent") or 0)
+                break
+        if show is None:
+            show = float(slots[0].get("percent") or 0)
+        progress_var.set(show)
+        if progress_bar is not None:
             try:
-                self.video_progress_bar.update_idletasks()
+                progress_bar.update_idletasks()
             except Exception:
                 pass
-        elif hasattr(self, "video_jobs_var"):
-            self.video_jobs_var.set("")
+
+    def _video_jobs_render(self):
+        with self._video_jobs_lock:
+            snapshot = [dict(v) for v in self._video_active_jobs.values()]
+        video_slots = [s for s in snapshot if s.get("surface") != "music"]
+        music_slots = [s for s in snapshot if s.get("surface") == "music"]
+        video_wait = []
+        music_wait = []
+        pending = []
+        for item in list(getattr(self, "video_download_queue", []) or []):
+            if isinstance(item, dict):
+                epi = item.get("episode_info") if isinstance(item.get("episode_info"), dict) else {}
+                t = (item.get("display_title") or epi.get("title") or item.get("episode_title") or item.get("url") or "Folge")
+                u = item.get("url") or ""
+            else:
+                t = str(item)
+                u = t
+            pending.append({"title": str(t)[:80]})
+            if self._queue_item_is_audio(item if isinstance(item, dict) else None, u):
+                music_wait.append(t)
+            else:
+                video_wait.append(t)
+        self._paint_job_surface(
+            video_slots, video_wait[:8],
+            getattr(self, "video_jobs_var", None),
+            getattr(self, "video_status_var", None),
+            getattr(self, "video_progress_var", None),
+            getattr(self, "video_progress_bar", None),
+        )
+        self._paint_job_surface(
+            music_slots, music_wait[:8],
+            getattr(self, "music_jobs_var", None),
+            getattr(self, "music_status_var", None),
+            getattr(self, "music_progress_var", None),
+            getattr(self, "music_progress_bar", None),
+        )
         self._video_jobs_publish(snapshot, pending)
 
     def _video_jobs_publish(self, snapshot, pending):
@@ -9530,13 +10668,13 @@ class DeezerDownloaderGUI:
         history_window = tk.Toplevel(self.root)
         history_window.title("Download-Historie")
         history_window.transient(self.root)
-        self._fit_dialog(history_window, 960, 620, 700, 420)
+        self._fit_dialog(history_window, 1100, 680, 860, 480)
         
         frame = ttk.Frame(history_window, padding="10")
         frame.pack(fill=tk.BOTH, expand=True)
         
         ttk.Label(frame, text="Download-Historie", font=("Arial", 12, "bold")).pack(anchor=tk.W, pady=(0, 5))
-        hint = ttk.Label(frame, text="Doppelklick auf einen Eintrag: URL wird in die Zwischenablage kopiert.", font=("Arial", 9))
+        hint = ttk.Label(frame, text="Doppelklick kopiert die URL. Rechtsklick: URL, Fehler oder Datum kopieren.", font=("Arial", 9))
         hint.pack(anchor=tk.W, pady=(0, 5))
         # Suche/Filter (URL, Datei, Datum)
         filter_frame = ttk.Frame(frame)
@@ -9545,20 +10683,28 @@ class DeezerDownloaderGUI:
         filter_var = tk.StringVar()
         filter_entry = ttk.Entry(filter_frame, textvariable=filter_var, width=40, style="Download.TEntry")
         filter_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+        self._entry_place_caret(filter_entry)
+        self._entry_edit_menu(filter_entry)
+
+        button_frame = ttk.Frame(frame)
+        button_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=(10, 0))
+
+        list_frame = ttk.Frame(frame)
+        list_frame.pack(fill=tk.BOTH, expand=True)
         
         # Treeview
         columns = ("Zeitpunkt", "URL", "Status", "Datei")
-        tree = ttk.Treeview(frame, columns=columns, show="headings", height=20)
+        tree = ttk.Treeview(list_frame, columns=columns, show="headings", height=20)
         tree.heading("Zeitpunkt", text="Zeitpunkt")
         tree.heading("URL", text="URL")
         tree.heading("Status", text="Status")
         tree.heading("Datei", text="Datei")
-        tree.column("Zeitpunkt", width=150)
-        tree.column("URL", width=300)
-        tree.column("Status", width=100)
-        tree.column("Datei", width=200)
+        tree.column("Zeitpunkt", width=160, minwidth=120, stretch=False)
+        tree.column("URL", width=420, minwidth=160, stretch=True)
+        tree.column("Status", width=140, minwidth=90, stretch=False)
+        tree.column("Datei", width=280, minwidth=120, stretch=True)
         
-        scrollbar = ttk.Scrollbar(frame, orient=tk.VERTICAL, command=tree.yview)
+        scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=tree.yview)
         tree.configure(yscrollcommand=scrollbar.set)
         
         tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
@@ -9579,9 +10725,9 @@ class DeezerDownloaderGUI:
             for entry in entries_to_show:
                 tree.insert("", tk.END, values=(
                     entry.get('timestamp', 'Unbekannt'),
-                    entry.get('url', '')[:50] + "..." if len(entry.get('url', '')) > 50 else entry.get('url', ''),
+                    entry.get('url', '') or '',
                     entry.get('status', 'Unbekannt'),
-                    entry.get('filename', 'N/A')
+                    entry.get('filename', 'N/A') or 'N/A',
                 ))
 
         def apply_filter(*_):
@@ -9601,25 +10747,49 @@ class DeezerDownloaderGUI:
         refresh_tree()
         filter_var.trace_add("write", apply_filter)
 
-        def copy_url_from_selection(*_):
+        def _selected_entry():
             sel = tree.selection()
             if not sel:
-                return
+                return None
             try:
                 idx = tree.index(sel[0])
-                if 0 <= idx < len(visible_entries_for_copy):
-                    url = visible_entries_for_copy[idx].get('url', '')
-                    if url:
-                        self.root.clipboard_clear()
-                        self.root.clipboard_append(url)
-                        messagebox.showinfo("Kopiert", "URL wurde in die Zwischenablage kopiert.", parent=history_window)
-            except Exception:
-                pass
-        
+            except tk.TclError:
+                return None
+            if 0 <= idx < len(visible_entries_for_copy):
+                return visible_entries_for_copy[idx]
+            return None
+
+        def _copy_field(key):
+            entry = _selected_entry()
+            if not entry:
+                return
+            text = str(entry.get(key, '') or '')
+            if not text:
+                return
+            self.root.clipboard_clear()
+            self.root.clipboard_append(text)
+
+        def copy_url_from_selection(*_):
+            _copy_field('url')
+
+        context = tk.Menu(history_window, tearoff=0)
+        context.add_command(label="URL kopieren", command=lambda: _copy_field('url'))
+        context.add_command(label="Fehler kopieren", command=lambda: _copy_field('status'))
+        context.add_command(label="Datum kopieren", command=lambda: _copy_field('timestamp'))
+
+        def popup_history(event):
+            row = tree.identify_row(event.y)
+            if row:
+                tree.selection_set(row)
+                tree.focus(row)
+            try:
+                context.tk_popup(event.x_root, event.y_root)
+            finally:
+                context.grab_release()
+
         tree.bind("<Double-1>", copy_url_from_selection)
-        
-        button_frame = ttk.Frame(frame)
-        button_frame.pack(fill=tk.X, pady=(10, 0))
+        tree.bind("<Button-2>", popup_history)
+        tree.bind("<Button-3>", popup_history)
         
         def clear_history():
             if messagebox.askyesno("Bestätigen", "Historie wirklich löschen?"):
@@ -9629,7 +10799,7 @@ class DeezerDownloaderGUI:
                 refresh_tree()
         
         ttk.Button(button_frame, text="Historie löschen", command=clear_history).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_frame, text="URL kopieren (ausgewählter Eintrag)", command=copy_url_from_selection).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="URL kopieren", command=copy_url_from_selection).pack(side=tk.LEFT, padx=5)
     
     def show_favorites(self):
         """Zeigt Favoriten-Verwaltung"""
@@ -9716,16 +10886,25 @@ class DeezerDownloaderGUI:
         search_frame = ttk.Frame(main_frame)
         search_frame.pack(fill=tk.X, pady=(0, 10))
         
-        ttk.Label(search_frame, text="Suche:", font=("Arial", 10, "bold")).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Label(search_frame, text="Suche:", font=("Arial", 14, "bold")).pack(side=tk.LEFT, padx=(0, 8))
         search_var = tk.StringVar()
-        search_entry = ttk.Entry(search_frame, textvariable=search_var, width=50, font=("Arial", 10))
-        search_entry.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
+        search_entry = ttk.Entry(search_frame, textvariable=search_var, style="Download.TEntry")
+        search_entry.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True, ipady=4)
+        self._entry_place_caret(search_entry)
+        self._entry_edit_menu(search_entry)
         
-        search_button = ttk.Button(search_frame, text="🔍 Suchen", command=lambda: self._perform_search(search_var.get(), results_frame, status_label))
+        search_button = ttk.Button(search_frame, text="🔍 Suchen", command=lambda: self._perform_search(search_var.get(), results_frame, status_label, scope_var.get()))
         search_button.pack(side=tk.LEFT, padx=5)
+
+        scope_var = tk.StringVar(value="video")
+        scope_row = ttk.Frame(main_frame)
+        scope_row.pack(fill=tk.X, pady=(0, 6))
+        ttk.Label(scope_row, text="Bereich:").pack(side=tk.LEFT, padx=(0, 8))
+        for label, value in (("Video", "video"), ("Musik", "music"), ("Beides", "both")):
+            ttk.Radiobutton(scope_row, text=label, variable=scope_var, value=value).pack(side=tk.LEFT, padx=(0, 10))
         
         # Enter-Taste für Suche
-        search_entry.bind('<Return>', lambda e: self._perform_search(search_var.get(), results_frame, status_label))
+        search_entry.bind('<Return>', lambda e: self._perform_search(search_var.get(), results_frame, status_label, scope_var.get()))
         
         # Status-Label
         status_label = ttk.Label(main_frame, text="Geben Sie einen Suchbegriff ein und klicken Sie auf 'Suchen'", foreground='gray')
@@ -9746,6 +10925,7 @@ class DeezerDownloaderGUI:
         
         canvas.create_window((0, 0), window=results_frame, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
+        self._bind_scroll_wheel(canvas, results_frame)
         
         canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
@@ -9786,282 +10966,713 @@ class DeezerDownloaderGUI:
                     return sender
         return 'unknown'
     
-    def _perform_search(self, query: str, results_frame: ttk.Frame, status_label: ttk.Label):
-        """Führt die Suche aus - durchsucht alle Standard-Mediatheken"""
+    def _perform_search(self, query: str, results_frame: ttk.Frame, status_label: ttk.Label, scope: str = "video"):
+        """Video: Mediathek und YouTube. Musik: ARD Audiothek. Beides: alle drei."""
         if not query.strip():
             messagebox.showwarning("Warnung", "Bitte geben Sie einen Suchbegriff ein.")
             return
-        
-        # Lösche alte Ergebnisse
+        scope = scope if scope in ("video", "music", "both") else "video"
         for widget in results_frame.winfo_children():
             widget.destroy()
-        
-        status_label.config(text=f"Suche nach: {query}... (durchsuche alle Mediatheken)", foreground='blue')
-        results_frame.update()
-        
-        # Suche in separatem Thread
+        where = {"video": "der ARD-Mediathek, beim ZDF und auf YouTube", "music": "der ARD Audiothek", "both": "Video und Musik"}[scope]
+        status_label.config(text=f"Suche nach „{query.strip()}“ in {where}…", foreground="blue")
+
         def search_thread():
+            ard_results = []
+            zdf_results = []
+            audio_results = []
+            ard_error = ""
+            zdf_error = ""
+            youtube_results = []
+            if scope in ("video", "both"):
+                try:
+                    if mediathek_search is not None:
+                        ard_results = mediathek_search.search_ard(query.strip())
+                except Exception as exc:
+                    ard_error = str(exc)
+                try:
+                    if mediathek_search is not None:
+                        zdf_results = mediathek_search.search_zdf(query.strip())
+                except Exception as exc:
+                    zdf_error = str(exc)
+                try:
+                    youtube_results = self._search_youtube_results(query.strip())
+                except Exception:
+                    youtube_results = []
+            if scope in ("music", "both") and mediathek_search is not None:
+                try:
+                    audio_results = mediathek_search.search_audiothek(query.strip())
+                except Exception as exc:
+                    if not ard_error:
+                        ard_error = str(exc)
+            shown = list(ard_results or [])
+            zdf = list(zdf_results or [])
+            videos = list(youtube_results or [])
+            audio = list(audio_results or [])
+            err = ard_error
+            zerr = zdf_error
+            self.root.after(0, lambda a=shown, y=videos, u=audio, e=err, z=zdf, ze=zerr: self._display_search_results_list(
+                a, y, results_frame, status_label, query.strip(), e, u, z, ze
+            ))
+
+        threading.Thread(target=search_thread, daemon=True).start()
+
+    def _search_youtube_results(self, query: str) -> List[Dict]:
+        from yt_dlp_helper import get_ytdlp_command
+        cmd = get_ytdlp_command() + [
+            "--dump-json", "--flat-playlist", "--no-warnings", f"ytsearch8:{query.casefold()}",
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        if result.returncode != 0:
+            return []
+        found = []
+        for line in (result.stdout or "").splitlines():
+            line = line.strip()
+            if not line:
+                continue
             try:
-                import subprocess
-                all_results = []
-                
-                # 1. YouTube-Suche
-                status_label.config(text=f"Suche auf YouTube...", foreground='blue')
-                self.root.update()
-                
-                search_url = f"ytsearch20:{query}"  # Erste 20 Ergebnisse
-                from yt_dlp_helper import get_ytdlp_command
-                cmd = get_ytdlp_command() + [
-                    '--dump-json',
-                    '--flat-playlist',
-                    '--no-warnings',
-                    search_url
-                ]
-                
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-                if result.returncode == 0:
-                    lines = result.stdout.strip().split('\n')
-                    for line in lines:
-                        if line.strip():
-                            try:
-                                info = json.loads(line)
-                                url = info.get('url', info.get('webpage_url', ''))
-                                if not url:
-                                    continue
-                                
-                                sender = self._detect_sender_from_url(url)
-                                uploader = info.get('uploader', info.get('channel', 'Unbekannt'))
-                                
-                                # Für YouTube: Verwende Uploader als Sender-Name
-                                if sender == 'youtube':
-                                    sender_name = f"YouTube ({uploader})"
-                                else:
-                                    sender_name = sender.upper()
-                                
-                                all_results.append({
-                                    'title': info.get('title', info.get('id', 'Unbekannt')),
-                                    'url': url,
-                                    'duration': info.get('duration', 0),
-                                    'uploader': uploader,
-                                    'view_count': info.get('view_count', 0),
-                                    'is_playlist': info.get('_type') == 'playlist' or 'playlist' in str(info.get('_type', '')),
-                                    'sender': sender,
-                                    'sender_name': sender_name
-                                })
-                            except json.JSONDecodeError as e:
-                                continue
-                                # Debug: Zeige Fehler bei JSON-Parsing
-                                # print(f"JSON-Fehler: {e}, Zeile: {line[:100]}")
-                
-                # 2. Suche auf ARD Mediathek (falls möglich)
-                # ARD Mediathek hat eine Such-API, aber yt-dlp unterstützt das nicht direkt
-                # Wir könnten versuchen, direkt URLs zu konstruieren, aber das ist komplex
-                # Für jetzt fokussieren wir uns auf YouTube, da dort die meisten Inhalte verfügbar sind
-                
-                # KEINE Gruppierung - zeige jedes Ergebnis einzeln als Liste
-                # Debug: Zeige Anzahl der Ergebnisse
-                print(f"[DEBUG] {len(all_results)} Ergebnisse gefunden - zeige alle einzeln")
-                
-                # Zeige Ergebnisse im UI-Thread
-                self.root.after(0, lambda results=all_results, rf=results_frame, sl=status_label, q=query: self._display_search_results_list(results, rf, sl, q))
-                
-            except Exception as e:
-                import traceback
-                error_msg = f"Fehler: {str(e)}\n{traceback.format_exc()}"
-                self.root.after(0, lambda: status_label.config(text=error_msg[:200], foreground='red'))
-        
-        thread = threading.Thread(target=search_thread, daemon=True)
-        thread.start()
+                info = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            url = info.get("url") or info.get("webpage_url") or ""
+            if url and not str(url).startswith("http"):
+                url = f"https://www.youtube.com/watch?v={url}"
+            if not url:
+                continue
+            uploader = info.get("uploader") or info.get("channel") or "YouTube"
+            video_id = (info.get("id") or "").strip()
+            image = ""
+            thumbs = [t for t in (info.get("thumbnails") or []) if isinstance(t, dict) and t.get("url")]
+            if thumbs:
+                thumbs.sort(key=lambda t: int(t.get("width") or 0))
+                image = thumbs[-1]["url"]
+            elif video_id:
+                image = f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
+            found.append({
+                "kind": "video",
+                "source": "youtube",
+                "title": info.get("title") or video_id or "Unbekannt",
+                "url": url,
+                "duration": info.get("duration") or 0,
+                "uploader": uploader,
+                "publisher": f"YouTube ({uploader})",
+                "view_count": info.get("view_count") or 0,
+                "image": image,
+                "seasons": [],
+            })
+        return found
+
+    def _search_drop_episode_dupes(self, ard_results, youtube_results) -> List[Dict]:
+        """YouTube-Einzelfolgen ausblenden, wenn dieselbe Serie schon in der Mediathek liegt."""
+        series_titles = []
+        for item in ard_results or []:
+            if item.get("kind") != "series":
+                continue
+            title = " ".join((item.get("title") or "").casefold().split())
+            if len(title) >= 4:
+                series_titles.append(title)
+        if not series_titles:
+            return list(youtube_results or [])
+        kept = []
+        for item in youtube_results or []:
+            title = " ".join((item.get("title") or "").casefold().split())
+            if any(series in title for series in series_titles):
+                continue
+            kept.append(item)
+        return kept
+
+    def _search_season_label(self, seasons) -> str:
+        nums = sorted({int(n) for n in (seasons or [])})
+        if not nums:
+            return ""
+        ranges = []
+        start = prev = nums[0]
+        for num in nums[1:]:
+            if num == prev + 1:
+                prev = num
+                continue
+            ranges.append(f"{start}–{prev}" if start != prev else str(start))
+            start = prev = num
+        ranges.append(f"{start}–{prev}" if start != prev else str(start))
+        word = "Staffel" if len(nums) == 1 else "Staffeln"
+        return f"{word} {', '.join(ranges)}"
     
-    def _display_search_results_list(self, results: List[Dict], results_frame: ttk.Frame, status_label: ttk.Label, query: str):
-        """Zeigt Suchergebnisse als einfache Liste an - jedes Ergebnis einzeln"""
-        # Lösche alte Ergebnisse
+    def _display_search_results_list(self, ard_results, youtube_results, results_frame, status_label, query, ard_error="", audio_results=None, zdf_results=None, zdf_error=""):
+        """Serien und Filme oben, ZDF und Hörspiele danach, YouTube darunter."""
         for widget in results_frame.winfo_children():
             widget.destroy()
-        
-        if not results:
-            status_label.config(text=f"Keine Ergebnisse für '{query}' gefunden", foreground='orange')
+        results_frame._photos = []
+        ard_results = list(ard_results or [])
+        zdf_results = list(zdf_results or [])
+        audio_results = list(audio_results or [])
+        youtube_results = self._search_drop_episode_dupes(ard_results + zdf_results, youtube_results)
+        if not ard_results and not youtube_results and not audio_results and not zdf_results:
+            extra = f" ({ard_error or zdf_error})" if (ard_error or zdf_error) else ""
+            status_label.config(text=f"Keine Ergebnisse für „{query}“{extra}", foreground="orange")
             return
-        
-        status_label.config(text=f"{len(results)} Ergebnis(se) gefunden für '{query}'", foreground='green')
-        
-        # Debug: Zeige Anzahl der Ergebnisse
-        print(f"[DEBUG] Zeige {len(results)} Ergebnisse als Liste")
-        
-        # Zeige jedes Ergebnis einzeln
-        for idx, result in enumerate(results):
-            # Ergebnis-Frame (ein Frame pro Ergebnis)
-            result_frame = ttk.LabelFrame(results_frame, padding="10")
-            result_frame.pack(fill=tk.X, pady=5, padx=5)
-            
-            # Titel
-            title = result.get('title', 'Unbekannter Titel')
-            title_label = ttk.Label(
-                result_frame,
-                text=title,
-                font=("Arial", 11, "bold"),
-                wraplength=800
-            )
-            title_label.pack(anchor=tk.W, pady=(0, 5))
-            
-            # Info-Zeile
-            info_parts = []
-            if result.get('uploader'):
-                info_parts.append(f"Kanal: {result['uploader']}")
-            if result.get('duration'):
-                minutes = result['duration'] // 60
-                seconds = result['duration'] % 60
-                info_parts.append(f"Dauer: {minutes}:{seconds:02d}")
-            if result.get('view_count'):
-                views = result['view_count']
-                if views > 1000000:
-                    info_parts.append(f"Aufrufe: {views/1000000:.1f}M")
-                elif views > 1000:
-                    info_parts.append(f"Aufrufe: {views/1000:.1f}K")
-                else:
-                    info_parts.append(f"Aufrufe: {views}")
-            
-            if info_parts:
-                info_label = ttk.Label(result_frame, text=" | ".join(info_parts), foreground='gray')
-                info_label.pack(anchor=tk.W, pady=(0, 5))
-            
-            # Sender-Info
-            sender = result.get('sender', 'unknown')
-            sender_logo = self._get_sender_logo(sender)
-            sender_name = result.get('sender_name', sender.upper())
-            
-            sender_label = ttk.Label(
-                result_frame,
-                text=f"{sender_logo} {sender_name}",
-                font=("Arial", 9),
-                foreground='blue'
-            )
-            sender_label.pack(anchor=tk.W, pady=(0, 10))
-            
-            # Button-Frame
-            button_frame = ttk.Frame(result_frame)
-            button_frame.pack(fill=tk.X, pady=(0, 5))
-            
-            # WICHTIG: Closure-Variablen korrekt binden
-            result_url = result['url']
-            result_title = title
-            
-            # Download-Button
-            download_btn = ttk.Button(
-                button_frame,
-                text="⬇️ Sofort herunterladen",
-                command=lambda u=result_url, t=result_title: self._download_from_search(u, t, direct=True)
-            )
-            download_btn.pack(side=tk.LEFT, padx=5, pady=2)
-            
-            # Queue-Button
-            queue_btn = ttk.Button(
-                button_frame,
-                text="➕ Zur Warteschlange",
-                command=lambda u=result_url, t=result_title: self._download_from_search(u, t, direct=False)
-            )
-            queue_btn.pack(side=tk.LEFT, padx=5, pady=2)
-            
-            # Staffelauswahl-Button (wenn Playlist)
-            if result.get('is_playlist'):
-                season_btn = ttk.Button(
-                    button_frame,
-                    text="📺 Staffeln auswählen",
-                    command=lambda u=result_url, t=result_title: self._select_seasons_from_search(u, t)
-                )
-                season_btn.pack(side=tk.LEFT, padx=5, pady=2)
-            
-            # Separator (außer beim letzten Element)
-            if idx < len(results) - 1:
-                separator = ttk.Separator(result_frame, orient='horizontal')
-                separator.pack(fill=tk.X, pady=5)
-        
-        # Aktualisiere Scroll-Region nach dem Hinzufügen aller Ergebnisse
+        bits = []
+        if ard_results:
+            bits.append(f"{len(ard_results)} in der ARD-Mediathek")
+        if zdf_results:
+            bits.append(f"{len(zdf_results)} beim ZDF")
+        if audio_results:
+            bits.append(f"{len(audio_results)} in der Audiothek")
+        if youtube_results:
+            bits.append(f"{len(youtube_results)} auf YouTube")
+        notes = []
+        if ard_error and not ard_results:
+            notes.append(f"ARD: {ard_error}")
+        if zdf_error and not zdf_results:
+            notes.append(f"ZDF: {zdf_error}")
+        note = (" — " + " · ".join(notes)) if notes else ""
+        status_label.config(text="Gefunden: " + ", ".join(bits) + note, foreground="green")
+        if ard_error and not ard_results:
+            ttk.Label(
+                results_frame,
+                text=f"ARD-Mediathek gerade nicht erreichbar: {ard_error}",
+                foreground="red",
+                wraplength=640,
+            ).pack(anchor=tk.W, padx=6, pady=(4, 2))
+        if zdf_error and not zdf_results:
+            ttk.Label(
+                results_frame,
+                text=f"ZDF-Mediathek gerade nicht erreichbar: {zdf_error}",
+                foreground="red",
+                wraplength=640,
+            ).pack(anchor=tk.W, padx=6, pady=(4, 2))
+        if ard_results:
+            ttk.Label(results_frame, text="Serien und Filme", font=("Arial", 12, "bold")).pack(anchor=tk.W, padx=6, pady=(4, 2))
+            for item in ard_results:
+                self._search_result_card(results_frame, item)
+        if zdf_results:
+            ttk.Label(results_frame, text="ZDF-Mediathek", font=("Arial", 12, "bold")).pack(anchor=tk.W, padx=6, pady=(12, 2))
+            for item in zdf_results:
+                self._search_result_card(results_frame, item)
+        if audio_results:
+            ttk.Label(results_frame, text="Hörspiele und Podcasts", font=("Arial", 12, "bold")).pack(anchor=tk.W, padx=6, pady=(12, 2))
+            for item in audio_results:
+                self._search_result_card(results_frame, item)
+        if youtube_results:
+            ttk.Label(results_frame, text="YouTube", font=("Arial", 12, "bold")).pack(anchor=tk.W, padx=6, pady=(12, 2))
+            for item in youtube_results:
+                self._search_result_card(results_frame, item)
         results_frame.update_idletasks()
-        # Finde das Canvas-Element (parent von results_frame)
         canvas = results_frame.master
         if isinstance(canvas, tk.Canvas):
             canvas.configure(scrollregion=canvas.bbox("all"))
-    
+
+    def _search_result_card(self, parent, item: Dict):
+        card = ttk.LabelFrame(parent, padding="8")
+        card.pack(fill=tk.X, padx=6, pady=4)
+        row = ttk.Frame(card)
+        row.pack(fill=tk.X)
+        image_url = (item.get("image") or "").strip()
+        if image_url:
+            holder = ttk.Label(row, text="")
+            holder.pack(side=tk.LEFT, padx=(0, 10))
+            self._search_load_thumb(holder, image_url, parent)
+        text = ttk.Frame(row)
+        text.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        ttk.Label(text, text=item.get("title") or "Unbekannt", font=("Arial", 11, "bold"), wraplength=640).pack(anchor=tk.W)
+        meta = []
+        series_name = (item.get("series_name") or "").strip()
+        if series_name and item.get("kind") != "series" and series_name.casefold() != (item.get("title") or "").casefold():
+            meta.append(f"Folge von {series_name}")
+        if item.get("publisher"):
+            meta.append(item["publisher"])
+        season_label = self._search_season_label(item.get("seasons"))
+        if season_label:
+            meta.append(season_label + " verfügbar")
+        if item.get("episode_count"):
+            meta.append(f"{int(item['episode_count'])} Folgen")
+        if item.get("year"):
+            meta.append(str(item["year"]))
+        duration = int(item.get("duration") or 0)
+        if duration:
+            meta.append(f"{duration // 60}:{duration % 60:02d}")
+        if item.get("view_count"):
+            meta.append(f"{int(item['view_count']):,} Aufrufe".replace(",", "."))
+        if item.get("kind") == "series":
+            kind_name = "Serie"
+        elif item.get("kind") == "movie":
+            kind_name = "Film"
+        elif item.get("kind") == "audio":
+            kind_name = "Hörspiel"
+        else:
+            kind_name = "Video"
+        meta.insert(0, kind_name)
+        if meta:
+            ttk.Label(text, text=" · ".join(meta), foreground="gray").pack(anchor=tk.W, pady=(2, 0))
+        blurb = (item.get("description") or "").strip()
+        if blurb:
+            ttk.Label(text, text=blurb, wraplength=640, justify=tk.LEFT).pack(anchor=tk.W, pady=(4, 0))
+        buttons = ttk.Frame(card)
+        buttons.pack(fill=tk.X, pady=(8, 0))
+        title = item.get("title") or ""
+        url = item.get("url") or ""
+        if item.get("kind") == "series":
+            ttk.Button(buttons, text="Herunterladen", command=lambda it=item: self._search_open_series(it)).pack(side=tk.LEFT, padx=(0, 6))
+            ttk.Button(buttons, text="▶ Ansehen", command=lambda it=item: self._search_open_series(it)).pack(side=tk.LEFT, padx=(0, 6))
+        elif item.get("kind") == "audio" and int(item.get("episode_count") or 0) > 1:
+            ttk.Button(buttons, text="Herunterladen", command=lambda it=item: self._search_open_series(it)).pack(side=tk.LEFT, padx=(0, 6))
+            ttk.Button(buttons, text="▶ Anhören", command=lambda it=item: self._search_open_series(it)).pack(side=tk.LEFT, padx=(0, 6))
+        elif item.get("kind") == "audio":
+            ttk.Button(buttons, text="Herunterladen", command=lambda u=url, t=title: self._download_from_search(u, t, direct=True)).pack(side=tk.LEFT, padx=(0, 6))
+            ttk.Button(buttons, text="Zur Queue", command=lambda u=url, t=title: self._download_from_search(u, t, direct=False)).pack(side=tk.LEFT, padx=(0, 6))
+            if url:
+                ttk.Button(buttons, text="▶ Anhören", command=lambda u=url, t=title: self._preview_video(u, t)).pack(side=tk.LEFT, padx=(0, 6))
+        else:
+            ttk.Button(buttons, text="Herunterladen", command=lambda u=url, t=title: self._download_from_search(u, t, direct=True)).pack(side=tk.LEFT, padx=(0, 6))
+            ttk.Button(buttons, text="Zur Queue", command=lambda u=url, t=title: self._download_from_search(u, t, direct=False)).pack(side=tk.LEFT, padx=(0, 6))
+        if url and item.get("kind") not in ("series", "audio"):
+            ttk.Button(buttons, text="▶ Ansehen", command=lambda u=url, t=title: self._preview_video(u, t)).pack(side=tk.LEFT, padx=(0, 6))
+
+    def _search_load_thumb(self, holder, image_url: str, store_on):
+        def work():
+            try:
+                if mediathek_search is None:
+                    return
+                raw = mediathek_search._get_json  # noqa: keep import path
+                import io
+                import urllib.request
+                req = urllib.request.Request(image_url, headers={"User-Agent": "Mozilla/5.0"})
+                data = None
+                for ctx in mediathek_search._contexts():
+                    try:
+                        with urllib.request.urlopen(req, timeout=12, context=ctx) as resp:
+                            data = resp.read()
+                        break
+                    except Exception:
+                        data = None
+                if not data:
+                    return
+                from PIL import Image, ImageTk
+                img = Image.open(io.BytesIO(data))
+                img.thumbnail((168, 94))
+                def apply():
+                    try:
+                        if not holder.winfo_exists():
+                            return
+                        photo = ImageTk.PhotoImage(img)
+                        holder.configure(image=photo)
+                        photos = getattr(store_on, "_photos", None)
+                        if photos is None:
+                            store_on._photos = []
+                            photos = store_on._photos
+                        photos.append(photo)
+                    except Exception:
+                        pass
+                self.root.after(0, apply)
+            except Exception:
+                pass
+        threading.Thread(target=work, daemon=True).start()
+
     def _download_from_search(self, url: str, title: str, direct: bool = True):
-        """Startet Download von Suchergebnis"""
+        """Film oder YouTube-Video sofort laden oder in die Video-Queue legen."""
+        if not (url or "").strip():
+            messagebox.showinfo("Hinweis", "Für diesen Treffer gibt es noch keinen Download-Link.")
+            return
+        self._add_to_download_queue(url, show_dialog=False, display_title=title)
+        audio = _is_music_mediathek_url(url)
+        try:
+            target = self.music_frame if audio else self.video_frame
+            self.notebook.select(self.notebook.index(target))
+        except Exception:
+            pass
         if direct:
-            # Setze URL und starte Download
-            self.video_url_var.set(url)
-            self.start_video_download()
-            messagebox.showinfo("Download gestartet", f"Download von '{title}' wurde gestartet.")
+            self._video_queue_hold = False
+            self.video_download_cancelled = False
+            self._process_download_queue()
+            messagebox.showinfo("Download", f"„{title}“ wird heruntergeladen.")
         else:
-            # Zur Queue hinzufügen
-            self.video_download_queue.append(url)
-            messagebox.showinfo("Zur Queue hinzugefügt", f"'{title}' wurde zur Download-Queue hinzugefügt.")
-    
-    def _select_seasons_from_search(self, url: str, title: str):
-        """Zeigt Staffelauswahl für Serie aus Suchergebnissen"""
-        # Initialisiere Downloader falls noch nicht geschehen
-        if not hasattr(self, 'video_downloader') or self.video_downloader is None:
-            self.video_download_path = Path(self.video_path_var.get())
-            quality = self.video_quality_var.get()
-            output_format = self.video_format_var.get()
-            self.video_downloader = VideoDownloader(
-                download_path=str(self.video_download_path),
-                quality=quality,
-                output_format=output_format,
-                gui_instance=self
+            self._update_queue_status()
+            where = "Musik-Queue" if audio else "Video-Queue"
+            messagebox.showinfo("Queue", f"„{title}“ liegt in der {where}.")
+
+    def _search_open_series(self, item: Dict):
+        """Staffelansicht wie bei „Folgen habe ich“, ohne Ignorieren, mit Ansehen pro Folge."""
+        if mediathek_search is None:
+            messagebox.showerror("Suche", "Die Mediathek-Suche ist nicht verfügbar.")
+            return
+        parent = self.root
+        win = tk.Toplevel(parent)
+        win.title(item.get("title") or "Serie")
+        win.transient(parent)
+        self._apply_dark_toplevel(win)
+        self._fit_dialog(win, 960, 740, 720, 520)
+        main = ttk.Frame(win, padding="12", style="Download.TFrame")
+        main.pack(fill=tk.BOTH, expand=True)
+        season_label = self._search_season_label(item.get("seasons"))
+        audio = item.get("kind") == "audio"
+        ttk.Label(
+            main,
+            text=(
+                f"{item.get('title') or 'Serie'}"
+                + (f" · {item.get('publisher')}" if item.get("publisher") else "")
+                + (f" · {season_label}" if season_label else "")
+                + (
+                    "\nHaken links = laden oder mehrere Folgen nacheinander anhören. Anhören an einer Folge spielt nur diese."
+                    if audio else
+                    "\nHaken links = laden oder mehrere Folgen nacheinander ansehen. Ansehen an einer Folge spielt nur diese."
+                )
+            ),
+            wraplength=900,
+            justify=tk.LEFT,
+            style="Download.TLabel",
+        ).pack(anchor=tk.W, pady=(0, 8))
+        status = ttk.Label(main, text="Folgen werden geladen…", foreground="blue")
+        status.pack(anchor=tk.W, pady=(0, 6))
+        host = ttk.Frame(main)
+        host.pack(fill=tk.BOTH, expand=True)
+
+        def loaded(seasons, error):
+            try:
+                if not win.winfo_exists():
+                    return
+            except Exception:
+                return
+            if error:
+                status.config(text=f"Folgen konnten nicht geladen werden: {error}", foreground="red")
+                return
+            if not seasons:
+                status.config(text="Aktuell sind keine Folgen verfügbar.", foreground="orange")
+                return
+            total = sum(len(v) for v in seasons.values())
+            status.config(text=f"{total} Folgen in {len(seasons)} Staffel(n).", foreground="green")
+            self._search_fill_season_list(win, host, seasons, item, status)
+
+        def work():
+            try:
+                seasons = mediathek_search.load_series_seasons(item)
+                err = ""
+            except Exception as exc:
+                seasons, err = {}, str(exc)
+            self.root.after(0, lambda: loaded(seasons, err))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _ask_resume_playback(self, title: str, seconds: float) -> bool:
+        whole = max(0, int(seconds))
+        minutes, secs = divmod(whole, 60)
+        hours, minutes = divmod(minutes, 60)
+        stamp = f"{hours}:{minutes:02d}:{secs:02d}" if hours else f"{minutes}:{secs:02d}"
+        text = f"„{title}“ war bei {stamp}.\n\nDort weitermachen oder von vorn starten?"
+        if sys.platform == "darwin":
+            return bool(_mac_tk_dialog("Weitermachen", text, [("Weitermachen", True), ("Von vorn", False)], None))
+        return bool(messagebox.askyesno("Weitermachen", text))
+
+    def _preview_video(self, url: str, title: str, parent=None, status=None, image: str = "", stream_url: str = ""):
+        """Spielt die Folge in einem eigenen Fenster, nicht im Browser."""
+        try:
+            import preview_player
+        except ImportError:
+            messagebox.showerror("Wiedergabe", "Der eingebaute Player ist nicht verfügbar.", parent=parent)
+            return
+        if status is not None:
+            status.config(text="Wiedergabe wird vorbereitet…", foreground="blue")
+
+        def report(msg):
+            if status is not None:
+                try:
+                    status.config(text=str(msg).replace("\n", " "), foreground="red")
+                except Exception:
+                    pass
+            messagebox.showerror("Wiedergabe", msg, parent=parent)
+
+        def started():
+            if status is not None:
+                try:
+                    status.config(text="Wiedergabe läuft im Player-Fenster.", foreground="green")
+                except Exception:
+                    pass
+
+        preview_player.open_preview(
+            url,
+            title,
+            self.root.after,
+            report,
+            self._ask_resume_playback,
+            started,
+            image,
+            stream_url,
+        )
+
+    def _search_claim_owned(self, item: Dict, episodes: List[Dict]):
+        if series_watch is None:
+            return
+        try:
+            series_watch.claim_episodes_as_owned(
+                self.base_download_path,
+                series_title=item.get("title") or "",
+                asset_id=item.get("asset_id") or "",
+                episodes=episodes,
             )
-        
-        # Verwende die vorhandene Staffelauswahl-Funktion
-        self.video_url_var.set(url)
-        # Prüfe ob es eine Serie ist und zeige Auswahl
-        if self.video_downloader.is_series_or_season(url):
-            self.start_video_download()  # Dies wird automatisch die Staffelauswahl zeigen
-        else:
-            messagebox.showinfo("Info", "Diese URL scheint keine Serie zu sein. Verwenden Sie 'Sofort herunterladen' oder 'Zur Warteschlange'.")
-    
+        except Exception:
+            pass
+
+    def _search_fill_season_list(self, win, host, seasons: Dict, item: Dict, status=None):
+        for widget in host.winfo_children():
+            widget.destroy()
+        list_frame = ttk.Frame(host)
+        list_frame.pack(fill=tk.BOTH, expand=True)
+        canvas = tk.Canvas(list_frame, highlightthickness=0)
+        sb = ttk.Scrollbar(list_frame, orient="vertical", command=canvas.yview)
+        scrollable = ttk.Frame(canvas)
+        scrollable.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        win_id = canvas.create_window((0, 0), window=scrollable, anchor="nw")
+        canvas.configure(yscrollcommand=sb.set)
+        self._bind_scroll_wheel(canvas, scrollable)
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        sb.pack(side=tk.RIGHT, fill=tk.Y)
+        canvas.bind("<Configure>", lambda e: canvas.itemconfig(win_id, width=e.width))
+
+        def season_key(sn):
+            try:
+                return (0, int(sn))
+            except (TypeError, ValueError):
+                return (1, 0)
+
+        download_vars = {}
+        rows = {}
+        quick = ttk.Frame(host)
+        quick.pack(fill=tk.X, pady=(0, 6), before=list_frame)
+
+        def select_all(on: bool):
+            for var in download_vars.values():
+                var.set(on)
+
+        ttk.Button(quick, text="Alle Folgen auswählen", command=lambda: select_all(True)).pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(quick, text="Alle abwählen", command=lambda: select_all(False)).pack(side=tk.LEFT)
+
+        pending = []
+        for sn in sorted(seasons.keys(), key=season_key):
+            eps = seasons.get(sn) or []
+            if not eps:
+                continue
+            title = f"Staffel {sn} ({len(eps)} Folgen)" if sn is not None else f"Weitere Folgen ({len(eps)})"
+            lf = ttk.LabelFrame(scrollable, text=title, padding="8")
+            lf.pack(fill=tk.X, padx=4, pady=6)
+            season_var = tk.BooleanVar(value=False)
+            keys = []
+            for ep in eps:
+                key = len(rows) + 1
+                rows[key] = ep
+                keys.append(key)
+                var = tk.BooleanVar(value=False)
+                download_vars[key] = var
+                label = ep.get("title") or "?"
+                if len(label) > 78:
+                    label = label[:75] + "…"
+                pending.append((
+                    lf, key, label, var, ep.get("url") or "",
+                    ep.get("image") or "",
+                    ep.get("stream_url") or "",
+                ))
+
+            def make_toggle(bound_keys, svar):
+                def toggle():
+                    for key in bound_keys:
+                        if key in download_vars:
+                            download_vars[key].set(svar.get())
+                return toggle
+
+            toggle_text = f"Gesamte Staffel {sn} markieren" if sn is not None else "Gesamte Liste markieren"
+            ttk.Checkbutton(lf, text=toggle_text, variable=season_var, command=make_toggle(keys, season_var)).pack(anchor=tk.W, pady=(0, 4))
+
+        def add_chunk(start=0, size=24):
+            try:
+                if not win.winfo_exists():
+                    return
+            except Exception:
+                return
+            end = min(start + size, len(pending))
+            for lf, key, label, var, url, image, stream_url in pending[start:end]:
+                line = ttk.Frame(lf)
+                line.pack(fill=tk.X, padx=4, pady=1)
+                ttk.Checkbutton(line, text=label, variable=var).pack(side=tk.LEFT, fill=tk.X, expand=True, anchor=tk.W)
+                if url or stream_url:
+                    row_listen = "Anhören" if item.get("kind") == "audio" else "Ansehen"
+                    ttk.Button(
+                        line,
+                        text=row_listen,
+                        command=lambda u=url, t=label, img=image, s=stream_url, st=status: self._preview_video(
+                            u, t, parent=win, status=st, image=img, stream_url=s,
+                        ),
+                    ).pack(side=tk.RIGHT)
+            if end < len(pending):
+                win.after(1, lambda n=end: add_chunk(n))
+            else:
+                try:
+                    canvas.configure(scrollregion=canvas.bbox("all"))
+                except Exception:
+                    pass
+
+        def collect():
+            out = []
+            for key, var in download_vars.items():
+                if var.get():
+                    ep = rows.get(key)
+                    if ep and (ep.get("url") or "").strip():
+                        out.append(ep)
+            return out
+
+        def watch_selected():
+            eps = collect()
+            if not eps:
+                word = "Anhören" if item.get("kind") == "audio" else "Ansehen"
+                messagebox.showinfo("Hinweis", f"Keine Folge zum {word} ausgewählt.", parent=win)
+                return
+            try:
+                import preview_player
+            except ImportError:
+                messagebox.showerror("Anhören" if item.get("kind") == "audio" else "Ansehen", "Der eingebaute Player ist nicht verfügbar.", parent=win)
+                return
+            try:
+                status.config(text="Wiedergabe wird vorbereitet…", foreground="blue")
+            except Exception:
+                pass
+            preview_player.open_preview_list(
+                [{
+                    "url": ep.get("url") or "",
+                    "title": ep.get("title") or "",
+                    "image": ep.get("image") or "",
+                    "stream_url": ep.get("stream_url") or "",
+                } for ep in eps],
+                self.root.after,
+                lambda msg: messagebox.showerror("Wiedergabe", msg, parent=win),
+                self._ask_resume_playback,
+                lambda: status.config(text="Wiedergabe läuft im Player-Fenster.", foreground="green") if status is not None else None,
+            )
+
+        def to_queue():
+            eps = collect()
+            if not eps:
+                messagebox.showinfo("Hinweis", "Nichts zum Laden ausgewählt.", parent=win)
+                return
+            if item.get("kind") != "audio":
+                self._search_claim_owned(item, eps)
+            self._series_watch_add_episodes_to_video_queue(eps)
+            where = "Musik-Queue" if item.get("kind") == "audio" else "Video-Queue"
+            extra = "" if item.get("kind") == "audio" else " und gelten für den Serien-Wächter als vorhanden"
+            messagebox.showinfo("Queue", f"{len(eps)} Folge(n) liegen in der {where}{extra}.", parent=win)
+
+        def download_now():
+            eps = collect()
+            if not eps:
+                messagebox.showinfo("Hinweis", "Nichts zum Laden ausgewählt.", parent=win)
+                return
+            if item.get("kind") != "audio":
+                self._search_claim_owned(item, eps)
+            self._series_watch_add_episodes_to_video_queue(eps)
+            try:
+                target = self.music_frame if item.get("kind") == "audio" else self.video_frame
+                self.notebook.select(self.notebook.index(target))
+            except Exception:
+                pass
+            self._video_queue_hold = False
+            self.video_download_cancelled = False
+            self._process_download_queue()
+            messagebox.showinfo("Download", f"Download von {len(eps)} Folge(n) gestartet.", parent=win)
+
+        bar = ttk.Frame(win)
+        bar.pack(fill=tk.X, padx=12, pady=(0, 10))
+        listen_all = "Ausgewählte anhören" if item.get("kind") == "audio" else "Ausgewählte ansehen"
+        ttk.Button(bar, text=listen_all, command=watch_selected).pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(bar, text="Ausgewählte zur Queue", command=to_queue).pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(bar, text="Ausgewählte herunterladen", command=download_now).pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(bar, text="Schließen", command=win.destroy).pack(side=tk.RIGHT)
+        win.after(1, add_chunk)
+
     def show_statistics(self):
         """Zeigt Download-Statistiken"""
         stats_window = tk.Toplevel(self.root)
         stats_window.title("Download-Statistiken")
         stats_window.transient(self.root)
-        self._fit_dialog(stats_window, 560, 460, 440, 340)
+        self._fit_dialog(stats_window, 560, 560, 440, 420)
         
         frame = ttk.Frame(stats_window, padding="20")
         frame.pack(fill=tk.BOTH, expand=True)
         
-        ttk.Label(frame, text="Download-Statistiken", font=("Arial", 14, "bold")).pack(pady=(0, 20))
+        ttk.Label(frame, text="Download-Statistiken", font=("Arial", 14, "bold")).pack(pady=(0, 12))
+
+        def _block(title, stats):
+            last = stats.get('last_download') or 'Nie'
+            return (
+                f"{title}\n"
+                f"Downloads: {stats.get('total_downloads', 0)}\n"
+                f"Erfolgreich: {stats.get('successful_downloads', 0)}\n"
+                f"Fehlgeschlagen: {stats.get('failed_downloads', 0)}\n"
+                f"Gesamt-Größe: {self._format_size(stats.get('total_size', 0))}\n"
+                f"Letzter Download: {last}"
+            )
+
+        video_stats = getattr(self, 'video_statistics', {}) or {}
+        music_stats = getattr(self, 'music_statistics', {}) or {}
+        combined = {
+            'total_downloads': int(video_stats.get('total_downloads') or 0) + int(music_stats.get('total_downloads') or 0),
+            'successful_downloads': int(video_stats.get('successful_downloads') or 0) + int(music_stats.get('successful_downloads') or 0),
+            'failed_downloads': int(video_stats.get('failed_downloads') or 0) + int(music_stats.get('failed_downloads') or 0),
+            'total_size': int(video_stats.get('total_size') or 0) + int(music_stats.get('total_size') or 0),
+            'last_download': max(
+                [t for t in (video_stats.get('last_download'), music_stats.get('last_download')) if t and t != 'Nie'],
+                default=None,
+            ),
+        }
+        fail_path = self._failed_downloads_path()
+        stats_text = (
+            _block("Zusammen", combined)
+            + "\n\n"
+            + _block("Video", video_stats)
+            + "\n\n"
+            + _block("Musik", music_stats)
+            + "\n\n"
+            + f"Geplante Downloads: {len(self.video_scheduled_downloads)}\n"
+            + f"Favoriten: {len(self.video_favorites)}\n"
+            + f"Historie-Einträge: {len(self.video_download_history)}\n\n"
+            + "Fehlgeschlagene Links (zum Nachreichen):\n"
+            + str(fail_path)
+        )
         
-        stats_text = f"""
-Gesamt-Downloads: {self.video_statistics.get('total_downloads', 0)}
-Erfolgreich: {self.video_statistics.get('successful_downloads', 0)}
-Fehlgeschlagen: {self.video_statistics.get('failed_downloads', 0)}
-
-Gesamt-Größe: {self._format_size(self.video_statistics.get('total_size', 0))}
-
-Letzter Download: {self.video_statistics.get('last_download', 'Nie')}
-
-Geplante Downloads: {len(self.video_scheduled_downloads)}
-Favoriten: {len(self.video_favorites)}
-Historie-Einträge: {len(self.video_download_history)}
-        """
-        
-        ttk.Label(frame, text=stats_text.strip(), font=("Arial", 10), justify=tk.LEFT).pack(anchor=tk.W)
+        ttk.Label(frame, text=stats_text.strip(), font=("Arial", 10), justify=tk.LEFT, wraplength=500).pack(anchor=tk.W)
         
         button_frame = ttk.Frame(frame)
         button_frame.pack(fill=tk.X, pady=(20, 0))
         
         def reset_stats():
             if messagebox.askyesno("Bestätigen", "Statistiken wirklich zurücksetzen?"):
-                self.video_statistics = {
+                empty = {
                     'total_downloads': 0,
                     'total_size': 0,
                     'successful_downloads': 0,
                     'failed_downloads': 0,
                     'last_download': None
                 }
+                self.video_statistics = dict(empty)
+                self.music_statistics = dict(empty)
                 self._save_video_data()
                 stats_window.destroy()
                 self.show_statistics()
         
-        ttk.Button(button_frame, text="Statistiken zurücksetzen", command=reset_stats).pack()
+        def open_failed_list():
+            path = self._failed_downloads_path()
+            if not path.exists() or not path.read_text(encoding="utf-8").strip():
+                messagebox.showinfo("Hinweis", "Noch keine fehlgeschlagenen Downloads.", parent=stats_window)
+                return
+            self._open_file_with_default_app(path)
+
+        def copy_failed_list():
+            path = self._failed_downloads_path()
+            text = path.read_text(encoding="utf-8").strip() if path.exists() else ""
+            if not text:
+                messagebox.showinfo("Hinweis", "Noch keine fehlgeschlagenen Downloads.", parent=stats_window)
+                return
+            self.root.clipboard_clear()
+            self.root.clipboard_append(text)
+            messagebox.showinfo("Kopiert", "Die Liste liegt in der Zwischenablage und kann in GitHub oder eine E-Mail eingefügt werden.", parent=stats_window)
+
+        ttk.Button(button_frame, text="Liste öffnen", command=open_failed_list).pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(button_frame, text="Liste kopieren", command=copy_failed_list).pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(button_frame, text="Statistiken zurücksetzen", command=reset_stats).pack(side=tk.LEFT)
     
     def _ensure_dependencies_background(self):
         """Prüft und installiert Abhängigkeiten im Hintergrund - DEAKTIVIERT.
@@ -10917,20 +12528,65 @@ Copyright (c) 2025 Universal Downloader Contributors
             size_bytes /= 1024.0
         return f"{size_bytes:.2f} PB"
     
-    def _update_statistics(self, success, file_path, url):
-        """Aktualisiert Download-Statistiken"""
-        self.video_statistics['total_downloads'] += 1
+    def _failed_downloads_path(self):
+        """Textdatei mit echten Fehlschlägen (Link und Grund), zum Kopieren in GitHub oder E-Mail."""
+        return self.base_download_path / "fehlgeschlagene_downloads.txt"
+
+    def _append_failed_download(self, kind, url, error):
+        url = (url or "").strip()
+        if not url:
+            return
+        reason = " ".join((error or "").split()) or "Unbekannter Fehler"
+        if len(reason) > 600:
+            reason = reason[:600] + "…"
+        label = "Musik" if kind == "music" else "Video"
+        path = self._failed_downloads_path()
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            if not path.exists() or path.stat().st_size == 0:
+                path.write_text(
+                    "Fehlgeschlagene Downloads\n"
+                    "Jeder Block ist ein Versuch, der nicht geklappt hat "
+                    "(zum Beispiel Seite oder yt-dlp nicht unterstützt).\n"
+                    "Die Liste kann in eine GitHub-Meldung oder E-Mail kopiert werden.\n\n",
+                    encoding="utf-8",
+                )
+            with open(path, "a", encoding="utf-8") as handle:
+                handle.write(
+                    f"Zeit: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+                    f"Bereich: {label}\n"
+                    f"URL: {url}\n"
+                    f"Grund: {reason}\n"
+                    "---\n"
+                )
+        except Exception:
+            pass
+
+    def _update_statistics(self, success, file_path, url, kind="video", error=""):
+        """Zählt einen abgeschlossenen Download, getrennt nach Video und Musik."""
+        if not success:
+            err = (error or "").strip()
+            if err == "Abgebrochen" or err.lower().startswith("abgebrochen"):
+                return
+        if not hasattr(self, 'music_statistics'):
+            self.music_statistics = {
+                'total_downloads': 0, 'total_size': 0,
+                'successful_downloads': 0, 'failed_downloads': 0, 'last_download': None,
+            }
+        bucket = self.music_statistics if kind == "music" else self.video_statistics
+        bucket['total_downloads'] = int(bucket.get('total_downloads') or 0) + 1
         if success:
-            self.video_statistics['successful_downloads'] += 1
-            if file_path and file_path.exists():
+            bucket['successful_downloads'] = int(bucket.get('successful_downloads') or 0) + 1
+            path = Path(file_path) if file_path else None
+            if path is not None and path.exists():
                 try:
-                    size = file_path.stat().st_size
-                    self.video_statistics['total_size'] += size
-                except:
+                    bucket['total_size'] = int(bucket.get('total_size') or 0) + path.stat().st_size
+                except Exception:
                     pass
         else:
-            self.video_statistics['failed_downloads'] += 1
-        self.video_statistics['last_download'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            bucket['failed_downloads'] = int(bucket.get('failed_downloads') or 0) + 1
+            self._append_failed_download(kind, url, error)
+        bucket['last_download'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         self._save_video_data()
     
     def _add_to_history(self, url, filename, status):
@@ -10982,6 +12638,7 @@ Copyright (c) 2025 Universal Downloader Contributors
             'log_level': 'debug',  # Log-Level: 'normal' oder 'debug'
             'video_accounts': [],  # Liste von Account-Dictionaries
             'last_tab': '🎵 Musik',  # Zuletzt gewählter Tab (z. B. "🎬 Video Downloader")
+            'enabled_tabs': {'music': True, 'audible': False, 'video': True},
             'download_archive_enabled': False,  # Bereits heruntergeladene URLs überspringen (Archiv-Datei)
             'download_archive_path': '',  # Leer = base_download_path / "download_archive.txt"
             'play_after_download': False,  # Nach Download mit Standard-Player abspielen
@@ -11020,6 +12677,14 @@ Copyright (c) 2025 Universal Downloader Contributors
             had_gpu_key = 'gpu_enabled' in saved_settings
             # Merge mit Defaults (falls neue Einstellungen hinzugefügt wurden)
             default_settings.update(saved_settings)
+            raw_tabs = saved_settings.get('enabled_tabs')
+            if not isinstance(raw_tabs, dict):
+                raw_tabs = {}
+            default_settings['enabled_tabs'] = {
+                'music': bool(raw_tabs.get('music', True)),
+                'audible': bool(raw_tabs.get('audible', False)),
+                'video': bool(raw_tabs.get('video', True)),
+            }
             # Apple Silicon / macOS: VideoToolbox-GPU standardmäßig an, wenn noch nie gesetzt
             if not had_gpu_key and sys.platform == 'darwin':
                 try:
@@ -11159,6 +12824,7 @@ Copyright (c) 2025 Universal Downloader Contributors
         
         canvas_win_id = canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
+        self._bind_scroll_wheel(canvas, scrollable_frame)
         settings_wrap_labels = []
 
         def _sync_settings_canvas(event):
@@ -11201,6 +12867,21 @@ Copyright (c) 2025 Universal Downloader Contributors
         ttk.Button(paths_frame, text="📂", command=lambda: self._browse_folder(video_path_var), style="Download.TButton").grid(row=2, column=2, padx=5)
         
         paths_frame.columnconfigure(1, weight=1)
+
+        tabs_frame = ttk.LabelFrame(scrollable_frame, text="🗂️ Sichtbare Tabs", padding="10", style="Download.TLabelframe")
+        tabs_frame.pack(fill=tk.X, pady=5, padx=5)
+        ttk.Label(
+            tabs_frame,
+            text="Audible ist aus, bis du es hier einschaltest. Die Auswahl bleibt auf diesem Rechner gespeichert.",
+            style="Download.TLabel",
+        ).pack(anchor=tk.W, pady=(0, 6))
+        enabled_tabs = self.settings.get("enabled_tabs") if isinstance(self.settings.get("enabled_tabs"), dict) else {}
+        tab_music_var = tk.BooleanVar(value=bool(enabled_tabs.get("music", True)))
+        tab_audible_var = tk.BooleanVar(value=bool(enabled_tabs.get("audible", False)))
+        tab_video_var = tk.BooleanVar(value=bool(enabled_tabs.get("video", True)))
+        ttk.Checkbutton(tabs_frame, text="Musik", variable=tab_music_var, style="Download.TCheckbutton").pack(anchor=tk.W, pady=2)
+        ttk.Checkbutton(tabs_frame, text="Audible", variable=tab_audible_var, style="Download.TCheckbutton").pack(anchor=tk.W, pady=2)
+        ttk.Checkbutton(tabs_frame, text="Video", variable=tab_video_var, style="Download.TCheckbutton").pack(anchor=tk.W, pady=2)
         
         # Musik – Account & Tools (Deezer, Spotify, Audio-Aufnahme)
         music_tools_frame = ttk.LabelFrame(scrollable_frame, text="🎵 Musik – Account & Tools", padding="10", style="Download.TLabelframe")
@@ -11799,9 +13480,18 @@ Copyright (c) 2025 Universal Downloader Contributors
             self.settings['series_telegram_chat_id'] = series_tg_chat_var.get().strip()
             self.settings['series_notify_discord_enabled'] = series_notify_discord_var.get()
             self.settings['series_discord_webhook_url'] = series_discord_url_var.get().strip()
+            self.settings['enabled_tabs'] = {
+                'music': bool(tab_music_var.get()),
+                'audible': bool(tab_audible_var.get()),
+                'video': bool(tab_video_var.get()),
+            }
+            if not any(self.settings['enabled_tabs'].values()):
+                self.settings['enabled_tabs']['music'] = True
 
             self._save_settings()
+            self._apply_enabled_tabs()
             self._apply_theme(self.settings.get('theme', 'dark'))
+            self._windows_round_window(self.root)
             
             # Führe Log-Aufräumen aus wenn aktiviert
             if log_cleanup_enabled_var.get():
@@ -11932,6 +13622,7 @@ Copyright (c) 2025 Universal Downloader Contributors
                     self.video_download_history = data.get('download_history', [])
                     self.video_favorites = data.get('favorites', [])
                     self.video_statistics = data.get('statistics', self.video_statistics)
+                    self.music_statistics = data.get('music_statistics', self.music_statistics)
         except Exception as e:
             self.video_log(f"⚠ Fehler beim Laden der Video-Daten: {e}")
     
@@ -11947,7 +13638,8 @@ Copyright (c) 2025 Universal Downloader Contributors
                 ],
                 'download_history': self.video_download_history,
                 'favorites': self.video_favorites,
-                'statistics': self.video_statistics
+                'statistics': self.video_statistics,
+                'music_statistics': getattr(self, 'music_statistics', {}),
             }
             with open(data_file, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
@@ -12010,8 +13702,8 @@ Copyright (c) 2025 Universal Downloader Contributors
             self.log_text.config(state=tk.NORMAL)
             level_prefix = f"[{level}] " if level != "INFO" else ""
             self.log_text.insert(tk.END, f"{level_prefix}{message}\n")
-        self.log_text.see(tk.END)
-        self.log_text.config(state=tk.DISABLED)
+            self.log_text.see(tk.END)
+            self.log_text.config(state=tk.DISABLED)
         self.root.update_idletasks()
     
     def show_quality_dialog(self, default_quality: str = "MP3_320") -> Optional[str]:

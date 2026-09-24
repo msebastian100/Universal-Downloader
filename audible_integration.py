@@ -1880,8 +1880,88 @@ class AudibleAuth:
             print(f"Fehler beim Login: {e}")
             return False
     
+    @staticmethod
+    def prepare_browser_login(country_code: str = "de") -> Dict:
+        """Erzeugt nur den Anmeldelink. Kein Netzwerk, damit das Fenster nicht hängen bleibt."""
+        if not AUDIBLE_AVAILABLE:
+            raise RuntimeError("Die Audible-Bibliothek ist nicht verfügbar.")
+        from audible.localization import Locale
+        from audible.login import build_oauth_url, create_code_verifier
+        locale = Locale(country_code)
+        verifier = create_code_verifier()
+        url, serial = build_oauth_url(
+            country_code=locale.country_code,
+            domain=locale.domain,
+            market_place_id=locale.market_place_id,
+            code_verifier=verifier,
+            with_username=False,
+        )
+        return {"url": url, "verifier": verifier, "serial": serial, "domain": locale.domain}
+
+    @staticmethod
+    def authorization_code_from_text(text: str) -> str:
+        import re
+        from urllib.parse import parse_qs, unquote
+        raw = (text or "").strip()
+        match = re.search(r"openid\.oa2\.authorization_code=([^&\s]+)", raw)
+        if match:
+            return unquote(match.group(1))
+        try:
+            import httpx
+            parsed = parse_qs(httpx.URL(raw).query.decode())
+            return unquote((parsed.get("openid.oa2.authorization_code") or [""])[0])
+        except Exception:
+            return ""
+
+    def finish_browser_login(self, response_url: str, pending: Dict) -> bool:
+        """Schließt die Anmeldung mit der Adresse ab, die der Browser nach dem Login zeigt."""
+        from audible import Authenticator
+        from audible.register import register as register_device
+        code = self.authorization_code_from_text(response_url)
+        if not code:
+            raise RuntimeError("In der Adresse fehlt der Anmeldecode. Die ganze Adresse der Fehlerseite einfügen.")
+        auth = Authenticator()
+        auth.locale = "de"
+        registered = register_device(
+            authorization_code=code,
+            code_verifier=pending["verifier"],
+            domain=pending["domain"],
+            serial=pending["serial"],
+            with_username=False,
+        )
+        auth._update_attrs(with_username=False, **registered)
+        self.audible_auth = auth
+        self.is_authenticated = True
+        self.cookies = {"audible-auth": "1"}
+        self.save_config()
+        return True
+
+    def login_with_pasted_url(self, login_url_callback, country_code: str = "de") -> bool:
+        """Öffnet die Audible-Anmeldung im Browser. Der Callback liefert die Adresse nach dem Login."""
+        if not AUDIBLE_AVAILABLE:
+            raise RuntimeError("Die Audible-Bibliothek ist nicht verfügbar.")
+        from audible import Authenticator
+        auth = Authenticator.from_login_external(
+            locale=country_code,
+            with_username=False,
+            login_url_callback=login_url_callback,
+        )
+        self.audible_auth = auth
+        self.is_authenticated = True
+        try:
+            self.session = auth.session
+            self.cookies = dict(getattr(auth.session, "cookies", {}) or {})
+        except Exception:
+            self.cookies = {}
+        if not self.cookies:
+            self.cookies = {"audible-auth": "1"}
+        self.save_config()
+        return True
+
     def is_logged_in(self) -> bool:
         """Prüft, ob der Benutzer angemeldet ist"""
+        if self.audible_auth is not None:
+            return True
         return self.is_authenticated and len(self.cookies) > 0
     
     def logout(self):
@@ -1917,8 +1997,86 @@ class AudibleLibrary:
         # Versuche audible-Client zu erstellen (wenn audible-Bibliothek verfügbar)
         # Die audible-Bibliothek verwendet den Authenticator direkt als Client
         if AUDIBLE_AVAILABLE and auth.audible_auth:
-            self.audible_client = auth.audible_auth
+            from audible import Client
+            self.audible_client = Client(auth.audible_auth)
     
+    def _book_from_library_item(self, item: Dict) -> Dict:
+        """Liest Titel, Autor und Dauer aus dem Bibliothekseintrag selbst."""
+        product = item.get('product') if isinstance(item.get('product'), dict) else {}
+
+        def first(*keys):
+            for source in (item, product):
+                for key in keys:
+                    value = source.get(key)
+                    if value not in (None, '', [], {}):
+                        return value
+            return None
+
+        title = first('title') or 'Unbekannt'
+        authors = first('authors') or []
+        if isinstance(authors, list) and authors:
+            author = authors[0].get('name', 'Unbekannt') if isinstance(authors[0], dict) else str(authors[0])
+        else:
+            author = 'Unbekannt'
+        runtime_ms = first('runtime_length_ms') or 0
+        try:
+            runtime_ms = int(runtime_ms)
+        except (TypeError, ValueError):
+            runtime_ms = 0
+        if runtime_ms <= 0:
+            minutes_total = first('runtime_length_min') or 0
+            try:
+                runtime_ms = int(minutes_total) * 60000
+            except (TypeError, ValueError):
+                runtime_ms = 0
+        hours = runtime_ms // 3600000
+        minutes = (runtime_ms % 3600000) // 60000
+        duration = f"{hours}:{minutes:02d}:00" if hours > 0 else f"{minutes}min"
+
+        def names(value):
+            if not isinstance(value, list):
+                return ""
+            found = []
+            for entry in value:
+                if isinstance(entry, dict) and entry.get("name"):
+                    found.append(str(entry["name"]))
+                elif isinstance(entry, str) and entry.strip():
+                    found.append(entry.strip())
+            return ", ".join(found)
+
+        summary = first("publisher_summary", "merchandising_summary", "story_summary") or ""
+        if not isinstance(summary, str):
+            summary = ""
+        summary = re.sub(r"<[^>]+>", " ", summary)
+        summary = re.sub(r"\s+", " ", summary).strip()
+        genre = ""
+        ladders = first("category_ladders") or []
+        if isinstance(ladders, list) and ladders and isinstance(ladders[0], dict):
+            ladder = ladders[0].get("ladder") or []
+            if isinstance(ladder, list) and ladder and isinstance(ladder[-1], dict):
+                genre = ladder[-1].get("name") or ""
+        if not genre:
+            words = first("thesaurus_subject_keywords") or []
+            if isinstance(words, list):
+                genre = ", ".join(str(word) for word in words[:3] if isinstance(word, str) and word.strip())
+        images = first('product_images') or {}
+        cover_url = ""
+        if isinstance(images, dict):
+            cover_url = images.get("500") or images.get("1024") or next(iter(images.values()), "")
+        release = first("release_date") or first("publication_datetime") or ""
+        return {
+            'asin': first('asin') or '',
+            'title': title,
+            'author': author,
+            'narrators': names(first("narrators")),
+            'duration': duration,
+            'purchase_date': (first('purchase_date') or "")[:10],
+            'release_date': str(release)[:10],
+            'genre': genre,
+            'summary': summary,
+            'cover_url': cover_url or "",
+        }
+
     def fetch_library(self) -> List[Dict]:
         """
         Lädt die Bibliothek des Benutzers
@@ -1972,35 +2130,7 @@ class AudibleLibrary:
                         items = library_response.get('items', [])
                         
                         for item in items:
-                            # Extrahiere Informationen
-                            product = item.get('product', {})
-                            asin = product.get('asin', '')
-                            title = product.get('title', 'Unbekannt')
-                            
-                            # Autoren
-                            authors = product.get('authors', [])
-                            author = authors[0].get('name', 'Unbekannt') if authors else 'Unbekannt'
-                            
-                            # Dauer
-                            runtime_length = product.get('runtime_length_ms', 0)
-                            hours = runtime_length // 3600000
-                            minutes = (runtime_length % 3600000) // 60000
-                            duration = f"{hours}h {minutes}min" if hours > 0 else f"{minutes}min"
-                            
-                            # Kaufdatum
-                            purchase_date = item.get('purchase_date', '')
-                            
-                            # Cover
-                            cover_url = product.get('product_images', {}).get('500', '')
-                            
-                            books.append({
-                                'asin': asin,
-                                'title': title,
-                                'author': author,
-                                'duration': duration,
-                                'purchase_date': purchase_date,
-                                'cover_url': cover_url
-                            })
+                            books.append(self._book_from_library_item(item))
                         
                         if books:
                             print(f"✓ Bibliothek geladen über audible-API: {len(books)} Hörbücher")
@@ -2039,32 +2169,7 @@ class AudibleLibrary:
                                         if items:
                                             books = []
                                             for item in items:
-                                                # API-Struktur kann variieren
-                                                product = item.get('product', item)
-                                                asin = product.get('asin', item.get('asin', ''))
-                                                title = product.get('title', item.get('title', 'Unbekannt'))
-                                                
-                                                # Autoren
-                                                authors = product.get('authors', item.get('authors', []))
-                                                if authors and isinstance(authors, list) and len(authors) > 0:
-                                                    author = authors[0].get('name', 'Unbekannt') if isinstance(authors[0], dict) else str(authors[0])
-                                                else:
-                                                    author = 'Unbekannt'
-                                                
-                                                # Dauer
-                                                runtime_ms = product.get('runtime_length_ms', item.get('runtime_length_ms', 0))
-                                                hours = runtime_ms // 3600000
-                                                minutes = (runtime_ms % 3600000) // 60000
-                                                duration = f"{hours}h {minutes}min" if hours > 0 else f"{minutes}min"
-                                                
-                                                books.append({
-                                                    'asin': asin,
-                                                    'title': title,
-                                                    'author': author,
-                                                    'duration': duration,
-                                                    'purchase_date': item.get('purchase_date', ''),
-                                                    'cover_url': product.get('product_images', {}).get('500', '')
-                                                })
+                                                books.append(self._book_from_library_item(item))
                                             
                                             if books:
                                                 print(f"✓ Bibliothek geladen über Web-API: {len(books)} Hörbücher")

@@ -368,6 +368,69 @@ def mark_downloaded_episodes(
     return added
 
 
+def _fold_title(text: str) -> str:
+    return " ".join((text or "").casefold().split())
+
+
+def claim_episodes_as_owned(
+    base: Path,
+    series_title: str = "",
+    asset_id: str = "",
+    episodes: Optional[List[Dict[str, Any]]] = None,
+) -> int:
+    """Hängt Such-Downloads an passende Serien-Wächter-Einträge, damit sie nicht noch einmal geladen werden."""
+    rows = [ep for ep in (episodes or []) if isinstance(ep, dict)]
+    if not rows:
+        return 0
+    state = load_state(base)
+    items = state.get("items")
+    if not isinstance(items, list) or not items:
+        return 0
+    want_title = _fold_title(series_title)
+    asset = (asset_id or "").strip()
+    added = 0
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        names = (
+            _fold_title(it.get("display_name") or ""),
+            _fold_title(it.get("playlist_title") or ""),
+        )
+        url = it.get("url") or ""
+        name_hit = bool(want_title) and want_title in names
+        asset_hit = bool(asset) and asset in url
+        if not name_hit and not asset_hit:
+            continue
+        stored = it.get("episodes")
+        if not isinstance(stored, dict):
+            stored = {}
+            it["episodes"] = stored
+        by_title = {}
+        for eid, meta in stored.items():
+            if isinstance(meta, dict):
+                by_title[_fold_title(meta.get("title") or "")] = str(eid)
+        hid = _have_ids_as_set(it)
+        before = len(hid)
+        for ep in rows:
+            eid = str(ep.get("id") or "").strip()
+            title_key = _fold_title(ep.get("title") or "")
+            known = by_title.get(title_key) if title_key else ""
+            if known:
+                hid.add(known)
+                continue
+            if not eid:
+                continue
+            hid.add(eid)
+            if eid not in stored:
+                stored[eid] = {"title": ep.get("title") or "", "url": ep.get("url") or ""}
+        if len(hid) > before:
+            added += len(hid) - before
+            it["have_ids"] = sorted(hid)
+    if added:
+        save_state(base, state)
+    return added
+
+
 def mark_ignored_episodes(
     base: Path,
     *,
@@ -404,6 +467,62 @@ def mark_ignored_episodes(
     if added:
         save_state(base, state)
     return added
+
+
+def apply_ignore_selection(
+    base: Path,
+    *,
+    series_url: str = "",
+    ignore_on: Optional[List[str]] = None,
+    ignore_off: Optional[List[str]] = None,
+) -> int:
+    """Gleicht ignore_ids mit den Haken im Folgenfenster ab.
+
+    ignore_on kommt in ignore_ids und aus have_ids, ignore_off wird nur aus
+    ignore_ids genommen. So bleibt „Ignorieren“ dieselbe Liste wie unter
+    „Bereits vorhandene Folgen markieren“.
+    """
+    on = {str(i) for i in (ignore_on or []) if i}
+    off = {str(i) for i in (ignore_off or []) if i} - on
+    if not on and not off:
+        return 0
+    state = load_state(base)
+    items = state.get("items")
+    if not isinstance(items, list) or not items:
+        return 0
+    want_url = _normalize_url_key(series_url)
+    changed = 0
+    matched_item = False
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        if want_url:
+            iu = _normalize_url_key(it.get("url") or "")
+            if iu and iu != want_url:
+                continue
+        else:
+            known = {str(k) for k in (it.get("episodes") or {})}
+            if on.isdisjoint(known) and off.isdisjoint(known):
+                continue
+        matched_item = True
+        ign = _ignore_ids_as_set(it)
+        hid = _have_ids_as_set(it)
+        before = (frozenset(ign), frozenset(hid))
+        for eid in on:
+            ign.add(eid)
+            hid.discard(eid)
+        for eid in off:
+            ign.discard(eid)
+        if (frozenset(ign), frozenset(hid)) == before:
+            continue
+        it["ignore_ids"] = sorted(ign)
+        it["have_ids"] = sorted(hid)
+        changed += 1
+    if want_url and not matched_item:
+        return changed
+    if changed:
+        save_state(base, state)
+    return changed
 
 
 def check_lock_path(base: Path) -> Path:
@@ -840,9 +959,11 @@ def check_all(
     base: Path,
     on_item_error: Optional[Callable[[str, str], None]] = None,
     report_unowned: bool = False,
+    only_url: str = "",
 ) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
     """
-    Prüft alle gespeicherten Serien-Einträge, aktualisiert Zustand.
+    Prüft gespeicherte Serien-Einträge, aktualisiert Zustand.
+    only_url: nur diese Quelle, sonst alle.
     Rückgabe: (neuer_state, benachrichtigungen)
     """
     state = load_state(base)
@@ -852,12 +973,15 @@ def check_all(
         state["items"] = items
 
     notifications: List[Dict[str, Any]] = []
+    want = _normalize_url_key(only_url) if (only_url or "").strip() else ""
 
     for it in items:
         if not isinstance(it, dict):
             continue
         url = (it.get("url") or "").strip()
         if not url:
+            continue
+        if want and _normalize_url_key(url) != want and _normalize_url_key(normalize_watch_url(url)) != want:
             continue
         norm = normalize_watch_url(url)
         if norm != url:

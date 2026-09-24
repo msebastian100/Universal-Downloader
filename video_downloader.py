@@ -3329,8 +3329,9 @@ class VideoDownloader:
                     yt_args.extend(['--write-subs', '--write-auto-subs', '--sub-langs', subtitle_language])
                 yt_args.extend(['--convert-subs', 'srt'])
             
-            # Thumbnail-Download
-            if download_thumbnail:
+            # Thumbnail-Download. Bei der ARD-Mediathek holen wir das Cover danach
+            # selbst. Fehlt das Bild, läuft der Film trotzdem weiter.
+            if download_thumbnail and "ardmediathek.de" not in (url or "").lower():
                 yt_args.extend(['--write-thumbnail', '--convert-thumbnails', 'jpg'])
             
             # Download-Resume
@@ -4015,6 +4016,8 @@ class VideoDownloader:
                         page_url = _u if ('ardaudiothek.de' in _u or 'ardsounds.de' in _u) else ((video_info or {}).get('webpage_url') or _u or '')
                         if page_url and ('ardaudiothek.de' in page_url or 'ardsounds.de' in page_url):
                             self._fetch_cover_from_webpage(page_url, actual_output_dir)
+                        elif 'ardmediathek.de' in (_u or '').lower() and download_thumbnail:
+                            self._save_ard_cover(_u, actual_output_dir)
                     
                     # MP3: Cover einbetten, falls in der Datei noch keins bzw. nur Platzhalter; danach Cover-Datei löschen
                     if downloaded_file.suffix.lower() == '.mp3':
@@ -4378,6 +4381,22 @@ class VideoDownloader:
                 # Entferne führende/abschließende Leerzeilen
                 description = description.strip()
             
+            ard_meta = self._ard_item_meta(url)
+            if ard_meta:
+                synopsis = ard_meta.get("synopsis") or ""
+                if synopsis and len(synopsis) > len(description or ""):
+                    description = synopsis
+                if ard_meta.get("publisher"):
+                    description_parts.append(f"Sender: {ard_meta['publisher']}\n")
+                if ard_meta.get("year"):
+                    description_parts.append(f"Jahr: {ard_meta['year']}\n")
+                if ard_meta.get("broadcast"):
+                    description_parts.append(f"Ausstrahlung: {ard_meta['broadcast']}\n")
+                if ard_meta.get("fsk"):
+                    description_parts.append(f"FSK: {ard_meta['fsk']}\n")
+                if ard_meta.get("cast"):
+                    description_parts.append("Mitwirkende: " + ", ".join(ard_meta["cast"]) + "\n")
+
             if description:
                 description_parts.append(f"\nBeschreibung:\n{description}\n")
             
@@ -4513,6 +4532,40 @@ class VideoDownloader:
         except Exception as e:
             self.log(f"Fehler beim Aufräumen: {e}", "WARNING")
     
+    def _ard_item_meta(self, url: str) -> dict:
+        """Beschreibung, Jahr und Mitwirkende über die ARD-Beitragsseite."""
+        page = (url or "").lower()
+        if "ardmediathek.de" not in page:
+            return {}
+        asset_id = (url or "").rstrip("/").split("/")[-1].split("?")[0]
+        if not asset_id:
+            return {}
+        try:
+            import mediathek_search
+            return mediathek_search.fetch_item_details("ard", asset_id) or {}
+        except Exception:
+            return {}
+
+    def _save_ard_cover(self, url: str, output_dir) -> bool:
+        meta = self._ard_item_meta(url)
+        src = (meta.get("image") or "").strip()
+        if not src:
+            return False
+        try:
+            import urllib.request
+            req = urllib.request.Request(src, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                data = resp.read()
+            if not data:
+                return False
+            path = output_dir / "cover.jpg"
+            path.write_bytes(data)
+            self.log(f"✓ Cover gespeichert: {path.name}")
+            return True
+        except Exception as exc:
+            self.log(f"⚠ Cover nicht geladen: {exc}", "WARNING")
+            return False
+
     def _extract_description_from_webpage(self, url: str) -> str:
         """Extrahiert Beschreibung direkt von der ARD-Mediathek Webseite"""
         try:

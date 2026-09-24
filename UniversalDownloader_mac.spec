@@ -21,6 +21,8 @@ if os.path.exists('icon.png'):
     datas_list.append(('icon.png', '.'))
 if os.path.exists('icon.icns'):
     datas_list.append(('icon.icns', '.'))
+if os.path.isdir('plugins'):
+    datas_list.append(('plugins', 'plugins'))
 
 a = Analysis(
     ['start.py'],
@@ -36,7 +38,10 @@ a = Analysis(
         'yt_dlp_helper',
         'auto_install_dependencies',
         'path_helper',
+        'plugin_loader',
         'mac_platform',
+        'mediathek_search',
+        'preview_player',
         'series_watch',
         'series_watch_tray',
         'pystray',

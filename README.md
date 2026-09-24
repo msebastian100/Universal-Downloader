@@ -2,7 +2,7 @@
 
 Ein Downloader für Videos, Hörfunk und Serien – für privaten Gebrauch.
 
-Aktuelle Version: **2.1.55** (23. September 2026). Fertige Pakete liegen bei den [Releases](https://github.com/msebastian100/Universal-Downloader/releases/tag/v2.1.55). Neuere Versionen erscheinen auf der [Release-Übersicht](https://github.com/msebastian100/Universal-Downloader/releases). Die installierte App prüft dort selbst auf Updates.
+Aktuelle Version: **2.1.56** (24. September 2026). Fertige Pakete liegen bei den [Releases](https://github.com/msebastian100/Universal-Downloader/releases/tag/v2.1.56). Neuere Versionen erscheinen auf der [Release-Übersicht](https://github.com/msebastian100/Universal-Downloader/releases). Die installierte App prüft dort selbst auf Updates.
 
 ## Wichtiger Hinweis
 
@@ -19,18 +19,18 @@ Dieser Downloader ist nur für privaten Gebrauch bestimmt. Bitte beachten Sie di
 
 ### Windows
 
-Den Installer von [Release v2.1.55](https://github.com/msebastian100/Universal-Downloader/releases/tag/v2.1.55) herunterladen und starten:
+Den Installer von [Release v2.1.56](https://github.com/msebastian100/Universal-Downloader/releases/tag/v2.1.56) herunterladen und starten:
 
-[UniversalDownloader_Setup_v2.1.55.exe](https://github.com/msebastian100/Universal-Downloader/releases/download/v2.1.55/UniversalDownloader_Setup_v2.1.55.exe)
+[UniversalDownloader_Setup_v2.1.56.exe](https://github.com/msebastian100/Universal-Downloader/releases/download/v2.1.56/UniversalDownloader_Setup_v2.1.56.exe)
 
-Zusätzlich liegt dort das ZIP `universal-downloader_v2.1.55.zip` (Programm ohne Setup).
+Zusätzlich liegt dort das ZIP `universal-downloader_v2.1.56.zip` (Programm ohne Setup).
 
 ### macOS
 
-Ebenfalls unter [Release v2.1.55](https://github.com/msebastian100/Universal-Downloader/releases/tag/v2.1.55):
+Ebenfalls unter [Release v2.1.56](https://github.com/msebastian100/Universal-Downloader/releases/tag/v2.1.56):
 
-- [UniversalDownloader_2.1.55_arm64.dmg](https://github.com/msebastian100/Universal-Downloader/releases/download/v2.1.55/UniversalDownloader_2.1.55_arm64.dmg) für Apple Silicon
-- [UniversalDownloader_2.1.55.dmg](https://github.com/msebastian100/Universal-Downloader/releases/download/v2.1.55/UniversalDownloader_2.1.55.dmg)
+- [UniversalDownloader_2.1.56_arm64.dmg](https://github.com/msebastian100/Universal-Downloader/releases/download/v2.1.56/UniversalDownloader_2.1.56_arm64.dmg) für Apple Silicon
+- [UniversalDownloader_2.1.56.dmg](https://github.com/msebastian100/Universal-Downloader/releases/download/v2.1.56/UniversalDownloader_2.1.56.dmg)
 
 ### Linux (APT, empfohlen)
 
@@ -56,13 +56,13 @@ Entfernen: `sudo apt remove universal-downloader`. Die Quelle liegt in `/etc/apt
 
 ### Linux (.deb aus dem Release)
 
-Wer das Paket einmalig von GitHub holen will, ohne die APT-Quelle: Terminal öffnen und diesen Befehl einfügen. Er lädt die Datei von [Release v2.1.55](https://github.com/msebastian100/Universal-Downloader/releases/tag/v2.1.55) nach `/tmp` und installiert sie.
+Wer das Paket einmalig von GitHub holen will, ohne die APT-Quelle: Terminal öffnen und diesen Befehl einfügen. Er lädt die Datei von [Release v2.1.56](https://github.com/msebastian100/Universal-Downloader/releases/tag/v2.1.56) nach `/tmp` und installiert sie.
 
 ```bash
-curl -fL -o /tmp/universal-downloader_2.1.55_all.deb https://github.com/msebastian100/Universal-Downloader/releases/download/v2.1.55/universal-downloader_2.1.55_all.deb && sudo apt install /tmp/universal-downloader_2.1.55_all.deb
+curl -fL -o /tmp/universal-downloader_2.1.56_all.deb https://github.com/msebastian100/Universal-Downloader/releases/download/v2.1.56/universal-downloader_2.1.56_all.deb && sudo apt install /tmp/universal-downloader_2.1.56_all.deb
 ```
 
-Direktlink, falls der Browser die Datei laden soll: [universal-downloader_2.1.55_all.deb](https://github.com/msebastian100/Universal-Downloader/releases/download/v2.1.55/universal-downloader_2.1.55_all.deb). Danach im Ordner der Datei `sudo apt install ./universal-downloader_2.1.55_all.deb`. Bei Updates über diesen Weg muss die neue `.deb` jedes Mal neu geladen werden. Mit der APT-Quelle oben kommt das von allein.
+Direktlink, falls der Browser die Datei laden soll: [universal-downloader_2.1.56_all.deb](https://github.com/msebastian100/Universal-Downloader/releases/download/v2.1.56/universal-downloader_2.1.56_all.deb). Danach im Ordner der Datei `sudo apt install ./universal-downloader_2.1.56_all.deb`. Bei Updates über diesen Weg muss die neue `.deb` jedes Mal neu geladen werden. Mit der APT-Quelle oben kommt das von allein.
 
 ## Lizenz
 

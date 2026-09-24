@@ -152,6 +152,7 @@ if __name__ == "__main__":
         if sys.platform == "darwin":
             try:
                 import Foundation  # type: ignore[import-untyped]
+                from AppKit import NSApplication, NSApplicationActivationPolicyAccessory
 
                 ns_bundle = getattr(Foundation, "NSBundle", None)
                 if ns_bundle is None:
@@ -159,6 +160,10 @@ if __name__ == "__main__":
                 info = ns_bundle.mainBundle().infoDictionary()
                 if info is not None:
                     info["LSUIElement"] = True
+                # Vor dem Tray-Start, sonst bleibt ein zweites Dock-Icon stehen.
+                NSApplication.sharedApplication().setActivationPolicy_(
+                    NSApplicationActivationPolicyAccessory
+                )
             except Exception:
                 pass
         _tray_argv = [a for a in sys.argv[1:] if a != "--series-watch-tray"]
