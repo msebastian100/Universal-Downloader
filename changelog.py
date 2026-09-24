@@ -11,7 +11,7 @@ from typing import List, Optional, Dict, Any
 # Neueste Version zuerst – wird für „Erster Start“ und Upgrade-Anzeige genutzt
 RELEASE_NOTES: List[Dict[str, Any]] = [
     {
-        "version": "2.1.56",
+        "version": "2.1.57",
         "date": "2026-09-24",
         "items": [
             "Suche für ARD und ZDF mit Bild, Beschreibung und Folgenauswahl. Serien und Hörspiele lassen sich in der App ansehen oder anhören.",

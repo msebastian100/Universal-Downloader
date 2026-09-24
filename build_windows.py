@@ -1,0 +1,230 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+# Fix encoding fuer Windows - MUSS direkt nach encoding-Kommentar kommen!
+# Diese Fix muss VOR allen anderen Imports und print-Statements kommen!
+import os
+import sys
+
+# Setze UTF-8 Encoding fuer stdout/stderr BEVOR irgendetwas anderes passiert
+if sys.platform == 'win32' or os.getenv('GITHUB_ACTIONS') == 'true':
+    import io
+    try:
+        # Force UTF-8 encoding for stdout
+        if hasattr(sys.stdout, 'buffer'):
+            sys.stdout = io.TextIOWrapper(
+                sys.stdout.buffer, 
+                encoding='utf-8', 
+                errors='replace', 
+                line_buffering=True
+            )
+        # Force UTF-8 encoding for stderr
+        if hasattr(sys.stderr, 'buffer'):
+            sys.stderr = io.TextIOWrapper(
+                sys.stderr.buffer, 
+                encoding='utf-8', 
+                errors='replace', 
+                line_buffering=True
+            )
+        # Setze auch die default encoding
+        if hasattr(sys, 'setdefaultencoding'):
+            sys.setdefaultencoding('utf-8')
+    except Exception:
+        # Falls die Encoding-Fix fehlschlaegt, ignoriere den Fehler
+        # aber verwende trotzdem nur ASCII-kompatible Zeichen
+        pass
+
+"""
+Build-Script fuer Windows .exe mit PyInstaller
+"""
+
+import subprocess
+import shutil
+from pathlib import Path
+import re
+
+# Fuer PyInstaller spec-Datei
+if __name__ != "__main__":
+    import os
+
+def get_version():
+    """Liest die Versionsnummer aus version.py"""
+    try:
+        version_file = Path("version.py")
+        if version_file.exists():
+            content = version_file.read_text(encoding='utf-8')
+            # Suche nach __version__ = "2.0.2"
+            match = re.search(r'__version__\s*=\s*["\']([^"\']+)["\']', content)
+            if match:
+                return match.group(1)
+    except Exception as e:
+        print(f"[WARNING] Konnte Versionsnummer nicht lesen: {e}")
+    return "unknown"
+
+def check_pyinstaller():
+    """Prueft ob PyInstaller installiert ist"""
+    try:
+        import PyInstaller
+        return True
+    except ImportError:
+        return False
+
+def install_pyinstaller():
+    """Installiert PyInstaller"""
+    print("Installiere PyInstaller...")
+    subprocess.run([sys.executable, "-m", "pip", "install", "pyinstaller"], check=True)
+    print("[OK] PyInstaller installiert")
+
+def build_exe():
+    """Erstellt die .exe Datei"""
+    print("=" * 70)
+    print("Erstelle Windows .exe Datei...")
+    print("=" * 70)
+    
+    # Pruefe ob PyInstaller vorhanden ist
+    if not check_pyinstaller():
+        print("PyInstaller nicht gefunden. Installiere...")
+        install_pyinstaller()
+    
+    # Erstelle Build-Verzeichnis
+    build_dir = Path("build")
+    dist_dir = Path("dist")
+    
+    # Loesche alte Builds
+    if build_dir.exists():
+        shutil.rmtree(build_dir)
+    if dist_dir.exists():
+        shutil.rmtree(dist_dir)
+    
+    # Verwende .spec Datei falls vorhanden, sonst manuelle Parameter
+    spec_file = Path("UniversalDownloader.spec")
+    
+    if spec_file.exists():
+        print("Verwende UniversalDownloader.spec fuer Build...")
+        pyinstaller_cmd = [
+            sys.executable, "-m", "PyInstaller",
+            "--clean",  # Bereinige Cache
+            str(spec_file)
+        ]
+    else:
+        print("Keine .spec Datei gefunden, verwende manuelle Parameter...")
+        # PyInstaller-Befehle
+        pyinstaller_cmd = [
+            sys.executable, "-m", "PyInstaller",
+            "--name=UniversalDownloader",
+            "--onedir",
+            "--noconsole",  # Kein Konsolen-Fenster
+            "--icon=icon.png" if Path("icon.png").exists() else "",
+            "--add-data=icon.png;." if Path("icon.png").exists() else "",
+            "--hidden-import=tkinter",
+            "--hidden-import=PIL",
+            "--hidden-import=mutagen",
+            "--hidden-import=deezer",
+            "--hidden-import=yt_dlp",
+            "--hidden-import=requests",
+            "--hidden-import=urllib3",
+            "--hidden-import=certifi",
+            "--hidden-import=charset_normalizer",
+            "--hidden-import=idna",
+            "--hidden-import=beautifulsoup4",
+            "--hidden-import=selenium",
+            "--hidden-import=webdriver_manager",
+            "--hidden-import=audible",
+            "--hidden-import=browser_cookie3",
+            "--hidden-import=deezer_auth",
+            "--hidden-import=deezer_downloader",
+            "--hidden-import=spotify_downloader",
+            "--hidden-import=video_downloader",
+            "--hidden-import=audible_integration",
+            "--hidden-import=changelog",
+            "--hidden-import=path_helper",
+            "--hidden-import=yt_dlp_helper",
+            "--hidden-import=auto_install_dependencies",
+            "--hidden-import=updater",
+            "--hidden-import=version",
+            "--hidden-import=audiobook_providers",
+            "--hidden-import=audiobook_search",
+            "--hidden-import=stream_automation",
+            "--hidden-import=audio_recorder",
+            "--hidden-import=audio_device_detector",
+            "--hidden-import=update_from_github",
+            "--hidden-import=create_shortcut",
+            "--hidden-import=setup_audio_recording",
+            "--hidden-import=bs4",
+            "--hidden-import=docx",
+            "--hidden-import=striprtf",
+            "--hidden-import=odf.opendocument",
+            "--collect-all=yt_dlp",
+            "--collect-all=PIL",
+            "--collect-all=mutagen",
+            "start.py"
+        ]
+        
+        # Entferne leere Eintraege
+        pyinstaller_cmd = [x for x in pyinstaller_cmd if x]
+    
+    print(f"\nFuehre aus: {' '.join(pyinstaller_cmd)}\n")
+    
+    try:
+        result = subprocess.run(pyinstaller_cmd, check=True, capture_output=False)
+        print("\n" + "=" * 70)
+        print("[OK] Build erfolgreich!")
+        print("=" * 70)
+        
+        # Pruefe ob .exe erstellt wurde
+        # Onedir: dist/UniversalDownloader/UniversalDownloader.exe
+        onedir_exe = dist_dir / "UniversalDownloader" / "UniversalDownloader.exe"
+        exe_path = dist_dir / "UniversalDownloader.exe"
+        if onedir_exe.exists():
+            exe_path = onedir_exe
+        if exe_path.exists():
+            version = get_version()
+            zip_base = dist_dir / f"universal-downloader_v{version}"
+            if onedir_exe.exists():
+                archive = shutil.make_archive(
+                    str(zip_base),
+                    "zip",
+                    root_dir=str(dist_dir),
+                    base_dir="UniversalDownloader",
+                )
+                print(f"\nDie App liegt in: {onedir_exe}")
+                print(f"Portables ZIP: {archive}")
+                print(f"Groesse ZIP: {Path(archive).stat().st_size / (1024*1024):.2f} MB")
+            else:
+                new_exe_name = f"universal-downloader_v{version}.exe"
+                new_exe_path = dist_dir / new_exe_name
+                exe_path.rename(new_exe_path)
+                print(f"\nDie .exe Datei befindet sich in: {dist_dir.absolute()}")
+                print(f"Dateiname: {new_exe_name}")
+                print(f"Groesse: {new_exe_path.stat().st_size / (1024*1024):.2f} MB")
+            return True
+        else:
+            print(f"\n[WARNING] .exe Datei nicht gefunden in {dist_dir}")
+            return False
+    except subprocess.CalledProcessError as e:
+        print(f"\n[ERROR] Build fehlgeschlagen: {e}")
+        print(f"Returncode: {e.returncode}")
+        if hasattr(e, 'stderr') and e.stderr:
+            print(f"Fehlerausgabe: {e.stderr.decode()}")
+        return False
+    except Exception as e:
+        print(f"\n[ERROR] Unerwarteter Fehler: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+if __name__ == "__main__":
+    # In GitHub Actions keine interaktive Eingabe
+    if os.getenv('GITHUB_ACTIONS') == 'true':
+        # Automatisch fortfahren in CI/CD
+        success = build_exe()
+        sys.exit(0 if success else 1)
+    elif sys.platform != "win32":
+        print("[WARNING] Dieses Script ist fuer Windows gedacht.")
+        print("Sie koennen es trotzdem ausfuehren, aber die .exe wird nur auf Windows funktionieren.")
+        response = input("Fortfahren? (j/n): ")
+        if response.lower() != 'j':
+            sys.exit(0)
+    
+    success = build_exe()
+    sys.exit(0 if success else 1)
