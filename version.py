@@ -7,9 +7,9 @@ Release: immer gemeinsam pflegen:
   __version__, __version_info__, __build_date__ (YYYY-MM-DD = Tag des Releases)
 """
 
-__version__ = "2.1.59"
-__version_info__ = (2, 1, 59)
-__build_date__ = "2026-09-24"
+__version__ = "2.1.61"
+__version_info__ = (2, 1, 61)
+__build_date__ = "2026-09-25"
 
 # GitHub Repository URL (für Links und Updates)
 GITHUB_REPO_URL = "https://github.com/msebastian100/Universal-Downloader"

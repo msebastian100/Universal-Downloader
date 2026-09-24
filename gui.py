@@ -1242,11 +1242,11 @@ class DeezerDownloaderGUI:
             t = (nw_eff - min_w) / max(1, ref_w - min_w)  # 0 bei min_w, 1 bei ref_w
             t = max(0.0, min(1.2, t))  # leicht über 1 für große Fenster
             try:
-                font_size = max(8, min(11, int(8 + t * 3)))
-                pad_v = max(3, min(6, int(3 + t * 3)))
-                pad_h = max(18, min(34, int(18 + t * 16)))
-                pad_v_large = max(4, min(8, int(4 + t * 4)))
-                pad_h_large = max(24, min(40, int(24 + t * 16)))
+                font_size = max(12, min(16, int(12 + t * 4)))
+                pad_v = max(6, min(10, int(6 + t * 4)))
+                pad_h = max(16, min(28, int(16 + t * 12)))
+                pad_v_large = max(8, min(14, int(8 + t * 6)))
+                pad_h_large = max(18, min(32, int(18 + t * 14)))
                 _s = ttk.Style()
                 _bg = getattr(self, '_tk_bg_panel', '#383838')
                 _bg_card = getattr(self, '_tk_bg_card', '#424242')
@@ -1271,10 +1271,18 @@ class DeezerDownloaderGUI:
                     pass
                 _s.map("Download.TButton.Large", background=[("active", _btn_hover), ("pressed", _btn_press)], relief=[("pressed", "sunken")], foreground=[("active", _btn_fg), ("pressed", _btn_fg)])
                 _s.configure("Download.TLabel", font=("Arial", font_size), background=_bg, foreground=_fg)
-                _s.configure("Download.TRadiobutton", font=("Arial", font_size), background=_bg, foreground=_fg)
+                choice_size = max(13, min(17, font_size + 1))
+                _s.configure("Download.TRadiobutton", font=("Arial", choice_size), padding=(10, 6), background=_bg, foreground=_fg)
                 _s.map("Download.TRadiobutton", background=[("active", _bg)], foreground=[("active", _fg)])
-                _s.configure("Download.TCheckbutton", font=("Arial", font_size), background=_bg, foreground=_fg)
+                _s.configure("Download.TCheckbutton", font=("Arial", choice_size), padding=(6, 5), background=_bg, foreground=_fg)
                 _s.map("Download.TCheckbutton", background=[("active", _bg)], foreground=[("active", _fg)])
+                url_size = max(15, min(20, font_size + 3))
+                for ent in getattr(self, "_url_entries", ()):
+                    try:
+                        if ent.winfo_exists():
+                            ent.configure(font=("Arial", url_size))
+                    except (tk.TclError, AttributeError):
+                        pass
                 # Titel-Leiste und Tabs responsive skalieren
                 title_size = max(10, min(15, int(10 + t * 5)))
                 if hasattr(self, '_title_label') and self._title_label.winfo_exists():
@@ -1354,8 +1362,10 @@ class DeezerDownloaderGUI:
         url_frame.pack(fill=tk.X, padx=5, pady=2)
         
         self.music_url_var = tk.StringVar()
-        url_entry = ttk.Entry(url_frame, textvariable=self.music_url_var)
-        url_entry.pack(fill=tk.X, padx=(0, 5))
+        url_entry = ttk.Entry(url_frame, textvariable=self.music_url_var, font=("Arial", 16))
+        url_entry.pack(fill=tk.X, padx=(0, 5), ipady=8)
+        self._url_entries = getattr(self, "_url_entries", [])
+        self._url_entries.append(url_entry)
         url_entry.bind('<Return>', lambda e: self.start_music_download())
         self._entry_place_caret(url_entry)
         self._entry_edit_menu(url_entry)
@@ -1376,12 +1386,14 @@ class DeezerDownloaderGUI:
         # _music_account_container nicht packen → Buttons existieren für State, Anzeige in Einstellungen
         
         # Format (Musik: meist MP3)
-        format_frame = ttk.LabelFrame(opt, text="Format", padding="3", style="Download.TLabelframe")
+        format_frame = ttk.LabelFrame(opt, text="Format", padding="8", style="Download.TLabelframe")
         format_frame.pack(fill=tk.X, padx=5, pady=2)
         default_music_format = self.settings.get('default_music_format', 'mp3')
         self.music_format_var = tk.StringVar(value=default_music_format)
-        for text, value in [("MP3", "mp3"), ("MP4 (Audio)", "m4a"), ("Keine", "none")]:
-            ttk.Radiobutton(format_frame, text=text, variable=self.music_format_var, value=value, style="Download.TRadiobutton").pack(side=tk.LEFT, padx=5)
+        for col in range(3):
+            format_frame.columnconfigure(col, weight=1)
+        for index, (text, value) in enumerate([("MP3", "mp3"), ("MP4 (Audio)", "m4a"), ("Keine", "none")]):
+            ttk.Radiobutton(format_frame, text=text, variable=self.music_format_var, value=value, style="Download.TRadiobutton").grid(row=0, column=index, sticky=tk.W, padx=8, pady=4)
         
         # Buttons: nebeneinander und untereinander, mit Abstand und Rand (Grid pady=2, Style mit Padding/Rand)
         button_frame = ttk.Frame(opt, style="Download.TFrame")
@@ -1608,8 +1620,10 @@ class DeezerDownloaderGUI:
         url_frame.pack(fill=tk.X, padx=5, pady=2)
         
         self.video_url_var = tk.StringVar()
-        url_entry = ttk.Entry(url_frame, textvariable=self.video_url_var)
-        url_entry.pack(fill=tk.X, padx=(0, 5))
+        url_entry = ttk.Entry(url_frame, textvariable=self.video_url_var, font=("Arial", 16))
+        url_entry.pack(fill=tk.X, padx=(0, 5), ipady=8)
+        self._url_entries = getattr(self, "_url_entries", [])
+        self._url_entries.append(url_entry)
         url_entry.bind('<Return>', lambda e: self.start_video_download())
         self._entry_place_caret(url_entry)
         self._entry_edit_menu(url_entry)
@@ -1619,26 +1633,34 @@ class DeezerDownloaderGUI:
         ttk.Button(url_frame, text="📁 URLs aus Datei laden", command=self.load_urls_from_file, style="Download.TButton").pack(fill=tk.X, pady=(2, 0))
         
         # Format-Auswahl
-        format_frame = ttk.LabelFrame(opt, text="Format", padding="3", style="Download.TLabelframe")
+        format_frame = ttk.LabelFrame(opt, text="Format", padding="8", style="Download.TLabelframe")
         format_frame.pack(fill=tk.X, padx=5, pady=2)
         
         # Lade Format aus Einstellungen
         default_format = self.settings.get('default_video_format', 'mp4')
         self.video_format_var = tk.StringVar(value=default_format)
         formats = [("MP4", "mp4"), ("MP3", "mp3"), ("WebM", "webm"), ("MKV", "mkv"), ("AVI", "avi"), ("Keine", "none")]
-        for text, value in formats:
-            ttk.Radiobutton(format_frame, text=text, variable=self.video_format_var, value=value, style="Download.TRadiobutton").pack(side=tk.LEFT, padx=5)
+        for col in range(3):
+            format_frame.columnconfigure(col, weight=1)
+        for index, (text, value) in enumerate(formats):
+            ttk.Radiobutton(format_frame, text=text, variable=self.video_format_var, value=value, style="Download.TRadiobutton").grid(
+                row=index // 3, column=index % 3, sticky=tk.W, padx=8, pady=4
+            )
         
         # Qualität
-        quality_frame = ttk.LabelFrame(opt, text="Qualität", padding="3", style="Download.TLabelframe")
+        quality_frame = ttk.LabelFrame(opt, text="Qualität", padding="8", style="Download.TLabelframe")
         quality_frame.pack(fill=tk.X, padx=5, pady=2)
         
         # Lade Qualität aus Einstellungen
         default_quality = self.settings.get('default_video_quality', 'best')
         self.video_quality_var = tk.StringVar(value=default_quality)
         qualities = [("Beste", "best"), ("1080p", "1080p"), ("720p", "720p"), ("Niedrigste", "niedrigste")]
-        for text, value in qualities:
-            ttk.Radiobutton(quality_frame, text=text, variable=self.video_quality_var, value=value, style="Download.TRadiobutton").pack(side=tk.LEFT, padx=5)
+        for col in range(4):
+            quality_frame.columnconfigure(col, weight=1)
+        for index, (text, value) in enumerate(qualities):
+            ttk.Radiobutton(quality_frame, text=text, variable=self.video_quality_var, value=value, style="Download.TRadiobutton").grid(
+                row=0, column=index, sticky=tk.W, padx=8, pady=4
+            )
         
         # Erweiterte Optionen
         advanced_frame = ttk.LabelFrame(opt, text="Erweiterte Optionen", padding="3", style="Download.TLabelframe")
@@ -10976,7 +10998,7 @@ class DeezerDownloaderGUI:
         search_window = tk.Toplevel(self.root)
         search_window.title("🔍 Suche nach Filmen und Serien")
         search_window.transient(self.root)
-        self._fit_dialog(search_window, 960, 740, 700, 500)
+        self._fit_dialog(search_window, 1100, 860, 860, 620)
         
         main_frame = ttk.Frame(search_window, padding="15")
         main_frame.pack(fill=tk.BOTH, expand=True)
@@ -10985,22 +11007,22 @@ class DeezerDownloaderGUI:
         search_frame = ttk.Frame(main_frame)
         search_frame.pack(fill=tk.X, pady=(0, 10))
         
-        ttk.Label(search_frame, text="Suche:", font=("Arial", 14, "bold")).pack(side=tk.LEFT, padx=(0, 8))
+        ttk.Label(search_frame, text="Suche:", font=("Arial", 16, "bold")).pack(side=tk.LEFT, padx=(0, 8))
         search_var = tk.StringVar()
-        search_entry = ttk.Entry(search_frame, textvariable=search_var, style="Download.TEntry")
-        search_entry.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True, ipady=4)
+        search_entry = ttk.Entry(search_frame, textvariable=search_var, font=("Arial", 16))
+        search_entry.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True, ipady=10)
         self._entry_place_caret(search_entry)
         self._entry_edit_menu(search_entry)
         
-        search_button = ttk.Button(search_frame, text="🔍 Suchen", command=lambda: self._perform_search(search_var.get(), results_frame, status_label, scope_var.get()))
-        search_button.pack(side=tk.LEFT, padx=5)
+        search_button = ttk.Button(search_frame, text="🔍 Suchen", command=lambda: self._perform_search(search_var.get(), results_frame, status_label, scope_var.get()), style="Download.TButton.Large")
+        search_button.pack(side=tk.LEFT, padx=5, ipady=4)
 
         scope_var = tk.StringVar(value="video")
         scope_row = ttk.Frame(main_frame)
         scope_row.pack(fill=tk.X, pady=(0, 6))
-        ttk.Label(scope_row, text="Bereich:").pack(side=tk.LEFT, padx=(0, 8))
+        ttk.Label(scope_row, text="Bereich:", font=("Arial", 13)).pack(side=tk.LEFT, padx=(0, 8))
         for label, value in (("Video", "video"), ("Musik", "music"), ("Beides", "both")):
-            ttk.Radiobutton(scope_row, text=label, variable=scope_var, value=value).pack(side=tk.LEFT, padx=(0, 10))
+            ttk.Radiobutton(scope_row, text=label, variable=scope_var, value=value, style="Download.TRadiobutton").pack(side=tk.LEFT, padx=(0, 14))
         
         # Enter-Taste für Suche
         search_entry.bind('<Return>', lambda e: self._perform_search(search_var.get(), results_frame, status_label, scope_var.get()))
@@ -11027,8 +11049,12 @@ class DeezerDownloaderGUI:
             lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
         )
         
-        canvas.create_window((0, 0), window=results_frame, anchor="nw")
+        results_window = canvas.create_window((0, 0), window=results_frame, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
+
+        def _stretch_search_results(event):
+            canvas.itemconfig(results_window, width=max(400, event.width))
+        canvas.bind("<Configure>", _stretch_search_results)
         self._bind_scroll_wheel(canvas, results_frame)
         
         canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
@@ -11277,7 +11303,16 @@ class DeezerDownloaderGUI:
             self._search_load_thumb(holder, image_url, parent)
         text = ttk.Frame(row)
         text.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        ttk.Label(text, text=item.get("title") or "Unbekannt", font=("Arial", 11, "bold"), wraplength=640).pack(anchor=tk.W)
+        wrap = 640
+        canvas = getattr(self, "_search_results_canvas", None)
+        if canvas is not None:
+            try:
+                cw = canvas.winfo_width()
+                if cw > 240:
+                    wrap = max(420, cw - 200)
+            except tk.TclError:
+                pass
+        ttk.Label(text, text=item.get("title") or "Unbekannt", font=("Arial", 14, "bold"), wraplength=wrap).pack(anchor=tk.W)
         meta = []
         series_name = (item.get("series_name") or "").strip()
         if series_name and item.get("kind") != "series" and series_name.casefold() != (item.get("title") or "").casefold():
@@ -11309,27 +11344,27 @@ class DeezerDownloaderGUI:
             ttk.Label(text, text=" · ".join(meta), foreground="gray").pack(anchor=tk.W, pady=(2, 0))
         blurb = (item.get("description") or "").strip()
         if blurb:
-            ttk.Label(text, text=blurb, wraplength=640, justify=tk.LEFT).pack(anchor=tk.W, pady=(4, 0))
+            ttk.Label(text, text=blurb, wraplength=wrap, justify=tk.LEFT, font=("Arial", 12)).pack(anchor=tk.W, pady=(4, 0))
         buttons = ttk.Frame(card)
         buttons.pack(fill=tk.X, pady=(8, 0))
         title = item.get("title") or ""
         url = item.get("url") or ""
         if item.get("kind") == "series":
-            ttk.Button(buttons, text="Herunterladen", command=lambda it=item: self._search_open_series(it)).pack(side=tk.LEFT, padx=(0, 6))
-            ttk.Button(buttons, text="▶ Ansehen", command=lambda it=item: self._search_open_series(it)).pack(side=tk.LEFT, padx=(0, 6))
+            ttk.Button(buttons, text="Herunterladen", command=lambda it=item: self._search_open_series(it), style="Download.TButton").pack(side=tk.LEFT, padx=(0, 8), ipady=2)
+            ttk.Button(buttons, text="▶ Ansehen", command=lambda it=item: self._search_open_series(it), style="Download.TButton").pack(side=tk.LEFT, padx=(0, 8), ipady=2)
         elif item.get("kind") == "audio" and int(item.get("episode_count") or 0) > 1:
-            ttk.Button(buttons, text="Herunterladen", command=lambda it=item: self._search_open_series(it)).pack(side=tk.LEFT, padx=(0, 6))
-            ttk.Button(buttons, text="▶ Anhören", command=lambda it=item: self._search_open_series(it)).pack(side=tk.LEFT, padx=(0, 6))
+            ttk.Button(buttons, text="Herunterladen", command=lambda it=item: self._search_open_series(it), style="Download.TButton").pack(side=tk.LEFT, padx=(0, 8), ipady=2)
+            ttk.Button(buttons, text="▶ Anhören", command=lambda it=item: self._search_open_series(it), style="Download.TButton").pack(side=tk.LEFT, padx=(0, 8), ipady=2)
         elif item.get("kind") == "audio":
-            ttk.Button(buttons, text="Herunterladen", command=lambda u=url, t=title: self._download_from_search(u, t, direct=True)).pack(side=tk.LEFT, padx=(0, 6))
-            ttk.Button(buttons, text="Zur Queue", command=lambda u=url, t=title: self._download_from_search(u, t, direct=False)).pack(side=tk.LEFT, padx=(0, 6))
+            ttk.Button(buttons, text="Herunterladen", command=lambda u=url, t=title: self._download_from_search(u, t, direct=True), style="Download.TButton").pack(side=tk.LEFT, padx=(0, 8), ipady=2)
+            ttk.Button(buttons, text="Zur Queue", command=lambda u=url, t=title: self._download_from_search(u, t, direct=False), style="Download.TButton").pack(side=tk.LEFT, padx=(0, 8), ipady=2)
             if url:
-                ttk.Button(buttons, text="▶ Anhören", command=lambda u=url, t=title: self._preview_video(u, t)).pack(side=tk.LEFT, padx=(0, 6))
+                ttk.Button(buttons, text="▶ Anhören", command=lambda u=url, t=title: self._preview_video(u, t), style="Download.TButton").pack(side=tk.LEFT, padx=(0, 8), ipady=2)
         else:
-            ttk.Button(buttons, text="Herunterladen", command=lambda u=url, t=title: self._download_from_search(u, t, direct=True)).pack(side=tk.LEFT, padx=(0, 6))
-            ttk.Button(buttons, text="Zur Queue", command=lambda u=url, t=title: self._download_from_search(u, t, direct=False)).pack(side=tk.LEFT, padx=(0, 6))
+            ttk.Button(buttons, text="Herunterladen", command=lambda u=url, t=title: self._download_from_search(u, t, direct=True), style="Download.TButton").pack(side=tk.LEFT, padx=(0, 8), ipady=2)
+            ttk.Button(buttons, text="Zur Queue", command=lambda u=url, t=title: self._download_from_search(u, t, direct=False), style="Download.TButton").pack(side=tk.LEFT, padx=(0, 8), ipady=2)
         if url and item.get("kind") not in ("series", "audio"):
-            ttk.Button(buttons, text="▶ Ansehen", command=lambda u=url, t=title: self._preview_video(u, t)).pack(side=tk.LEFT, padx=(0, 6))
+            ttk.Button(buttons, text="▶ Ansehen", command=lambda u=url, t=title: self._preview_video(u, t), style="Download.TButton").pack(side=tk.LEFT, padx=(0, 8), ipady=2)
 
     def _search_load_thumb(self, holder, image_url: str, store_on):
         def work():

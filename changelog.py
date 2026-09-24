@@ -11,6 +11,14 @@ from typing import List, Optional, Dict, Any
 # Neueste Version zuerst – wird für „Erster Start“ und Upgrade-Anzeige genutzt
 RELEASE_NOTES: List[Dict[str, Any]] = [
     {
+        "version": "2.1.61",
+        "date": "2026-09-25",
+        "items": [
+            "Suche: ae, oe und ue gelten wie ä, ö und ü, zum Beispiel „Pfefferkoerner“.",
+            "URL-Zeile, Format, Qualität und die Suche sind größer und wachsen mit dem Fenster.",
+        ],
+    },
+    {
         "version": "2.1.59",
         "date": "2026-09-24",
         "items": [

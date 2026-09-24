@@ -90,16 +90,38 @@ def _image_src(images: dict, width: int = 320) -> str:
     return src
 
 
+def _fold_search(text: str) -> str:
+    """ä und ae, ö und oe, ü und ue gelten als dieselbe Schreibweise."""
+    text = (text or "").casefold()
+    for src, dst in (("ä", "ae"), ("ö", "oe"), ("ü", "ue"), ("ß", "ss")):
+        text = text.replace(src, dst)
+    return text
+
+
+def _umlaut_spellings(query: str) -> list:
+    """Original und, falls ae/oe/ue vorkommt, dieselbe Anfrage mit ä/ö/ü."""
+    folded = (query or "").strip().casefold()
+    if not folded:
+        return []
+    alt = folded
+    for src, dst in (("ae", "ä"), ("oe", "ö"), ("ue", "ü")):
+        alt = alt.replace(src, dst)
+    spellings = [folded]
+    if alt != folded:
+        spellings.append(alt)
+    return spellings
+
+
 def _query_tokens(query: str) -> list:
-    return [part for part in re.split(r"\s+", (query or "").casefold()) if len(part) >= 3]
+    return [part for part in re.split(r"\s+", _fold_search(query)) if len(part) >= 3]
 
 
 def _mentions(query: str, *parts) -> bool:
     tokens = _query_tokens(query)
     if not tokens:
         return True
-    hay = " ".join(str(part or "") for part in parts).casefold()
-    return all(re.search(rf"(?<![a-z0-9äöüß]){re.escape(token)}(?![a-z0-9äöüß])", hay) for token in tokens)
+    hay = _fold_search(" ".join(str(part or "") for part in parts))
+    return all(re.search(rf"(?<![a-z0-9]){re.escape(token)}(?![a-z0-9])", hay) for token in tokens)
 
 
 def _is_ad(title: str) -> bool:
@@ -127,14 +149,34 @@ def _asset_id(item: dict) -> str:
 
 def _ard_search_page(query: str, vod_page: int = 0) -> dict:
     # Dieselbe Schreibweise, damit „Altes Fossil“ und „altes fossil“ dieselben Seiten treffen.
-    url = "https://api.ardmediathek.de/page-gateway/pages/ard/search?" + urllib.parse.urlencode({
-        "searchString": query.casefold(),
-        "showPageNumber": 0,
-        "showPageSize": 12,
-        "vodPageNumber": vod_page,
-        "vodPageSize": 24,
-    })
-    return _get_json(url)
+    # „Pfefferkoerner“ wird zusätzlich als „Pfefferkörner“ gefragt, die Treffer bleiben zusammen.
+    merged = {"showResults": [], "vodResults": []}
+    seen = set()
+    for spelling in _umlaut_spellings(query):
+        url = "https://api.ardmediathek.de/page-gateway/pages/ard/search?" + urllib.parse.urlencode({
+            "searchString": spelling,
+            "showPageNumber": 0,
+            "showPageSize": 12,
+            "vodPageNumber": vod_page,
+            "vodPageSize": 24,
+        })
+        try:
+            data = _get_json(url)
+        except Exception:
+            if spelling == _umlaut_spellings(query)[0]:
+                raise
+            continue
+        for key in ("showResults", "vodResults"):
+            for item in data.get(key) or []:
+                if not isinstance(item, dict):
+                    continue
+                marker = _asset_id(item) or (item.get("longTitle") or item.get("mediumTitle") or "")
+                token = (key, marker)
+                if not marker or token in seen:
+                    continue
+                seen.add(token)
+                merged[key].append(item)
+    return merged
 
 
 def search_ard(query: str) -> list:
@@ -476,9 +518,32 @@ def search_audiothek(query: str) -> list:
     query = (query or "").strip()
     if not query:
         return []
-    url = "https://api.ardaudiothek.de/search?" + urllib.parse.urlencode({"query": query})
-    data = _get_json(url, timeout=20)
-    search = ((data.get("data") or {}).get("search") or {})
+    search = {}
+    for spelling in _umlaut_spellings(query):
+        url = "https://api.ardaudiothek.de/search?" + urllib.parse.urlencode({"query": spelling})
+        try:
+            data = _get_json(url, timeout=20)
+        except Exception:
+            if spelling == _umlaut_spellings(query)[0]:
+                raise
+            continue
+        found = ((data.get("data") or {}).get("search") or {})
+        if not search:
+            search = found
+            continue
+        for key in ("programSets",):
+            base = (search.get(key) or {}).get("nodes") or []
+            extra = (found.get(key) or {}).get("nodes") or []
+            known = {((node.get("sharingUrl") or node.get("title") or "")) for node in base if isinstance(node, dict)}
+            for node in extra:
+                if not isinstance(node, dict):
+                    continue
+                marker = node.get("sharingUrl") or node.get("title") or ""
+                if marker and marker not in known:
+                    base.append(node)
+                    known.add(marker)
+            if key in search and isinstance(search.get(key), dict):
+                search[key]["nodes"] = base
     results = []
     seen = set()
     for node in ((search.get("programSets") or {}).get("nodes") or [])[:8]:
@@ -641,11 +706,7 @@ def _zdf_text(value: str, limit: int = 220) -> str:
 
 
 def _zdf_mentions(query: str, *parts) -> bool:
-    tokens = [part for part in re.split(r"\s+", (query or "").casefold()) if len(part) >= 3]
-    if not tokens:
-        return True
-    hay = " ".join(str(part or "") for part in parts).casefold()
-    return all(re.search(rf"(?<![a-z0-9äöüß]){re.escape(token)}(?![a-z0-9äöüß])", hay) for token in tokens)
+    return _mentions(query, *parts)
 
 
 def _zdf_target(row: dict) -> dict:
@@ -716,12 +777,27 @@ def search_zdf(query: str) -> list:
     query = (query or "").strip()
     if not query:
         return []
-    folded = query.casefold()
-    url = "https://api.zdf.de/search/documents?" + urllib.parse.urlencode({
-        "q": folded,
-        "limit": 24,
-    })
-    data = _zdf_get(url)
+    rows = []
+    seen_rows = set()
+    for spelling in _umlaut_spellings(query):
+        url = "https://api.zdf.de/search/documents?" + urllib.parse.urlencode({
+            "q": spelling,
+            "limit": 24,
+        })
+        try:
+            data = _zdf_get(url)
+        except Exception:
+            if spelling == _umlaut_spellings(query)[0]:
+                raise
+            continue
+        for row in data.get(_ZDF_RESULTS) or []:
+            target = _zdf_target(row)
+            marker = (target.get(_ZDF_SHARING) or target.get("webCanonical") or target.get("teaserHeadline") or target.get("title") or "")
+            if marker in seen_rows:
+                continue
+            seen_rows.add(marker)
+            rows.append(row)
+    data = {_ZDF_RESULTS: rows}
     series = []
     videos = []
     seen = set()
