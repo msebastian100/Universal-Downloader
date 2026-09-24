@@ -11,6 +11,13 @@ from typing import List, Optional, Dict, Any
 # Neueste Version zuerst – wird für „Erster Start“ und Upgrade-Anzeige genutzt
 RELEASE_NOTES: List[Dict[str, Any]] = [
     {
+        "version": "2.1.59",
+        "date": "2026-09-24",
+        "items": [
+            "Linux: die Mediathek-Suche (ARD, ZDF, Audiothek) ist im Paket enthalten.",
+        ],
+    },
+    {
         "version": "2.1.58",
         "date": "2026-09-24",
         "items": [

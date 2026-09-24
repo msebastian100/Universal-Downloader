@@ -74,7 +74,7 @@ PY_FILES=(
     audiobook_providers.py audiobook_search.py stream_automation.py
     audio_recorder.py audio_device_detector.py setup_audio_recording.py
     series_watch.py series_watch_tray.py mac_platform.py
-    plugin_loader.py preview_player.py
+    plugin_loader.py preview_player.py mediathek_search.py
 )
 
 echo "Kopiere Anwendungsdateien..."
