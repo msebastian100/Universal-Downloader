@@ -97,6 +97,7 @@ class UpdateChecker:
         Installiert unter Linux per APT (Passwort-Dialog über pkexec).
         deb_path nur als Fallback, wenn es wirklich ein .deb ist.
         """
+        _stop_background_watcher()
         pkexec = shutil_which('pkexec')
         if not pkexec:
             return False, (
@@ -302,6 +303,21 @@ class UpdateChecker:
         """Kurze Prüfung ob ein Update verfügbar ist"""
         available, _ = self.check_for_updates()
         return available
+
+
+def _stop_background_watcher() -> None:
+    """Serien-Wächter beenden, damit das Paket die Programmdatei ersetzen kann."""
+    if not platform.system().lower().startswith("linux"):
+        return
+    try:
+        subprocess.run(
+            ["pkill", "-f", "--series-watch-tray"],
+            capture_output=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        pass
 
 
 def shutil_which(cmd: str) -> Optional[str]:

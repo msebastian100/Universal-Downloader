@@ -509,6 +509,7 @@ class DeezerDownloaderGUI:
         # Download-Prozess-Referenz für Abbrechen
         self.video_download_process = None
         self._parallel_video_process_list = []
+        self._video_active_urls = set()
         self._video_parallel_workers = 0
         self._video_parallel_lock = threading.Lock()
         self._video_convert_lock = threading.Lock()
@@ -535,6 +536,10 @@ class DeezerDownloaderGUI:
         
         # Initialisiere letzte Geometrie nach dem Setzen
         self._last_geometry = self.root.geometry()
+        try:
+            self.root.deiconify()
+        except Exception:
+            pass
         # Nochmal nach kurzer Verzögerung: Layout ist dann stabil, Buttons/Inhalte passen sich an
         self.root.after(350, self._resize_download_panels)
         # Serien-Wächter: erster Timer-Tick nach 90 s, danach minütlich (Prüfintervall in Einstellungen)
@@ -730,8 +735,25 @@ class DeezerDownloaderGUI:
             
             if not icon_set:
                 self._safe_log("[ICON] Kein Icon gefunden. Bitte fügen Sie 'icon.png' oder 'icon.ico' ins Projektverzeichnis ein.")
+            self._apply_app_icon(self.root)
         except Exception as e:
             self._safe_log(f"[ICON] Fehler beim Setzen des Icons: {e}")
+
+    def _apply_app_icon(self, window):
+        """Dieselbe Programm-Ikone für Dialoge. Sonst zeigt Windows ein leeres Fehler-Symbol."""
+        try:
+            if sys.platform == "win32" and getattr(sys, "frozen", False):
+                window.iconbitmap(default=sys.executable)
+                window.iconbitmap(sys.executable)
+                return
+        except Exception:
+            pass
+        try:
+            photos = self.root.tk.splitlist(self.root.tk.call("wm", "iconphoto", self.root))
+            if photos:
+                window.iconphoto(True, *photos)
+        except Exception:
+            pass
     
     def _safe_log(self, message: str):
         """Sicherer Log-Aufruf, der auch funktioniert, wenn log_file noch nicht initialisiert ist"""
@@ -1222,20 +1244,10 @@ class DeezerDownloaderGUI:
             if hasattr(self, '_video_container') and self._video_container.winfo_exists():
                 self._video_container.columnconfigure(0, minsize=w)
             # Canvas-Fensterbreite = aktuelle Breite des Optionsbereichs
-            if hasattr(self, '_music_options_canvas') and self._music_options_canvas.winfo_exists() and hasattr(self, '_music_options_canvas_cw_id'):
-                try:
-                    cw = self._music_options_canvas.winfo_width()
-                    if cw > 0:
-                        self._music_options_canvas.itemconfig(self._music_options_canvas_cw_id, width=cw)
-                except (tk.TclError, AttributeError):
-                    pass
-            if hasattr(self, '_video_options_canvas') and self._video_options_canvas.winfo_exists() and hasattr(self, '_video_options_canvas_cw_id'):
-                try:
-                    cw = self._video_options_canvas.winfo_width()
-                    if cw > 0:
-                        self._video_options_canvas.itemconfig(self._video_options_canvas_cw_id, width=cw)
-                except (tk.TclError, AttributeError):
-                    pass
+            if hasattr(self, '_music_options_inner'):
+                self._sync_options_scroll(self._music_options_canvas, self._music_options_inner, self._music_options_canvas_cw_id)
+            if hasattr(self, '_video_options_inner'):
+                self._sync_options_scroll(self._video_options_canvas, self._video_options_inner, self._video_options_canvas_cw_id)
             # Responsive: Skalierung zwischen Mindestbreite (min_w) und Referenzbreite (ref_w)
             # Vertikales Padding und Abstand für modernes Layout (pad_v / pad_v_large)
             nw_eff = max(nw, min_w)
@@ -1271,12 +1283,29 @@ class DeezerDownloaderGUI:
                     pass
                 _s.map("Download.TButton.Large", background=[("active", _btn_hover), ("pressed", _btn_press)], relief=[("pressed", "sunken")], foreground=[("active", _btn_fg), ("pressed", _btn_fg)])
                 _s.configure("Download.TLabel", font=("Arial", font_size), background=_bg, foreground=_fg)
-                choice_size = max(11, min(13, font_size + 1))
+                choice_size = max(12, min(14, font_size + 2))
                 _s.configure("Download.TRadiobutton", font=("Arial", choice_size), padding=(2, 1), background=_bg, foreground=_fg)
                 _s.map("Download.TRadiobutton", background=[("active", _bg)], foreground=[("active", _fg)])
                 _s.configure("Download.TCheckbutton", font=("Arial", choice_size), padding=(2, 1), background=_bg, foreground=_fg)
                 _s.map("Download.TCheckbutton", background=[("active", _bg)], foreground=[("active", _fg)])
                 url_size = max(12, min(14, font_size + 2))
+                status_size = max(12, min(18, int(12 + t * 6)))
+                bar_h = max(14, min(26, int(14 + t * 10)))
+                for lab in (
+                    getattr(self, 'music_status_label', None),
+                    getattr(self, 'video_status_label', None),
+                    getattr(self, 'music_jobs_label', None),
+                    getattr(self, 'video_jobs_label', None),
+                ):
+                    try:
+                        if lab is not None and lab.winfo_exists():
+                            lab.configure(font=("Arial", status_size))
+                    except (tk.TclError, AttributeError):
+                        pass
+                try:
+                    _s.configure("Horizontal.TProgressbar", thickness=bar_h)
+                except tk.TclError:
+                    pass
                 for ent in getattr(self, "_url_entries", ()):
                     try:
                         if ent.winfo_exists():
@@ -1332,17 +1361,17 @@ class DeezerDownloaderGUI:
         options_scrollbar = ttk.Scrollbar(options_container, orient="vertical", command=options_canvas.yview)
         scrollable_options = ttk.Frame(options_canvas, style="Download.TFrame")
         
-        scrollable_options.bind("<Configure>", lambda e: options_canvas.configure(scrollregion=options_canvas.bbox("all")))
         cw_id = options_canvas.create_window((0, 0), window=scrollable_options, anchor="nw")
         self._music_options_canvas = options_canvas
         self._music_options_canvas_cw_id = cw_id
+        self._music_options_inner = scrollable_options
         options_canvas.configure(yscrollcommand=options_scrollbar.set)
         self._bind_scroll_wheel(options_canvas, scrollable_options)
-        # Form- und Button-Breite an Fenster anpassen (beim Größer/Kleiner-Schieben)
-        def _on_music_canvas_configure(e):
-            options_canvas.itemconfig(cw_id, width=max(400, e.width))
-        options_canvas.bind("<Configure>", _on_music_canvas_configure)
+        scrollable_options.bind("<Configure>", lambda e: self._sync_options_scroll(options_canvas, scrollable_options, cw_id))
+        options_canvas.bind("<Configure>", lambda e: self._sync_options_scroll(options_canvas, scrollable_options, cw_id))
         
+        music_actions = ttk.Frame(options_container, style="Download.TFrame")
+        music_actions.pack(side=tk.BOTTOM, fill=tk.X)
         options_canvas.pack(side="left", fill="both", expand=True)
         options_scrollbar.pack(side="right", fill="y")
         
@@ -1390,13 +1419,11 @@ class DeezerDownloaderGUI:
         format_frame.pack(fill=tk.X, padx=5, pady=2)
         default_music_format = self.settings.get('default_music_format', 'mp3')
         self.music_format_var = tk.StringVar(value=default_music_format)
-        for col in range(3):
-            format_frame.columnconfigure(col, weight=1)
         for index, (text, value) in enumerate([("MP3", "mp3"), ("MP4 (Audio)", "m4a"), ("Keine", "none")]):
-            ttk.Radiobutton(format_frame, text=text, variable=self.music_format_var, value=value, style="Download.TRadiobutton").grid(row=0, column=index, sticky=tk.W, padx=4, pady=1)
+            ttk.Radiobutton(format_frame, text=text, variable=self.music_format_var, value=value, style="Download.TRadiobutton").grid(row=0, column=index, sticky=tk.W, padx=(0, 8), pady=1)
         
         # Buttons: nebeneinander und untereinander, mit Abstand und Rand (Grid pady=2, Style mit Padding/Rand)
-        button_frame = ttk.Frame(opt, style="Download.TFrame")
+        button_frame = ttk.Frame(music_actions, style="Download.TFrame")
         button_frame.pack(fill=tk.X, padx=5, pady=0)
         button_frame.columnconfigure(0, weight=1)
         button_frame.columnconfigure(1, weight=1)
@@ -1411,9 +1438,9 @@ class DeezerDownloaderGUI:
         self.music_record_button.grid(row=2, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=2, ipady=0, ipadx=0)
         
         # Queue
-        self.music_queue_status_label = ttk.Label(opt, text="📋 Queue: 0 Einträge", style="Download.TLabel")
+        self.music_queue_status_label = ttk.Label(music_actions, text="📋 Queue: 0 Einträge", style="Download.TLabel")
         self.music_queue_status_label.pack(fill=tk.X, padx=5, pady=(0, 0))
-        queue_btn_frame = ttk.Frame(opt, style="Download.TFrame")
+        queue_btn_frame = ttk.Frame(music_actions, style="Download.TFrame")
         queue_btn_frame.pack(fill=tk.X, padx=5, pady=0)
         queue_btn_frame.columnconfigure(0, weight=1)
         queue_btn_frame.columnconfigure(1, weight=1)
@@ -1452,8 +1479,9 @@ class DeezerDownloaderGUI:
         self.music_progress_bar.pack(fill=tk.X, pady=(0, 5))
         
         self.music_status_var = tk.StringVar(value="Bereit")
-        music_status_label = ttk.Label(status_frame, textvariable=self.music_status_var, relief=tk.SUNKEN, anchor=tk.W, font=("Arial", 9), style="Download.TLabel")
+        music_status_label = ttk.Label(status_frame, textvariable=self.music_status_var, relief=tk.SUNKEN, anchor=tk.W, font=("Arial", 12), style="Download.TLabel")
         music_status_label.pack(fill=tk.X)
+        self.music_status_label = music_status_label
         self.music_jobs_var = tk.StringVar(value="")
         self.music_jobs_label = ttk.Label(
             status_frame, textvariable=self.music_jobs_var, anchor=tk.W, justify=tk.LEFT,
@@ -1589,17 +1617,17 @@ class DeezerDownloaderGUI:
         options_scrollbar = ttk.Scrollbar(options_container, orient="vertical", command=options_canvas.yview)
         scrollable_options = ttk.Frame(options_canvas, style="Download.TFrame")
         
-        scrollable_options.bind("<Configure>", lambda e: options_canvas.configure(scrollregion=options_canvas.bbox("all")))
         cw_id = options_canvas.create_window((0, 0), window=scrollable_options, anchor="nw")
         self._video_options_canvas = options_canvas
         self._video_options_canvas_cw_id = cw_id
+        self._video_options_inner = scrollable_options
         options_canvas.configure(yscrollcommand=options_scrollbar.set)
         self._bind_scroll_wheel(options_canvas, scrollable_options)
-        # Form- und Button-Breite an Fenster anpassen (beim Größer/Kleiner-Schieben)
-        def _on_video_canvas_configure(e):
-            options_canvas.itemconfig(cw_id, width=max(400, e.width))
-        options_canvas.bind("<Configure>", _on_video_canvas_configure)
+        scrollable_options.bind("<Configure>", lambda e: self._sync_options_scroll(options_canvas, scrollable_options, cw_id))
+        options_canvas.bind("<Configure>", lambda e: self._sync_options_scroll(options_canvas, scrollable_options, cw_id))
         
+        video_actions = ttk.Frame(options_container, style="Download.TFrame")
+        video_actions.pack(side=tk.BOTTOM, fill=tk.X)
         options_canvas.pack(side="left", fill="both", expand=True)
         options_scrollbar.pack(side="right", fill="y")
         
@@ -1640,11 +1668,9 @@ class DeezerDownloaderGUI:
         default_format = self.settings.get('default_video_format', 'mp4')
         self.video_format_var = tk.StringVar(value=default_format)
         formats = [("MP4", "mp4"), ("MP3", "mp3"), ("WebM", "webm"), ("MKV", "mkv"), ("AVI", "avi"), ("Keine", "none")]
-        for col in range(3):
-            format_frame.columnconfigure(col, weight=1)
         for index, (text, value) in enumerate(formats):
             ttk.Radiobutton(format_frame, text=text, variable=self.video_format_var, value=value, style="Download.TRadiobutton").grid(
-                row=index // 3, column=index % 3, sticky=tk.W, padx=4, pady=1
+                row=index // 3, column=index % 3, sticky=tk.W, padx=(0, 8), pady=1
             )
         
         # Qualität
@@ -1655,11 +1681,9 @@ class DeezerDownloaderGUI:
         default_quality = self.settings.get('default_video_quality', 'best')
         self.video_quality_var = tk.StringVar(value=default_quality)
         qualities = [("Beste", "best"), ("1080p", "1080p"), ("720p", "720p"), ("Niedrigste", "niedrigste")]
-        for col in range(4):
-            quality_frame.columnconfigure(col, weight=1)
         for index, (text, value) in enumerate(qualities):
             ttk.Radiobutton(quality_frame, text=text, variable=self.video_quality_var, value=value, style="Download.TRadiobutton").grid(
-                row=0, column=index, sticky=tk.W, padx=4, pady=1
+                row=0, column=index, sticky=tk.W, padx=(0, 8), pady=1
             )
         
         # Erweiterte Optionen
@@ -1699,7 +1723,7 @@ class DeezerDownloaderGUI:
         self.video_speed_value_var = tk.StringVar(value=str(self.settings.get('speed_limit_value', '5')))
         
         # Buttons: nebeneinander und untereinander, mit Abstand und Rand (Grid pady=2, Style mit Padding/Rand)
-        button_frame = ttk.Frame(opt, style="Download.TFrame")
+        button_frame = ttk.Frame(video_actions, style="Download.TFrame")
         button_frame.pack(fill=tk.X, padx=5, pady=0)
         button_frame.columnconfigure(0, weight=1)
         button_frame.columnconfigure(1, weight=1)
@@ -1712,17 +1736,17 @@ class DeezerDownloaderGUI:
         self.video_cancel_button = ttk.Button(button_frame, text="⏹ Download abbrechen", command=self.cancel_video_download, state=tk.DISABLED, style="Download.TButton")
         self.video_cancel_button.grid(row=1, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=2, ipady=0, ipadx=0)
         
-        self.video_queue_status_label = ttk.Label(opt, text="📋 Queue: 0 Downloads", style="Download.TLabel")
+        self.video_queue_status_label = ttk.Label(video_actions, text="📋 Queue: 0 Downloads", style="Download.TLabel")
         self.video_queue_status_label.pack(fill=tk.X, padx=5, pady=(0, 0))
         
-        queue_button_frame = ttk.Frame(opt, style="Download.TFrame")
+        queue_button_frame = ttk.Frame(video_actions, style="Download.TFrame")
         queue_button_frame.pack(fill=tk.X, padx=5, pady=0)
         queue_button_frame.columnconfigure(0, weight=1)
         queue_button_frame.columnconfigure(1, weight=1)
         queue_button_frame.rowconfigure(0, pad=2)
         ttk.Button(queue_button_frame, text="📋 Queue anzeigen", command=self.show_download_queue, style="Download.TButton.Large").grid(row=0, column=0, sticky=(tk.W, tk.E), padx=(0, 1), pady=2, ipady=0, ipadx=0)
         ttk.Button(queue_button_frame, text="▶ Queue starten", command=self.start_queue_download, style="Download.TButton.Large").grid(row=0, column=1, sticky=(tk.W, tk.E), padx=(1, 0), pady=2, ipady=0, ipadx=0)
-        ttk.Button(opt, text="⏰ Geplante Downloads", command=self.show_scheduled_downloads, style="Download.TButton.Large").pack(fill=tk.X, padx=5, pady=2, ipady=0, ipadx=0)
+        ttk.Button(video_actions, text="⏰ Geplante Downloads", command=self.show_scheduled_downloads, style="Download.TButton.Large").pack(fill=tk.X, padx=5, pady=2, ipady=0, ipadx=0)
         
         # Initialisiere States und Sichtbarkeit
         self._update_subtitle_language_state()
@@ -1784,8 +1808,9 @@ class DeezerDownloaderGUI:
         self.video_progress_bar.pack(fill=tk.X, pady=(0, 5))
         
         self.video_status_var = tk.StringVar(value="Bereit")
-        video_status_label = ttk.Label(status_frame, textvariable=self.video_status_var, relief=tk.SUNKEN, anchor=tk.W, font=("Arial", 9), style="Download.TLabel")
+        video_status_label = ttk.Label(status_frame, textvariable=self.video_status_var, relief=tk.SUNKEN, anchor=tk.W, font=("Arial", 12), style="Download.TLabel")
         video_status_label.pack(fill=tk.X)
+        self.video_status_label = video_status_label
         self.video_jobs_var = tk.StringVar(value="")
         self.video_jobs_label = ttk.Label(
             status_frame, textvariable=self.video_jobs_var, anchor=tk.W, justify=tk.LEFT,
@@ -4072,7 +4097,7 @@ class DeezerDownloaderGUI:
         list_frame = ttk.LabelFrame(main, text="Überwachte Serien", padding="8", style="Download.TLabelframe")
         list_frame.pack(fill=tk.BOTH, expand=True, pady=5)
         lb = tk.Listbox(
-            list_frame, height=11, font=("Arial", 12), exportselection=False,
+            list_frame, height=11, font=("Arial", 14), exportselection=False,
             bg=getattr(self, '_tk_bg_card', '#424242'), fg=getattr(self, '_tk_fg_text', '#e8e8e8'),
             selectbackground=getattr(self, '_tk_btn_bg', '#4a4a4a'), highlightthickness=0,
         )
@@ -4104,12 +4129,12 @@ class DeezerDownloaderGUI:
 
         add_fr = ttk.Frame(main, style="Download.TFrame")
         add_fr.pack(fill=tk.X, pady=8)
-        ttk.Label(add_fr, text="URL:", style="Download.TLabel").pack(side=tk.LEFT, padx=(0, 4))
+        ttk.Label(add_fr, text="URL:", font=("Arial", 13)).pack(side=tk.LEFT, padx=(0, 4))
         url_var = tk.StringVar()
-        ttk.Entry(add_fr, textvariable=url_var, width=48, style="Download.TEntry").pack(side=tk.LEFT, padx=2, fill=tk.X, expand=True)
-        ttk.Label(add_fr, text="Name (optional):", style="Download.TLabel").pack(side=tk.LEFT, padx=(8, 4))
+        ttk.Entry(add_fr, textvariable=url_var, width=48, font=("Arial", 14), style="Download.TEntry").pack(side=tk.LEFT, padx=2, fill=tk.X, expand=True, ipady=4)
+        ttk.Label(add_fr, text="Name (optional):", font=("Arial", 13)).pack(side=tk.LEFT, padx=(8, 4))
         name_var = tk.StringVar()
-        ttk.Entry(add_fr, textvariable=name_var, width=16, style="Download.TEntry").pack(side=tk.LEFT, padx=2)
+        ttk.Entry(add_fr, textvariable=name_var, width=16, font=("Arial", 14), style="Download.TEntry").pack(side=tk.LEFT, padx=2, ipady=4)
 
         btn_fr = ttk.Frame(main, style="Download.TFrame")
         btn_fr.pack(fill=tk.X, pady=4)
@@ -4370,6 +4395,149 @@ class DeezerDownloaderGUI:
             if fmt and hasattr(self, 'video_format_var'):
                 self.video_format_var.set(fmt)
 
+    def _blit_photo(self, photo, pil_img):
+        rows = []
+        w, h = pil_img.size
+        px = pil_img.load()
+        for y in range(h):
+            rows.append("{" + " ".join("#%02x%02x%02x" % px[x, y][:3] for x in range(w)) + "}")
+        photo.put(" ".join(rows), to=(0, 0))
+
+    def _smooth_disc(self, size, bg, fg, selected):
+        """Kreis in hoher Auflösung, danach weich verkleinert. Sonst sind die Ränder Treppen."""
+        from PIL import Image, ImageDraw
+        scale = 8
+        bg_rgb = tuple(int(bg[i:i + 2], 16) for i in (1, 3, 5))
+        fg_rgb = tuple(int(fg[i:i + 2], 16) for i in (1, 3, 5))
+        im = Image.new("RGB", (size * scale, size * scale), bg_rgb)
+        draw = ImageDraw.Draw(im)
+        pad = int(scale * 1.2)
+        ring = max(2, int(scale * 1.7))
+        box = (pad, pad, size * scale - pad - 1, size * scale - pad - 1)
+        draw.ellipse(box, outline=fg_rgb, width=ring)
+        if selected:
+            inset = int((size * scale) * 0.30)
+            draw.ellipse((inset, inset, size * scale - inset - 1, size * scale - inset - 1), fill=fg_rgb)
+        one = im.resize((size, size), Image.Resampling.LANCZOS)
+        two = im.resize((size * 2, size * 2), Image.Resampling.LANCZOS)
+        return one, two
+
+    def _paint_mark(self, img, bg, fg, kind):
+        """Zeichnet Kreis oder Kästchen in ein bestehendes PhotoImage."""
+        size = int(img.width())
+        if kind.startswith("radio"):
+            one, two = self._smooth_disc(size, bg, fg, kind == "radio-on")
+            self._blit_photo(img, one)
+            images = getattr(self, "_choice_images", None) or {}
+            key = "radio_on_2x" if kind == "radio-on" else "radio_off_2x"
+            if images.get(key) is not None:
+                self._blit_photo(images[key], two)
+            return
+        img.put(bg, to=(0, 0, size, size))
+        for y in range(size):
+            for x in range(size):
+                edge = 1 <= x <= size - 2 and 1 <= y <= size - 2 and (
+                    x <= 2 or y <= 2 or x >= size - 3 or y >= size - 3
+                )
+                if edge:
+                    img.put(fg, to=(x, y))
+        if kind == "check-on":
+            m = size * 0.24
+            self._stamp_line(img, m, m, size - m, size - m, fg, 1)
+            self._stamp_line(img, size - m, m, m, size - m, fg, 1)
+
+    def _stamp_line(self, img, x0, y0, x1, y1, color, thick):
+        size = int(img.width())
+        steps = int(max(abs(x1 - x0), abs(y1 - y0)) * 3) + 1
+        for i in range(steps + 1):
+            t = i / steps
+            x = x0 + (x1 - x0) * t
+            y = y0 + (y1 - y0) * t
+            for dx in range(-thick, thick + 1):
+                for dy in range(-thick, thick + 1):
+                    if dx * dx + dy * dy > thick * thick + 1:
+                        continue
+                    ix = int(round(x + dx))
+                    iy = int(round(y + dy))
+                    if 1 <= ix < size - 1 and 1 <= iy < size - 1:
+                        img.put(color, to=(ix, iy))
+
+    def _sync_options_scroll(self, canvas, inner, window_id):
+        """Scrollbereich nur so hoch wie der Inhalt. Sonst rutscht das Feld ins Leere."""
+        try:
+            if not canvas.winfo_exists():
+                return
+            width = max(1, int(canvas.winfo_width()))
+            height = max(1, int(canvas.winfo_height()))
+            inner.update_idletasks()
+            need = max(1, int(inner.winfo_reqheight()))
+            canvas.itemconfig(window_id, width=width, height=need)
+            if need <= height + 1:
+                canvas.configure(scrollregion=(0, 0, width, height))
+                canvas.yview_moveto(0)
+            else:
+                canvas.configure(scrollregion=(0, 0, width, need))
+        except tk.TclError:
+            pass
+
+    def _install_choice_indicators(self, bg, fg):
+        """Größere Kreise und Kästchen. clam zeichnet die Markierung sonst fest und klein."""
+        try:
+            radio_size, check_size = 22, 20
+            images = getattr(self, "_choice_images", None)
+            if not images or images["radio_off"].width() != radio_size:
+                images = {
+                    "radio_off": tk.PhotoImage(width=radio_size, height=radio_size),
+                    "radio_on": tk.PhotoImage(width=radio_size, height=radio_size),
+                    "radio_off_2x": tk.PhotoImage(width=radio_size * 2, height=radio_size * 2),
+                    "radio_on_2x": tk.PhotoImage(width=radio_size * 2, height=radio_size * 2),
+                    "check_off": tk.PhotoImage(width=check_size, height=check_size),
+                    "check_on": tk.PhotoImage(width=check_size, height=check_size),
+                }
+                self._choice_images = images
+                fresh = True
+            else:
+                fresh = False
+            self._paint_mark(images["radio_off"], bg, fg, "radio-off")
+            self._paint_mark(images["radio_on"], bg, fg, "radio-on")
+            for key, twin in (("radio_off", "radio_off_2x"), ("radio_on", "radio_on_2x")):
+                try:
+                    images[key].tk.call(images[key], "configure", "-format", ("retina", images[twin]))
+                except tk.TclError:
+                    pass
+            self._paint_mark(images["check_off"], bg, fg, "check-off")
+            self._paint_mark(images["check_on"], bg, fg, "check-on")
+            style = ttk.Style()
+            if fresh:
+                style.element_create(
+                    "Download.Radio.ind", "image", images["radio_off"],
+                    ("selected", images["radio_on"]),
+                    ("active", images["radio_off"]),
+                    ("active", "selected", images["radio_on"]),
+                    sticky="w",
+                )
+                style.element_create(
+                    "Download.Check.ind", "image", images["check_off"],
+                    ("selected", images["check_on"]),
+                    ("active", images["check_off"]),
+                    ("active", "selected", images["check_on"]),
+                    sticky="w",
+                )
+                style.layout("Download.TRadiobutton", [
+                    ("Radiobutton.padding", {"sticky": "nswe", "children": [
+                        ("Download.Radio.ind", {"side": "left", "sticky": "w"}),
+                        ("Radiobutton.label", {"side": "left", "sticky": "w"}),
+                    ]}),
+                ])
+                style.layout("Download.TCheckbutton", [
+                    ("Checkbutton.padding", {"sticky": "nswe", "children": [
+                        ("Download.Check.ind", {"side": "left", "sticky": "w"}),
+                        ("Checkbutton.label", {"side": "left", "sticky": "w"}),
+                    ]}),
+                ])
+        except tk.TclError:
+            pass
+
     def _apply_theme(self, theme_name: str):
         """Wendet Dark- oder Light-Theme auf ttk-Styles an."""
         try:
@@ -4411,6 +4579,7 @@ class DeezerDownloaderGUI:
             _s.map("Download.TRadiobutton", background=[("active", _bg_panel)], foreground=[("active", _fg_text)])
             _s.configure("Download.TCheckbutton", background=_bg_panel, foreground=_fg_text, font=("Arial", 9))
             _s.map("Download.TCheckbutton", background=[("active", _bg_panel)], foreground=[("active", _fg_text)])
+            self._install_choice_indicators(_bg_panel, _fg_text)
             _s.configure("Download.TButton", font=("Arial", 9), padding=(20, 4), anchor="center", background=_btn_bg, foreground=_btn_fg, relief="raised", borderwidth=2)
             try:
                 _s.configure("Download.TButton", lightcolor=_btn_light, darkcolor=_btn_dark)
@@ -9655,12 +9824,12 @@ class DeezerDownloaderGUI:
         """
         from datetime import datetime
         
-        # Duplikat prüfen: URL bereits in Queue?
+        # Duplikat prüfen: URL bereits in Queue oder gerade am Laden?
         existing_urls = []
         for item in getattr(self, 'video_download_queue', []):
             u = item.get('url', item) if isinstance(item, dict) else item
             existing_urls.append(u)
-        if url in existing_urls:
+        if url in existing_urls or url in getattr(self, '_video_active_urls', set()):
             self.video_log(f"⚠ URL bereits in der Queue, nicht erneut hinzugefügt: {url[:60]}…")
             if show_dialog:
                 messagebox.showinfo("Bereits in Queue", "Diese URL befindet sich bereits in der Warteschlange.")
@@ -10114,6 +10283,10 @@ class DeezerDownloaderGUI:
                 url, queue_item=queue_item, parallel_gui=parallel_gui, _from_queue_worker=True
             )
         finally:
+            try:
+                self._video_active_urls.discard(url)
+            except Exception:
+                pass
             def _worker_finished():
                 if parallel_gui and parallel_gui._process:
                     try:
@@ -10191,6 +10364,10 @@ class DeezerDownloaderGUI:
             url = queue_item.get('url', queue_item) if isinstance(queue_item, dict) else queue_item
             if not isinstance(queue_item, dict):
                 queue_item = {'url': url}
+            if url in self._video_active_urls:
+                self.video_log(f"⚠ Läuft schon, nicht doppelt gestartet: {url[:70]}")
+                continue
+            self._video_active_urls.add(url)
             self._last_video_download_url = url
             with self._video_parallel_lock:
                 self._video_parallel_workers += 1
@@ -11728,12 +11905,12 @@ class DeezerDownloaderGUI:
         stats_window.title("Download-Statistiken")
         stats_window.transient(self.root)
         self._apply_dark_toplevel(stats_window)
-        self._fit_dialog(stats_window, 560, 560, 440, 420)
+        self._fit_dialog(stats_window, 720, 640, 480, 420)
         
         frame = ttk.Frame(stats_window, padding="20")
         frame.pack(fill=tk.BOTH, expand=True)
         
-        ttk.Label(frame, text="Download-Statistiken", font=("Arial", 14, "bold")).pack(pady=(0, 12))
+        ttk.Label(frame, text="Download-Statistiken", font=("Arial", 16, "bold")).pack(anchor=tk.W, pady=(0, 12))
 
         def _block(title, stats):
             last = stats.get('last_download') or 'Nie'
@@ -11759,21 +11936,53 @@ class DeezerDownloaderGUI:
             ),
         }
         fail_path = self._failed_downloads_path()
-        stats_text = (
-            _block("Zusammen", combined)
-            + "\n\n"
-            + _block("Video", video_stats)
-            + "\n\n"
-            + _block("Musik", music_stats)
-            + "\n\n"
-            + f"Geplante Downloads: {len(self.video_scheduled_downloads)}\n"
-            + f"Favoriten: {len(self.video_favorites)}\n"
-            + f"Historie-Einträge: {len(self.video_download_history)}\n\n"
-            + "Fehlgeschlagene Links (zum Nachreichen):\n"
-            + str(fail_path)
+        blocks = ttk.Frame(frame)
+        blocks.pack(anchor=tk.NW, fill=tk.X)
+        block_labels = []
+        for title, data in (("Zusammen", combined), ("Video", video_stats), ("Musik", music_stats)):
+            lab = ttk.Label(blocks, text=_block(title, data), justify=tk.LEFT, anchor=tk.NW, font=("Arial", 15))
+            block_labels.append(lab)
+        footer = ttk.Label(
+            blocks,
+            text=(
+                f"Geplante Downloads: {len(self.video_scheduled_downloads)}\n"
+                f"Favoriten: {len(self.video_favorites)}\n"
+                f"Historie-Einträge: {len(self.video_download_history)}\n\n"
+                f"Fehlgeschlagene Links (zum Nachreichen):\n{fail_path}"
+            ),
+            justify=tk.LEFT,
+            anchor=tk.NW,
+            font=("Arial", 15),
         )
-        
-        ttk.Label(frame, text=stats_text.strip(), font=("Arial", 10), justify=tk.LEFT, wraplength=500).pack(anchor=tk.W)
+        stats_layout = {"wide": None, "size": None}
+
+        def _place_stats(width):
+            wide = width >= 860
+            size = 18 if width >= 1200 else 16 if width >= 860 else 14
+            if stats_layout["wide"] == wide and stats_layout["size"] == size:
+                return
+            stats_layout["wide"] = wide
+            stats_layout["size"] = size
+            for lab in block_labels:
+                lab.grid_forget()
+            footer.grid_forget()
+            for lab in block_labels + [footer]:
+                lab.configure(font=("Arial", size))
+            if wide:
+                for i, lab in enumerate(block_labels):
+                    lab.grid(row=0, column=i, sticky=tk.NW, padx=(0, 36), pady=(0, 8))
+                footer.grid(row=1, column=0, columnspan=3, sticky=tk.NW, pady=(12, 0))
+            else:
+                for i, lab in enumerate(block_labels):
+                    lab.grid(row=i, column=0, sticky=tk.NW, pady=(0, 12))
+                footer.grid(row=len(block_labels), column=0, sticky=tk.NW, pady=(4, 0))
+
+        def _grow_stats(event):
+            if event.widget is frame:
+                _place_stats(event.width)
+
+        frame.bind("<Configure>", _grow_stats)
+        frame.after(50, lambda: _place_stats(max(640, frame.winfo_width())))
         
         button_frame = ttk.Frame(frame)
         button_frame.pack(fill=tk.X, pady=(20, 0))
@@ -12034,7 +12243,7 @@ class DeezerDownloaderGUI:
         win = tk.Toplevel(parent)
         win.title("Was ist neu?")
         win.transient(parent)
-        self._fit_dialog(win, 720, 560, 480, 320)
+        self._fit_dialog(win, 860, 680, 560, 420)
         try:
             win.update_idletasks()
             x = (win.winfo_screenwidth() // 2) - (win.winfo_width() // 2)
@@ -12045,8 +12254,13 @@ class DeezerDownloaderGUI:
 
         frm = ttk.Frame(win, padding=12)
         frm.pack(fill=tk.BOTH, expand=True)
-        ttk.Label(frm, text="Änderungen & Hinweise", font=("Arial", 12, "bold")).pack(anchor=tk.W, pady=(0, 8))
-        txt = scrolledtext.ScrolledText(frm, wrap=tk.WORD, height=16, width=70, font=("Arial", 10))
+        ttk.Label(frm, text="Änderungen & Hinweise", font=("Arial", 16, "bold")).pack(anchor=tk.W, pady=(0, 8))
+        _bg = getattr(self, "_tk_bg_card", "#424242")
+        _fg = getattr(self, "_tk_fg_text", "#e8e8e8")
+        txt = scrolledtext.ScrolledText(
+            frm, wrap=tk.WORD, height=18, width=72, font=("Arial", 14),
+            bg=_bg, fg=_fg, insertbackground=_fg, highlightthickness=0, relief=tk.FLAT,
+        )
         txt.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
         txt.insert("1.0", body)
         txt.config(state=tk.DISABLED)
@@ -12248,6 +12462,7 @@ class DeezerDownloaderGUI:
         download_window.title(f"Update auf {update_info['version']}")
         download_window.geometry("560x260")
         download_window.transient(parent_window or self.root)
+        self._apply_app_icon(download_window)
         
         frame = ttk.Frame(download_window, padding="20")
         frame.pack(fill=tk.BOTH, expand=True)
@@ -12425,8 +12640,20 @@ class DeezerDownloaderGUI:
             f"$isSetup = ${'true' if is_setup else 'false'}\n"
             "Log ('start dir=' + $dir + ' elevate=' + $elevate)\n"
             "while (Get-Process -Id $pidWait -ErrorAction SilentlyContinue) { Start-Sleep -Seconds 1 }\n"
-            "Get-Process -Name UniversalDownloader -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue\n"
-            "Start-Sleep -Seconds 2\n"
+            "Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {\n"
+            "  $_.Name -match '^(UniversalDownloader|UniversalDownloaderTray)(\\.exe)?$' -or\n"
+            "  ($_.CommandLine -and $_.CommandLine -match 'series-watch-tray')\n"
+            "} | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }\n"
+            "$unlocked = $false\n"
+            "for ($i = 0; $i -lt 20; $i++) {\n"
+            "  try {\n"
+            "    $fs = [System.IO.File]::Open($app, 'Open', 'Read', 'None')\n"
+            "    $fs.Close()\n"
+            "    $unlocked = $true\n"
+            "    break\n"
+            "  } catch { Start-Sleep -Milliseconds 500 }\n"
+            "}\n"
+            "Log ('unlocked=' + $unlocked)\n"
             "$code = 1\n"
             "try {\n"
             "  if ($isSetup) {\n"
@@ -14023,6 +14250,11 @@ def main():
             pass
     
     root = tk.Tk()
+    # Sonst blitzt zuerst das kleine Standardfenster auf, bevor die richtige Größe steht.
+    try:
+        root.withdraw()
+    except Exception:
+        pass
     
     # Setze WM_CLASS für Linux (MUSS sofort nach tk.Tk() gesetzt werden, vor allem anderen)
     if sys.platform.startswith("linux"):

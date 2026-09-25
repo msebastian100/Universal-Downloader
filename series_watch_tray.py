@@ -840,13 +840,14 @@ class WinNotifyIcon:
         self._class_atom = atom
         WS_POPUP = 0x80000000
         WS_EX_TOOLWINDOW = 0x00000080
+        WS_EX_NOACTIVATE = 0x08000000
         hwnd = user32.CreateWindowExW(
-            WS_EX_TOOLWINDOW,
+            WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
             cls_name,
             "UD Series Watch",
             WS_POPUP,
-            0,
-            0,
+            -32000,
+            -32000,
             1,
             1,
             None,
@@ -861,13 +862,17 @@ class WinNotifyIcon:
         try:
             HWND_TOPMOST = -1
             SWP_NOACTIVATE = 0x0010
-            SWP_SHOWWINDOW = 0x0040
+            SWP_HIDEWINDOW = 0x0080
+            SWP_NOSIZE = 0x0001
             user32.SetWindowPos.argtypes = [
                 wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int,
                 ctypes.c_int, ctypes.c_int, wintypes.UINT,
             ]
             user32.SetWindowPos.restype = wintypes.BOOL
-            user32.SetWindowPos(hwnd, HWND_TOPMOST, -32000, -32000, 1, 1, SWP_NOACTIVATE | SWP_SHOWWINDOW)
+            user32.SetWindowPos(
+                hwnd, HWND_TOPMOST, -32000, -32000, 1, 1,
+                SWP_NOACTIVATE | SWP_HIDEWINDOW | SWP_NOSIZE,
+            )
         except Exception:
             pass
         try:
@@ -1725,6 +1730,32 @@ class LinuxStatusIcon:
             pass
 
 
+def _windows_startup_script_path() -> Path:
+    appdata = os.environ.get("APPDATA") or str(Path.home() / "AppData" / "Roaming")
+    return (
+        Path(appdata)
+        / "Microsoft"
+        / "Windows"
+        / "Start Menu"
+        / "Programs"
+        / "Startup"
+        / "Universal Downloader Serien-Wächter.vbs"
+    )
+
+
+def _windows_startup_folder_script(cmd: str) -> None:
+    """Zusätzlich zum Run-Schlüssel. Der wird nach einem Neustart oft nicht ausgeführt."""
+    script = _windows_startup_script_path()
+    script.parent.mkdir(parents=True, exist_ok=True)
+    safe = cmd.replace('"', '""')
+    script.write_text(
+        'Set sh = CreateObject("Wscript.Shell")\n'
+        f'sh.Run "{safe}", 0, False\n',
+        encoding="utf-8",
+    )
+    _log(f"Autostart (Windows Startup-Ordner): {script}")
+
+
 def install_login_autostart() -> bool:
     """Wächter beim Anmelden starten: Windows (Run), macOS (LaunchAgent), Linux (autostart.desktop)."""
     argv = get_tray_launch_argv()
@@ -1740,6 +1771,7 @@ def install_login_autostart() -> bool:
             )
             winreg.SetValueEx(key, "UniversalDownloaderSeriesWatch", 0, winreg.REG_SZ, cmd)
             winreg.CloseKey(key)
+            _windows_startup_folder_script(cmd)
             _log(f"Autostart (Windows Run): {cmd}")
             return True
         if sys.platform == "darwin":
@@ -1825,6 +1857,9 @@ def remove_login_autostart() -> None:
             except OSError:
                 pass
             winreg.CloseKey(key)
+            script = _windows_startup_script_path()
+            if script.is_file():
+                script.unlink()
             return
         if sys.platform == "darwin":
             plist = Path.home() / "Library" / "LaunchAgents" / "de.plertanix.universal-downloader.series-watch.plist"

@@ -145,7 +145,25 @@ def install_ffmpeg_if_missing():
     
     return False
 
+def _hide_windows_console() -> None:
+    """Konsolenfenster sofort weg, auch bei der gepackten EXE."""
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+
+        kernel32 = ctypes.windll.kernel32
+        user32 = ctypes.windll.user32
+        hwnd = kernel32.GetConsoleWindow()
+        if hwnd:
+            user32.ShowWindow(hwnd, 0)
+        kernel32.FreeConsole()
+    except Exception:
+        pass
+
+
 if __name__ == "__main__":
+    _hide_windows_console()
     # Eigenständiger Serien-Wächter (System-Tray / Menüleiste), auch aus der gepackten .exe
     if "--series-watch-tray" in sys.argv:
         # LSUIElement setzen, BEVOR irgendwer NSApplication.startet – sonst Dock-Icon.
@@ -537,22 +555,6 @@ if __name__ == "__main__":
     
     try:
         debug_log("Importiere gui...")
-        
-        # Verstecke Terminal-Fenster auf Windows (nur wenn nicht frozen)
-        if sys.platform == "win32" and not getattr(sys, 'frozen', False):
-            try:
-                import ctypes
-                # SW_HIDE = 0
-                kernel32 = ctypes.windll.kernel32
-                user32 = ctypes.windll.user32
-                # Finde das Konsolen-Fenster
-                hwnd = kernel32.GetConsoleWindow()
-                if hwnd:
-                    # Verstecke das Konsolen-Fenster
-                    user32.ShowWindow(hwnd, 0)  # SW_HIDE
-                    debug_log("Terminal-Fenster versteckt")
-            except Exception as e:
-                debug_log(f"Konnte Terminal-Fenster nicht verstecken: {e}", "WARNING")
         
         from gui import main
         

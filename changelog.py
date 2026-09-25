@@ -11,6 +11,68 @@ from typing import List, Optional, Dict, Any
 # Neueste Version zuerst – wird für „Erster Start“ und Upgrade-Anzeige genutzt
 RELEASE_NOTES: List[Dict[str, Any]] = [
     {
+        "version": "2.1.70",
+        "date": "2026-09-25",
+        "items": [
+            "Beim Start blitzt kein kleines Zusatzfenster mehr auf. Unter Windows bleibt auch die Konsole zu.",
+        ],
+    },
+    {
+        "version": "2.1.69",
+        "date": "2026-09-25",
+        "items": [
+            "Windows: der Serien-Wächter startet nach der Anmeldung auch über den Autostart-Ordner.",
+            "Vor einem Update wird der Serien-Wächter beendet. Update-Fenster nutzen das Programm-Symbol.",
+        ],
+    },
+    {
+        "version": "2.1.68",
+        "date": "2026-09-25",
+        "items": [
+            "Statistiken nutzen die Breite: Zusammen, Video und Musik stehen nebeneinander.",
+            "Das Fenster „Was ist neu?“ ist etwas größer, der Text auch.",
+        ],
+    },
+    {
+        "version": "2.1.67",
+        "date": "2026-09-25",
+        "items": [
+            "Dieselbe Folge wird nicht mehr zweimal gleichzeitig geladen. Das hat den Umbenenn-Fehler ausgelöst.",
+            "Fortschritt und Statuszeile wachsen mit dem Fenster. Das X in den Kästchen ist dünner.",
+            "Statistiken bleiben oben, die Schrift wird mit dem Fenster größer.",
+        ],
+    },
+    {
+        "version": "2.1.66",
+        "date": "2026-09-25",
+        "items": [
+            "Kästchen zeigen wieder ein X. Die Auswahlkreise sind weich gezeichnet.",
+        ],
+    },
+    {
+        "version": "2.1.65",
+        "date": "2026-09-25",
+        "items": [
+            "Kästchen zeigen wieder ein sichtbares Häkchen. Format und Qualität sind etwas größer.",
+            "Die Optionsleiste lässt sich nicht mehr ins Leere schieben.",
+        ],
+    },
+    {
+        "version": "2.1.64",
+        "date": "2026-09-25",
+        "items": [
+            "Download-Knöpfe bleiben unten sichtbar. Format und Qualität stehen enger.",
+            "Serien-Wächter: Liste und URL-Felder größer. Statistiken wachsen mit dem Fenster.",
+        ],
+    },
+    {
+        "version": "2.1.63",
+        "date": "2026-09-25",
+        "items": [
+            "Format und Qualität stehen enger beieinander, Kreise und Kästchen sind größer.",
+        ],
+    },
+    {
         "version": "2.1.62",
         "date": "2026-09-25",
         "items": [
