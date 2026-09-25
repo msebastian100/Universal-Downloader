@@ -12600,14 +12600,17 @@ class DeezerDownloaderGUI:
             return False, str(e)
     
     def _is_inno_setup(self, path: Path) -> bool:
+        if "setup" in path.name.lower():
+            return True
         try:
             size = path.stat().st_size
+            # Die Kennung liegt hinter dem Archiv, oft mehr als 1 MB vor dem Dateiende.
             with open(path, "rb") as fh:
-                fh.seek(max(0, size - 512_000))
+                fh.seek(max(0, size - 8_000_000))
                 tail = fh.read()
             return b"Inno Setup" in tail
         except Exception:
-            return "setup" in path.name.lower()
+            return False
 
     def _windows_handoff_update(self, update_file: Path):
         """Installer erst starten, wenn dieses Programm beendet ist.
@@ -12686,16 +12689,24 @@ class DeezerDownloaderGUI:
             "Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue\n"
         )
         ps1.write_text(script, encoding="utf-8-sig")
+        self._stop_windows_watchers()
+        system_root = os.environ.get("SystemRoot") or r"C:\Windows"
+        powershell = str(Path(system_root) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe")
+        if not Path(powershell).is_file():
+            powershell = "powershell"
         flags = 0
-        if hasattr(subprocess, "DETACHED_PROCESS"):
-            flags |= subprocess.DETACHED_PROCESS
         if hasattr(subprocess, "CREATE_NEW_PROCESS_GROUP"):
             flags |= subprocess.CREATE_NEW_PROCESS_GROUP
         if hasattr(subprocess, "CREATE_NO_WINDOW"):
             flags |= subprocess.CREATE_NO_WINDOW
+        startup = subprocess.STARTUPINFO()
+        startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        startup.wShowWindow = 0
+        # Ohne DETACHED_PROCESS: die Kombination mit CREATE_NO_WINDOW beendet den
+        # Helfer sofort wieder, dann passiert nach dem Download nichts.
         subprocess.Popen(
             [
-                "powershell",
+                powershell,
                 "-NoProfile",
                 "-ExecutionPolicy",
                 "Bypass",
@@ -12705,12 +12716,43 @@ class DeezerDownloaderGUI:
                 str(ps1),
             ],
             creationflags=flags,
-            close_fds=True,
+            startupinfo=startup,
+            close_fds=False,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
         return True, "handoff"
+
+    def _stop_windows_watchers(self) -> None:
+        """Serien-Wächter beenden. Er ist dieselbe EXE und blockiert sonst das Update."""
+        if sys.platform != "win32":
+            return
+        me = os.getpid()
+        flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        try:
+            subprocess.run(
+                [
+                    "powershell",
+                    "-NoProfile",
+                    "-Command",
+                    (
+                        "Get-CimInstance Win32_Process | Where-Object { "
+                        f"$_.ProcessId -ne {int(me)} -and ("
+                        "$_.Name -match '^(UniversalDownloader|UniversalDownloaderTray)(\\.exe)?$' -or "
+                        "($_.CommandLine -and $_.CommandLine -match 'series-watch-tray')"
+                        ") } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
+                    ),
+                ],
+                creationflags=flags,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=15,
+                check=False,
+            )
+        except Exception:
+            pass
 
     def _exit_for_windows_update(self):
         try:
