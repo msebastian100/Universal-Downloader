@@ -8,6 +8,7 @@ Erkennt automatisch das richtige Audio-Input-Device für System-Audio-Aufnahme
 import subprocess
 import sys
 import re
+from pathlib import Path
 from typing import Optional, List, Dict, Tuple
 
 
@@ -35,7 +36,33 @@ class AudioDeviceDetector:
     
     @staticmethod
     def _detect_windows_device() -> Tuple[Optional[str], str]:
-        """Erkennt Windows Audio-Device (Stereo Mix oder Virtual Audio Capturer)"""
+        """Getrennte Aufnahmespur, sonst die eingebaute WASAPI-Schleife."""
+        cable = AudioDeviceDetector._detect_windows_virtual_cable()
+        if cable[0]:
+            return cable
+        return "wasapi", "Windows-Systemton (WASAPI, alles was gerade ausgegeben wird)"
+
+    @staticmethod
+    def _detect_windows_virtual_cable() -> Tuple[Optional[str], str]:
+        """Eigenes Aufnahmegerät, falls ein virtuelles Kabel installiert ist."""
+        try:
+            result = subprocess.run(
+                ["ffmpeg", "-list_devices", "true", "-f", "dshow", "-i", "dummy"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            for match in re.finditer(r'audio="([^"]+)"', result.stderr or "", re.IGNORECASE):
+                name = match.group(1)
+                if any(key in name.lower() for key in ("cable", "vb-audio", "voicemeeter", "blackhole")):
+                    return f"audio={name}", f"Eigene Spur: {name}"
+        except (OSError, subprocess.SubprocessError):
+            pass
+        return None, ""
+
+    @staticmethod
+    def _detect_windows_stereo_mix() -> Tuple[Optional[str], str]:
+        """Stereo Mix, falls die WASAPI-Schleife auf diesem ffmpeg fehlt."""
         try:
             # Liste alle verfügbaren Audio-Devices
             result = subprocess.run(
@@ -60,10 +87,6 @@ class AudioDeviceDetector:
                     device_name = matches[0].strip('"')
                     return f"audio={device_name}", f"Stereo Mix gefunden: {device_name}"
             
-            # Suche nach Virtual Audio Capturer
-            if "virtual-audio-capturer" in devices_text.lower():
-                return "audio=virtual-audio-capturer", "Virtual Audio Capturer gefunden"
-            
             # Fallback: Versuche Standard-Namen
             if "Stereo Mix" in devices_text:
                 # Extrahiere genauen Namen
@@ -71,14 +94,26 @@ class AudioDeviceDetector:
                 if match:
                     return f"audio={match.group(1)}", f"Stereo Mix gefunden: {match.group(1)}"
             
-            return None, "Kein Stereo Mix oder Virtual Audio Capturer gefunden. Bitte aktivieren Sie Stereo Mix in Windows Sound-Einstellungen."
+            return None, "Stereo Mix ist nicht aktiv. In den Windows-Klangeinstellungen unter Aufnahme einblenden und aktivieren."
             
         except Exception as e:
             return None, f"Fehler bei Device-Erkennung: {e}"
     
     @staticmethod
+    def _ensure_macos_route() -> None:
+        """Legt „UD Aufnahme“ an, falls BlackHole vorhanden ist."""
+        helper = Path(__file__).resolve().parent / "tools" / "ud-aufnahme"
+        if not helper.is_file():
+            return
+        try:
+            subprocess.run([str(helper)], capture_output=True, text=True, timeout=8)
+        except (OSError, subprocess.SubprocessError):
+            pass
+
+    @staticmethod
     def _detect_macos_device() -> Tuple[Optional[str], str]:
-        """Erkennt macOS Audio-Device (BlackHole oder System-Audio)"""
+        """Nimmt nur BlackHole auf. Andere Programme wählen die Ausgabe „UD Aufnahme“."""
+        AudioDeviceDetector._ensure_macos_route()
         try:
             # Liste alle verfügbaren Audio-Devices
             result = subprocess.run(
@@ -107,14 +142,14 @@ class AudioDeviceDetector:
                     id_match = re.search(r'\[(\d+)\]', line)
                     if id_match:
                         device_id = id_match.group(1)
-                        return f":{device_id}", f"BlackHole gefunden (Device ID: {device_id})"
+                        return f":{device_id}", "UD Aufnahme (im anderen Programm diese Ausgabe wählen)"
                     
                     # Prüfe nächste Zeile
                     if i + 1 < len(lines):
                         id_match = re.search(r'\[(\d+)\]', lines[i + 1])
                         if id_match:
                             device_id = id_match.group(1)
-                            return f":{device_id}", f"BlackHole gefunden (Device ID: {device_id})"
+                            return f":{device_id}", "UD Aufnahme (im anderen Programm diese Ausgabe wählen)"
             
             # BlackHole nicht gefunden - prüfe ob es installiert sein sollte
             # (z.B. durch Prüfung ob BlackHole.app existiert oder durch Homebrew)
@@ -148,61 +183,37 @@ class AudioDeviceDetector:
                     pass
             
             if blackhole_installed:
-                # BlackHole ist installiert, aber noch nicht verfügbar (Neustart erforderlich)
-                # Verwende System-Audio (Device 0) als Fallback - funktioniert sofort
-                return ":0", "BlackHole ist installiert, aber noch nicht verfügbar (Neustart erforderlich). Verwende System-Audio (Device 0) - funktioniert sofort!"
-            else:
-                # Fallback: System-Audio (Device 0) - funktioniert sofort ohne Installation
-                return ":0", "System-Audio (Device 0) - funktioniert sofort! (BlackHole optional für bessere Qualität: brew install blackhole-2ch)"
+                return None, "BlackHole ist installiert, aber noch nicht in der Geräteliste. Einmal ab- und anmelden."
+            return None, "macOS hat keine eingebaute Systemton-Schleife. BlackHole einrichten (brew install --cask blackhole-2ch) und als Ausgabe mitbenutzen."
             
         except Exception as e:
-            return ":0", f"Fehler bei Device-Erkennung, verwende Standard: {e}"
+            return None, f"BlackHole konnte nicht gelesen werden: {e}"
     
     @staticmethod
     def _detect_linux_device() -> Tuple[Optional[str], str]:
-        """Erkennt Linux Audio-Device (PulseAudio)"""
+        """Eigene Senke „UD Aufnahme“, damit nur der darauf gelegte Ton mitkommt."""
+        monitor = "ud_aufnahme.monitor"
         try:
-            # Prüfe ob PulseAudio läuft
-            result = subprocess.run(
-                ["pulseaudio", "--check"],
+            listed = subprocess.run(
+                ["pactl", "list", "short", "sources"],
                 capture_output=True,
-                timeout=5
+                text=True,
+                timeout=5,
             )
-            
-            if result.returncode == 0:
-                # PulseAudio ist verfügbar
-                # Versuche Standard-Device zu finden
-                try:
-                    # Liste PulseAudio-Quellen
-                    result = subprocess.run(
-                        ["pactl", "list", "short", "sources"],
-                        capture_output=True,
-                        text=True,
-                        timeout=5
-                    )
-                    
-                    if result.returncode == 0:
-                        sources = result.stdout
-                        # Suche nach Monitor-Quelle (für System-Audio)
-                        for line in sources.split('\n'):
-                            if 'monitor' in line.lower() or '.monitor' in line:
-                                parts = line.split()
-                                if parts:
-                                    source_name = parts[1] if len(parts) > 1 else "default"
-                                    return f"pulse:{source_name}", f"PulseAudio Monitor gefunden: {source_name}"
-                    
-                    # Fallback: Standard PulseAudio
-                    return "pulse:default", "PulseAudio Standard-Device"
-                    
-                except:
-                    return "pulse:default", "PulseAudio Standard-Device"
-            else:
-                return None, "PulseAudio nicht verfügbar. Bitte installieren Sie PulseAudio."
-                
-        except FileNotFoundError:
-            return None, "PulseAudio nicht installiert. Bitte installieren Sie PulseAudio: sudo apt-get install pulseaudio"
-        except Exception as e:
-            return "pulse:default", f"Fehler bei Device-Erkennung, verwende Standard: {e}"
+            if listed.returncode == 0 and monitor not in listed.stdout:
+                subprocess.run(
+                    [
+                        "pactl", "load-module", "module-null-sink",
+                        "sink_name=ud_aufnahme",
+                        "sink_properties=device.description=UD-Aufnahme",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+            return f"pulse:{monitor}", "UD-Aufnahme (nur Ton, der auf dieses Gerät gelegt wird)"
+        except (OSError, subprocess.SubprocessError):
+            return None, "PulseAudio oder PipeWire (pactl) fehlt, die eigene Aufnahmespur konnte nicht angelegt werden."
     
     @staticmethod
     def list_all_devices() -> List[Dict[str, str]]:

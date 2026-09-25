@@ -5,6 +5,7 @@ Auto-Updater für Universal Downloader
 Prüft auf Updates und ermöglicht automatische Installation
 """
 
+import hashlib
 import json
 import os
 import time
@@ -217,9 +218,16 @@ class UpdateChecker:
                     if ranked:
                         download_url = ranked[0][1]["browser_download_url"]
                 
+                digest = ""
+                for asset in assets:
+                    if asset.get("browser_download_url") == download_url:
+                        digest = str(asset.get("digest") or "")
+                        break
+                sha256 = digest.split(":", 1)[-1] if digest.startswith("sha256:") else ""
                 update_info = {
                     'version': latest_version,
                     'download_url': download_url,
+                    'sha256': sha256,
                     'changelog': data.get('body', ''),
                     'release_date': data.get('published_at', ''),
                     'release_url': data.get('html_url', ''),
@@ -254,6 +262,7 @@ class UpdateChecker:
         download_url: str,
         save_path: Optional[Path] = None,
         progress_callback: Optional[Callable[[int, int], None]] = None,
+        expected_sha256: Optional[str] = None,
     ) -> bool:
         """
         Lädt ein Update herunter.
@@ -266,37 +275,77 @@ class UpdateChecker:
         if download_url.startswith('apt:'):
             return True
         
+        if save_path is None:
+            # Standard-Pfad: Downloads-Ordner
+            save_path = Path.home() / "Downloads" / f"UniversalDownloader_Update_{self.current_version}.exe"
+
+        for _attempt in range(4):
+            try:
+                downloaded = save_path.stat().st_size if save_path.is_file() else 0
+                req_headers = {}
+                write_mode = "wb"
+                if downloaded > 0:
+                    req_headers["Range"] = f"bytes={downloaded}-"
+                    write_mode = "ab"
+                response = self.session.get(
+                    download_url,
+                    timeout=(30, 300),
+                    stream=True,
+                    headers=req_headers,
+                )
+                if response.status_code == 200 and downloaded:
+                    downloaded = 0
+                    write_mode = "wb"
+                if response.status_code == 416 and downloaded > 1024:
+                    if self._download_matches(save_path, expected_sha256):
+                        return True
+                    try:
+                        save_path.unlink()
+                    except OSError:
+                        pass
+                    continue
+                response.raise_for_status()
+
+                part = int(response.headers.get("content-length", 0))
+                total_size = downloaded + part if response.status_code == 206 else part
+                last_report = 0.0
+
+                with open(save_path, write_mode) as f:
+                    for chunk in response.iter_content(chunk_size=1024 * 1024):
+                        if chunk:
+                            f.write(chunk)
+                            downloaded += len(chunk)
+                            now = time.monotonic()
+                            if progress_callback and (now - last_report >= 0.3 or downloaded == total_size):
+                                last_report = now
+                                progress_callback(downloaded, total_size)
+                if total_size and downloaded < total_size:
+                    continue
+                if downloaded < 1024:
+                    continue
+                if not self._download_matches(save_path, expected_sha256):
+                    try:
+                        save_path.unlink()
+                    except OSError:
+                        pass
+                    continue
+                return True
+            except (requests.exceptions.RequestException, IOError):
+                continue
+        return False
+
+    @staticmethod
+    def _download_matches(path: Path, expected_sha256: Optional[str]) -> bool:
         try:
-            if save_path is None:
-                # Standard-Pfad: Downloads-Ordner
-                save_path = Path.home() / "Downloads" / f"UniversalDownloader_Update_{self.current_version}.exe"
-            
-            response = self.session.get(download_url, timeout=(20, 120), stream=True)
-            response.raise_for_status()
-            
-            total_size = int(response.headers.get('content-length', 0))
-            downloaded = 0
-            last_report = 0.0
-            
-            with open(save_path, 'wb') as f:
-                for chunk in response.iter_content(chunk_size=256 * 1024):
-                    if chunk:
-                        f.write(chunk)
-                        downloaded += len(chunk)
-                        now = time.monotonic()
-                        if progress_callback and (now - last_report >= 0.3 or downloaded == total_size):
-                            last_report = now
-                            progress_callback(downloaded, total_size)
-            if downloaded < 1024:
-                return False
-            with open(save_path, 'rb') as fh:
-                if fh.read(2) != b'MZ':
-                    return False
-            return True
-            
-        except requests.exceptions.RequestException:
-            return False
-        except IOError:
+            if expected_sha256:
+                digest = hashlib.sha256()
+                with open(path, "rb") as fh:
+                    for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+                        digest.update(chunk)
+                return digest.hexdigest().lower() == expected_sha256.lower()
+            with open(path, "rb") as fh:
+                return fh.read(2) == b"MZ"
+        except OSError:
             return False
     
     def is_update_available(self) -> bool:

@@ -1434,7 +1434,7 @@ class DeezerDownloaderGUI:
         self.music_cancel_button = ttk.Button(button_frame, text="⏹ Download abbrechen", command=self.cancel_music_download, state=tk.DISABLED, style="Download.TButton")
         self.music_cancel_button.grid(row=0, column=1, sticky=(tk.W, tk.E), padx=(1, 0), pady=2, ipady=0, ipadx=0)
         ttk.Button(button_frame, text="➕ Zur Queue", command=self.add_music_to_queue, style="Download.TButton.Large").grid(row=1, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=2, ipady=0, ipadx=0)
-        self.music_record_button = ttk.Button(button_frame, text="🎙️ Aufnahme (DRM)", command=self.start_audio_recording, state=tk.NORMAL, style="Download.TButton.Large")
+        self.music_record_button = ttk.Button(button_frame, text="🎙️ System aufnehmen", command=self.toggle_system_recording, state=tk.NORMAL, style="Download.TButton.Large")
         self.music_record_button.grid(row=2, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=2, ipady=0, ipadx=0)
         
         # Queue
@@ -4720,6 +4720,128 @@ class DeezerDownloaderGUI:
         
         return url.strip()
     
+    def toggle_system_recording(self):
+        """Nimmt den Systemton auf, bis erneut geklickt wird."""
+        recorder = getattr(self, "_system_recorder", None)
+        if recorder is not None and recorder.is_recording:
+            ok = recorder.stop_recording()
+            self._system_recorder = None
+            self.music_record_button.config(text="🎙️ System aufnehmen")
+            if ok:
+                self.music_status_var.set(f"Aufnahme gespeichert: {recorder.output_path.name}")
+                self.music_log(f"Systemton gespeichert: {recorder.output_path}")
+                if not recorder.live_parts:
+                    threading.Thread(
+                        target=self._split_saved_recording,
+                        args=(recorder.output_path,),
+                        daemon=True,
+                    ).start()
+            else:
+                self.music_status_var.set("Aufnahme ohne Datei beendet")
+            return
+        self._ask_recording_mode()
+
+    def _recording_app_choices(self):
+        helper = Path(__file__).resolve().parent / "tools" / "ud-app-audio"
+        if not helper.is_file() or sys.platform != "darwin":
+            return []
+        try:
+            result = subprocess.run([str(helper), "list"], capture_output=True, text=True, timeout=8)
+        except (OSError, subprocess.SubprocessError):
+            return []
+        skip = ("WindowManager", "Dock", "Finder", "Service", "AutoFill", "Automatisch")
+        choices = []
+        for line in result.stdout.splitlines():
+            pid, _, name = line.partition("\t")
+            if not name or any(part in name for part in skip):
+                continue
+            if pid.isdigit():
+                choices.append((name, int(pid)))
+        return choices
+
+    def _ask_recording_mode(self):
+        win = tk.Toplevel(self.root)
+        win.title("Systemaufnahme")
+        win.transient(self.root)
+        mode = tk.StringVar(value="single")
+        ttk.Label(win, text="Nur diese App mitschneiden. Die Lautsprecher bleiben.").pack(padx=16, pady=(14, 6))
+        apps = self._recording_app_choices()
+        names = [label for label, _pid in apps] or ["Gesamte Aufnahmespur"]
+        chosen = tk.StringVar(value=names[0])
+        ttk.Combobox(win, textvariable=chosen, values=names, state="readonly", width=36).pack(padx=16, pady=(0, 8))
+        ttk.Radiobutton(win, text="Ein Stück, Ende bei Stille", variable=mode, value="single").pack(anchor=tk.W, padx=16)
+        ttk.Radiobutton(win, text="Playlist, Ende wenn länger nichts mehr kommt", variable=mode, value="playlist").pack(anchor=tk.W, padx=16, pady=(4, 8))
+        ttk.Label(win, text="AcoustID-Schlüssel, damit das Stück einen Namen bekommt").pack(padx=16, anchor=tk.W)
+        key_var = tk.StringVar(value=self.settings.get("acoustid_client", ""))
+        ttk.Entry(win, textvariable=key_var, width=36).pack(padx=16, pady=(2, 10))
+
+        def go():
+            self._recording_silence_stop = 3.0 if mode.get() == "single" else 10.0
+            self._recording_app_pid = dict(apps).get(chosen.get())
+            self._recording_app_name = chosen.get()
+            self.settings["acoustid_client"] = key_var.get().strip()
+            self._save_settings()
+            win.destroy()
+            self._begin_system_recording()
+
+        ttk.Button(win, text="Aufnahme starten", command=go).pack(pady=(0, 14))
+
+    def _begin_system_recording(self):
+        from audio_recorder import AudioRecorder
+        output_dir = Path(self.music_download_path)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        target = output_dir / f"system_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp3"
+        recorder = AudioRecorder(target)
+        recorder._app_pid = getattr(self, "_recording_app_pid", None)
+        recorder.capture_label = getattr(self, "_recording_app_name", "") or "Aufnahmespur"
+        recorder.silence_stop_after = getattr(self, "_recording_silence_stop", None)
+        recorder.on_track = lambda part: threading.Thread(
+            target=self._identify_saved, args=(part,), daemon=True
+        ).start()
+        if not recorder.start_recording():
+            messagebox.showerror(
+                "Systemton",
+                "Die Aufnahme konnte nicht starten.\n"
+                "Windows nutzt den Systemton direkt. Unter Linux braucht es pactl.\n"
+                "Unter macOS muss BlackHole eingerichtet sein.",
+            )
+            return
+        self._system_recorder = recorder
+        self.music_record_button.config(text="⏹ Aufnahme stoppen")
+        route = getattr(recorder, "capture_label", "Aufnahmespur")
+        self.music_status_var.set(f"Aufnahme über {route}")
+        self.music_log(f"Aufnahme über {route}: {target}")
+
+    def _split_saved_recording(self, path):
+        """Teilt eine fertige Aufnahme an den Pausen zwischen den Stücken."""
+        try:
+            from audio_split import split_recording
+            parts = split_recording(Path(path))
+        except Exception as exc:
+            self.root.after(0, lambda msg=str(exc): self.music_log(f"Zerlegen fehlgeschlagen: {msg}"))
+            return
+
+        for part in parts:
+            self._identify_saved(part)
+
+        def show():
+            if len(parts) <= 1:
+                self.music_log("Keine längere Pause gefunden. Die Aufnahme bleibt eine Datei.")
+            else:
+                self.music_log(f"In {len(parts)} Stücke geteilt: " + ", ".join(p.name for p in parts))
+                self.music_status_var.set(f"{len(parts)} Stücke gespeichert")
+
+        self.root.after(0, show)
+
+    def _identify_saved(self, path):
+        """Zeigt Titel und Interpret an und benennt die Datei."""
+        try:
+            from audio_identify import label_recording
+            message = label_recording(Path(path), self.settings.get("acoustid_client", ""))
+        except Exception as exc:
+            message = f"Erkennung fehlgeschlagen: {exc}"
+        self.root.after(0, lambda msg=message: self.music_log(msg))
+
     def start_audio_recording(self):
         """Startet automatische Audio-Aufnahme mit Browser-Automatisierung"""
         url = self.music_url_var.get().strip()
@@ -4872,8 +4994,8 @@ class DeezerDownloaderGUI:
         
         info_text = (
             "Dieses Setup prüft und installiert alle benötigten Komponenten\n"
-            "für die automatische Audio-Aufnahme von DRM-geschützten Streams.\n\n"
-            "⚠️ Nur für privaten Gebrauch!"
+            "für die Aufnahme des Systemtons.\n"
+            "Geschützte Wiedergabe, die das System stumm schaltet, bleibt stumm.\n\n"
         )
         ttk.Label(
             main_frame,
@@ -12507,6 +12629,7 @@ class DeezerDownloaderGUI:
                         update_info['download_url'],
                         Path(save_path),
                         progress_callback=on_download_progress,
+                        expected_sha256=update_info.get('sha256') or None,
                     )
                 
                 def update_ui():
@@ -12661,12 +12784,14 @@ class DeezerDownloaderGUI:
             "try {\n"
             "  if ($isSetup) {\n"
             "    $setupLog = Join-Path $env:TEMP 'ud_setup.log'\n"
-            "    $mode = if ($elevate) { '/ALLUSERS' } else { '/CURRENTUSER' }\n"
-            "    $arg = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS ' + $mode + ' /LOG=\"' + $setupLog + '\" /DIR=\"' + $dir + '\"'\n"
+            "    # /CURRENTUSER und /ALLUSERS sind hier unzulässig: der Installer\n"
+            "    # erlaubt diese Schalter nicht und bricht dann mit Code 1 ab.\n"
+            "    $argList = @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/CLOSEAPPLICATIONS',('/LOG=' + $setupLog),('/DIR=' + $dir))\n"
+            "    Log ('args ' + ($argList -join ' '))\n"
             "    if ($elevate) {\n"
-            "      $p = Start-Process -FilePath $setup -ArgumentList $arg -Verb RunAs -PassThru -Wait\n"
+            "      $p = Start-Process -FilePath $setup -ArgumentList $argList -Verb RunAs -PassThru -Wait\n"
             "    } else {\n"
-            "      $p = Start-Process -FilePath $setup -ArgumentList $arg -PassThru -Wait\n"
+            "      $p = Start-Process -FilePath $setup -ArgumentList $argList -PassThru -Wait\n"
             "    }\n"
             "    if ($null -ne $p -and $null -ne $p.ExitCode) { $code = [int]$p.ExitCode }\n"
             "  } else {\n"
@@ -13073,6 +13198,7 @@ Copyright (c) 2025 Universal Downloader Contributors
             'series_telegram_chat_id': '',
             'series_notify_discord_enabled': False,
             'series_discord_webhook_url': '',
+            'acoustid_client': '',
         }
         
         try:

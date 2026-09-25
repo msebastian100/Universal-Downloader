@@ -23,6 +23,9 @@ if os.path.exists('icon.icns'):
     datas_list.append(('icon.icns', '.'))
 if os.path.isdir('plugins'):
     datas_list.append(('plugins', 'plugins'))
+for _helper in ('tools/ud-aufnahme', 'tools/ud-app-audio'):
+    if os.path.isfile(_helper):
+        datas_list.append((_helper, 'tools'))
 
 a = Analysis(
     ['start.py'],

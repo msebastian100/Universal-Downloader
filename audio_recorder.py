@@ -8,6 +8,7 @@ Nimmt Audio während der Wiedergabe auf (nur für privaten Gebrauch)
 Diese Funktion dient ausschließlich zur Aufnahme von gekauften/abonnierten Inhalten für persönliche Nutzung.
 """
 
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -44,8 +45,14 @@ class AudioRecorder:
         self.progress_callback: Optional[Callable[[float], None]] = None
         self.start_time: Optional[float] = None
         self.recorded_duration: float = 0.0
+        self.live_parts: list = []
+        self.on_track: Optional[Callable[[Path], None]] = None
+        self.silence_stop_after: Optional[float] = None
+        self._silence_token = 0
+        self._app_pid: Optional[int] = None
+        self._app_source = None
         
-    def start_recording(self, duration: Optional[float] = None, playback_speed: float = 1.0) -> bool:
+    def start_recording(self, duration: Optional[float] = None, playback_speed: float = 1.0, force_device: Optional[str] = None) -> bool:
         """
         Startet die Audio-Aufnahme
         
@@ -83,7 +90,9 @@ class AudioRecorder:
             audio_device = None
             device_info = "Standard-Device"
             
-            if DEVICE_DETECTOR_AVAILABLE:
+            if force_device:
+                audio_device, device_info = force_device, force_device
+            elif DEVICE_DETECTOR_AVAILABLE:
                 try:
                     audio_device, device_info = AudioDeviceDetector.detect_audio_device()
                     if audio_device:
@@ -92,11 +101,13 @@ class AudioRecorder:
                     print(f"⚠️ Fehler bei Device-Erkennung: {e}, verwende Standard")
             
             # Für Linux: PulseAudio
-            if sys.platform.startswith("linux"):
-                if audio_device and audio_device.startswith("pulse:"):
-                    device_input = audio_device
-                else:
-                    device_input = "pulse:default"
+            if self._app_pid and sys.platform == "darwin":
+                cmd = ["ffmpeg", "-f", "f32le", "-i", "pipe:0", "-y", str(self.output_path)]
+            elif sys.platform.startswith("linux"):
+                if not audio_device or not str(audio_device).startswith("pulse:"):
+                    print(f"❌ {device_info}")
+                    return False
+                device_input = audio_device
                 
                 cmd = [
                     "ffmpeg",
@@ -112,10 +123,10 @@ class AudioRecorder:
             
             # Für macOS: Verwende BlackHole oder ähnliches für System-Audio-Aufnahme
             elif sys.platform == "darwin":
-                if audio_device and audio_device.startswith(":"):
-                    device_input = audio_device
-                else:
-                    device_input = ":0"  # Fallback: System-Audio
+                if not audio_device or not str(audio_device).startswith(":"):
+                    print(f"❌ {device_info}")
+                    return False
+                device_input = audio_device
                 
                 cmd = [
                     "ffmpeg",
@@ -129,56 +140,70 @@ class AudioRecorder:
                     str(self.output_path)
                 ]
             
-            # Für Windows: Verwende virtual-audio-capturer oder Stereo Mix
             elif sys.platform == "win32":
-                if audio_device and audio_device.startswith("audio="):
-                    device_input = audio_device
+                if audio_device == "wasapi" or not audio_device:
+                    cmd = [
+                        "ffmpeg",
+                        "-f", "wasapi",
+                        "-loopback", "1",
+                        "-i", "default",
+                        "-ar", str(self.sample_rate),
+                        "-ac", str(self.channels),
+                        "-acodec", "libmp3lame",
+                        "-ab", "320k",
+                        "-y",
+                        str(self.output_path),
+                    ]
                 else:
-                    # Fallback: Versuche Stereo Mix manuell zu finden
-                    try:
-                        result = subprocess.run(
-                            ["ffmpeg", "-list_devices", "true", "-f", "dshow", "-i", "dummy"],
-                            capture_output=True,
-                            text=True,
-                            timeout=5
-                        )
-                        if "Stereo Mix" in result.stderr:
-                            # Extrahiere genauen Namen
-                            import re
-                            match = re.search(r'audio="([^"]*Stereo Mix[^"]*)"', result.stderr, re.IGNORECASE)
-                            if match:
-                                device_input = f"audio={match.group(1)}"
-                            else:
-                                device_input = "audio=virtual-audio-capturer"
-                        else:
-                            device_input = "audio=virtual-audio-capturer"
-                    except:
-                        device_input = "audio=virtual-audio-capturer"
-                
-                cmd = [
-                    "ffmpeg",
-                    "-f", "dshow",
-                    "-i", device_input,
-                    "-ar", str(self.sample_rate),
-                    "-ac", str(self.channels),
-                    "-acodec", "libmp3lame",
-                    "-ab", "320k",
-                    "-y",
-                    str(self.output_path)
-                ]
+                    device_input = audio_device if audio_device.startswith("audio=") else f"audio={audio_device}"
+                    cmd = [
+                        "ffmpeg",
+                        "-f", "dshow",
+                        "-i", device_input,
+                        "-ar", str(self.sample_rate),
+                        "-ac", str(self.channels),
+                        "-acodec", "libmp3lame",
+                        "-ab", "320k",
+                        "-y",
+                        str(self.output_path),
+                    ]
             else:
                 raise RuntimeError(f"Unbekanntes System: {sys.platform}")
             
             # Debug: Zeige Kommando
             print(f"[DEBUG] ffmpeg-Kommando: {' '.join(cmd)}")
             
+            feed = None
+            if self._app_pid and sys.platform == "darwin":
+                helper = Path(__file__).resolve().parent / "tools" / "ud-app-audio"
+                if not helper.is_file():
+                    print("❌ App-Aufnahme fehlt")
+                    return False
+                self._app_source = subprocess.Popen(
+                    [str(helper), "record", str(self._app_pid)],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.DEVNULL,
+                )
+                feed = self._app_source.stdout
+                cmd = [
+                    "ffmpeg", "-f", "f32le", "-ar", "48000", "-ac", "2", "-i", "pipe:0",
+                    "-af", "silencedetect=noise=-35dB:d=1.2",
+                    "-acodec", "libmp3lame", "-ab", "320k", "-y", str(self.output_path),
+                ]
+            elif "-af" not in cmd:
+                insert_at = cmd.index("-ar") if "-ar" in cmd else len(cmd) - 1
+                cmd[insert_at:insert_at] = ["-af", "silencedetect=noise=-35dB:d=1.2"]
+            self._track_start = 0.0
+            self._part_index = 0
+            self.live_parts = []
+
             # Starte Aufnahme-Prozess
             try:
                 self.recording_process = subprocess.Popen(
                     cmd,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
-                    stdin=subprocess.PIPE
+                    stdin=feed if feed is not None else subprocess.PIPE,
                 )
                 
                 # Warte kurz und prüfe ob Prozess noch läuft
@@ -203,7 +228,13 @@ class AudioRecorder:
                             print(f"      - Falls installiert: Neustart erforderlich!")
                             print(f"      - Oder verwenden Sie System-Audio (Device 0)")
                         elif sys.platform.startswith("linux"):
-                            print(f"      - Ist PulseAudio installiert und läuft?")
+                            print(f"      - Ist PulseAudio oder PipeWire installiert?")
+
+                    if sys.platform == "win32" and audio_device == "wasapi" and DEVICE_DETECTOR_AVAILABLE and not force_device:
+                        mix, mix_info = AudioDeviceDetector._detect_windows_stereo_mix()
+                        if mix:
+                            print(f"WASAPI nicht verfügbar, versuche {mix_info}")
+                            return self.start_recording(duration, playback_speed, force_device=mix)
                     
                     return False
                 
@@ -216,11 +247,17 @@ class AudioRecorder:
                     target=self._monitor_progress,
                     daemon=True
                 ).start()
+                threading.Thread(
+                    target=self._watch_track_edges,
+                    daemon=True
+                ).start()
                 
                 print(f"🎙️ Audio-Aufnahme gestartet: {self.output_path}")
                 print(f"   Dauer: {'Unbegrenzt' if not duration else f'{duration:.1f} Sekunden'}")
                 print(f"   Sample-Rate: {self.sample_rate} Hz")
                 print(f"   Kanäle: {self.channels}")
+                if not self._app_pid:
+                    self.capture_label = device_info
                 print(f"   Device: {device_info}")
                 if sys.platform == "darwin" and ":0" in str(cmd):
                     print(f"   ℹ️  System-Audio (Device 0) wird verwendet - funktioniert sofort!")
@@ -242,12 +279,78 @@ class AudioRecorder:
             traceback.print_exc()
             return False
     
+    def _stop_if_still_silent(self, limit: float, token: int) -> None:
+        time.sleep(limit)
+        if token == self._silence_token and self.is_recording:
+            self.stop_recording()
+
+    def _cut_part(self, start: float, end: float) -> None:
+        if end - start < 20:
+            return
+        time.sleep(0.4)
+        self._part_index += 1
+        target = self.output_path.with_name(
+            f"{self.output_path.stem}_teil{self._part_index:02d}{self.output_path.suffix}"
+        )
+        subprocess.run(
+            [
+                "ffmpeg", "-y", "-i", str(self.output_path),
+                "-ss", f"{start:.3f}", "-to", f"{end:.3f}",
+                "-c", "copy", str(target),
+            ],
+            capture_output=True,
+            timeout=60,
+        )
+        if target.is_file() and target.stat().st_size > 0:
+            self.live_parts.append(target)
+            if self.on_track:
+                self.on_track(target)
+
+    def _watch_track_edges(self) -> None:
+        """Erkennt Anfang und Ende eines Stücks an der Stille, noch während der Aufnahme."""
+        proc = self.recording_process
+        if proc is None or proc.stderr is None:
+            return
+        start = 0.0
+        for raw in proc.stderr:
+            line = raw.decode("utf-8", errors="ignore")
+            begun = re.search(r"silence_end: ([0-9.]+)", line)
+            if begun:
+                self._silence_token += 1
+                start = float(begun.group(1))
+                continue
+            ended = re.search(r"silence_start: ([0-9.]+)", line)
+            if ended:
+                end = float(ended.group(1))
+                self._cut_part(start, end)
+                start = end
+                limit = self.silence_stop_after
+                if limit and self._part_index > 0:
+                    self._silence_token += 1
+                    token = self._silence_token
+                    threading.Thread(target=self._stop_if_still_silent, args=(limit, token), daemon=True).start()
+        if self.output_path.is_file():
+            try:
+                probe = subprocess.run(
+                    ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                     "-of", "default=nw=1:nk=1", str(self.output_path)],
+                    capture_output=True, text=True, timeout=15,
+                )
+                total = float((probe.stdout or "0").strip() or 0)
+            except (OSError, subprocess.SubprocessError, ValueError):
+                total = 0.0
+            if total > start:
+                self._cut_part(start, total)
+
     def stop_recording(self) -> bool:
         """Stoppt die Audio-Aufnahme"""
         if not self.is_recording:
             return False
         
         try:
+            if self._app_source is not None:
+                self._app_source.terminate()
+                self._app_source = None
             if self.recording_process:
                 # Methode 1: Sende 'q' an ffmpeg um Aufnahme zu beenden
                 try:
