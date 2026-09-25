@@ -11,6 +11,13 @@ from typing import List, Optional, Dict, Any
 # Neueste Version zuerst – wird für „Erster Start“ und Upgrade-Anzeige genutzt
 RELEASE_NOTES: List[Dict[str, Any]] = [
     {
+        "version": "2.1.71",
+        "date": "2026-09-25",
+        "items": [
+            "Beim Start erscheint kein schwarzes Fenster mehr mit dem Programmpfad in der Titelleiste.",
+        ],
+    },
+    {
         "version": "2.1.70",
         "date": "2026-09-25",
         "items": [

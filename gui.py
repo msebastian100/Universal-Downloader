@@ -14250,9 +14250,15 @@ def main():
             pass
     
     root = tk.Tk()
-    # Sonst blitzt zuerst das kleine Standardfenster auf, bevor die richtige Größe steht.
+    # Tk zeigt sonst sofort ein schwarzes Fenster mit dem EXE-Pfad als Titel.
+    root.title("Universal Downloader")
+    try:
+        root.attributes("-alpha", 0.0)
+    except Exception:
+        pass
     try:
         root.withdraw()
+        root.update()
     except Exception:
         pass
     
@@ -14290,13 +14296,20 @@ def main():
         root.after(200, lambda: _set_wm_class_x11(root))
         root.after(1000, lambda: _set_wm_class_x11(root))
     
-    # Setze Fenstertitel (wichtig für Windows Taskleiste)
-    root.title("Universal Downloader")
-    
-    # Wichtig: update_idletasks() vor dem Erstellen der App, damit das Fenster initialisiert ist
+    # Wichtig: update_idletasks() vor dem Erstellen der App, damit das Fenster initialisiert ist.
+    # Alpha bleibt 0, damit dabei kein leeres Fenster aufblitzt.
     root.update_idletasks()
     
     app = DeezerDownloaderGUI(root)
+    try:
+        root.deiconify()
+        root.attributes("-alpha", 1.0)
+        root.update_idletasks()
+    except Exception:
+        try:
+            root.deiconify()
+        except Exception:
+            pass
     
     # Setze Icon erneut nach vollständiger Initialisierung
     if sys.platform == "win32":
