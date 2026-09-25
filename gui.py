@@ -4720,24 +4720,32 @@ class DeezerDownloaderGUI:
         
         return url.strip()
     
+    def _finish_system_recording_ui(self, recorder):
+        self._system_recorder = None
+        self.music_record_button.config(text="🎙️ System aufnehmen")
+        path = recorder.output_path
+        if path.exists() and path.stat().st_size > 0:
+            self.music_status_var.set(f"Aufnahme gespeichert: {path.name}")
+            self.music_log(f"Systemton gespeichert: {path}")
+            if not recorder.live_parts:
+                threading.Thread(
+                    target=self._split_saved_recording,
+                    args=(path,),
+                    daemon=True,
+                ).start()
+        else:
+            self.music_status_var.set("Aufnahme ohne Datei beendet")
+
     def toggle_system_recording(self):
         """Nimmt den Systemton auf, bis erneut geklickt wird."""
         recorder = getattr(self, "_system_recorder", None)
         if recorder is not None and recorder.is_recording:
-            ok = recorder.stop_recording()
+            recorder.stop_recording()
+            return
+        if str(self.music_record_button.cget("text")).startswith("⏹"):
             self._system_recorder = None
             self.music_record_button.config(text="🎙️ System aufnehmen")
-            if ok:
-                self.music_status_var.set(f"Aufnahme gespeichert: {recorder.output_path.name}")
-                self.music_log(f"Systemton gespeichert: {recorder.output_path}")
-                if not recorder.live_parts:
-                    threading.Thread(
-                        target=self._split_saved_recording,
-                        args=(recorder.output_path,),
-                        daemon=True,
-                    ).start()
-            else:
-                self.music_status_var.set("Aufnahme ohne Datei beendet")
+            self.music_status_var.set("Aufnahme beendet")
             return
         self._ask_recording_mode()
 
@@ -4764,23 +4772,25 @@ class DeezerDownloaderGUI:
         win.title("Systemaufnahme")
         win.transient(self.root)
         mode = tk.StringVar(value="single")
-        ttk.Label(win, text="Nur diese App mitschneiden. Die Lautsprecher bleiben.").pack(padx=16, pady=(14, 6))
-        apps = self._recording_app_choices()
-        names = [label for label, _pid in apps] or ["Gesamte Aufnahmespur"]
+        ttk.Label(win, text="Der Ton wird direkt mitgeschnitten. Die Lautsprecher bleiben.").pack(padx=16, pady=(14, 6))
+        apps = [("Gesamter Systemton", None)] + self._recording_app_choices()
+        names = [label for label, _pid in apps]
         chosen = tk.StringVar(value=names[0])
         ttk.Combobox(win, textvariable=chosen, values=names, state="readonly", width=36).pack(padx=16, pady=(0, 8))
         ttk.Radiobutton(win, text="Ein Stück, Ende bei Stille", variable=mode, value="single").pack(anchor=tk.W, padx=16)
-        ttk.Radiobutton(win, text="Playlist, Ende wenn länger nichts mehr kommt", variable=mode, value="playlist").pack(anchor=tk.W, padx=16, pady=(4, 8))
-        ttk.Label(win, text="AcoustID-Schlüssel, damit das Stück einen Namen bekommt").pack(padx=16, anchor=tk.W)
-        key_var = tk.StringVar(value=self.settings.get("acoustid_client", ""))
-        ttk.Entry(win, textvariable=key_var, width=36).pack(padx=16, pady=(2, 10))
+        ttk.Radiobutton(win, text="Playlist, Ende wenn länger nichts mehr kommt", variable=mode, value="playlist").pack(anchor=tk.W, padx=16, pady=(4, 6))
+        speakers = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            win,
+            text="Ton der gewählten App auch über die Lautsprecher",
+            variable=speakers,
+        ).pack(anchor=tk.W, padx=16, pady=(0, 10))
 
         def go():
             self._recording_silence_stop = 3.0 if mode.get() == "single" else 10.0
             self._recording_app_pid = dict(apps).get(chosen.get())
             self._recording_app_name = chosen.get()
-            self.settings["acoustid_client"] = key_var.get().strip()
-            self._save_settings()
+            self._recording_speakers = bool(speakers.get()) or self._recording_app_pid is None
             win.destroy()
             self._begin_system_recording()
 
@@ -4793,17 +4803,19 @@ class DeezerDownloaderGUI:
         target = output_dir / f"system_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp3"
         recorder = AudioRecorder(target)
         recorder._app_pid = getattr(self, "_recording_app_pid", None)
+        recorder._speakers = getattr(self, "_recording_speakers", True)
         recorder.capture_label = getattr(self, "_recording_app_name", "") or "Aufnahmespur"
         recorder.silence_stop_after = getattr(self, "_recording_silence_stop", None)
+        recorder.on_stopped = lambda rec=recorder: self.root.after(
+            0, lambda: self._finish_system_recording_ui(rec)
+        )
         recorder.on_track = lambda part: threading.Thread(
             target=self._identify_saved, args=(part,), daemon=True
         ).start()
         if not recorder.start_recording():
             messagebox.showerror(
                 "Systemton",
-                "Die Aufnahme konnte nicht starten.\n"
-                "Windows nutzt den Systemton direkt. Unter Linux braucht es pactl.\n"
-                "Unter macOS muss BlackHole eingerichtet sein.",
+                getattr(recorder, "last_error", "") or "Die Aufnahme konnte nicht starten.",
             )
             return
         self._system_recorder = recorder
@@ -4837,7 +4849,7 @@ class DeezerDownloaderGUI:
         """Zeigt Titel und Interpret an und benennt die Datei."""
         try:
             from audio_identify import label_recording
-            message = label_recording(Path(path), self.settings.get("acoustid_client", ""))
+            message = label_recording(Path(path), "")
         except Exception as exc:
             message = f"Erkennung fehlgeschlagen: {exc}"
         self.root.after(0, lambda msg=message: self.music_log(msg))
@@ -13198,7 +13210,6 @@ Copyright (c) 2025 Universal Downloader Contributors
             'series_telegram_chat_id': '',
             'series_notify_discord_enabled': False,
             'series_discord_webhook_url': '',
-            'acoustid_client': '',
         }
         
         try:
@@ -13211,6 +13222,7 @@ Copyright (c) 2025 Universal Downloader Contributors
                         saved_settings = {}
             had_gpu_key = 'gpu_enabled' in saved_settings
             # Merge mit Defaults (falls neue Einstellungen hinzugefügt wurden)
+            saved_settings.pop("acoustid_client", None)
             default_settings.update(saved_settings)
             raw_tabs = saved_settings.get('enabled_tabs')
             if not isinstance(raw_tabs, dict):

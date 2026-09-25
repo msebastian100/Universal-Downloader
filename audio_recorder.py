@@ -51,6 +51,9 @@ class AudioRecorder:
         self._silence_token = 0
         self._app_pid: Optional[int] = None
         self._app_source = None
+        self._speakers = True
+        self.on_stopped: Optional[Callable[[], None]] = None
+        self.last_error = ""
         
     def start_recording(self, duration: Optional[float] = None, playback_speed: float = 1.0, force_device: Optional[str] = None) -> bool:
         """
@@ -86,13 +89,36 @@ class AudioRecorder:
             # HINWEIS: playback_speed wird hier nicht verwendet, da die Geschwindigkeit
             # in der Wiedergabe-App (Spotify/Deezer) eingestellt werden muss
             
-            # Erkenne automatisch das richtige Audio-Device
-            audio_device = None
-            device_info = "Standard-Device"
+            # macOS nimmt den Ton direkt vom System. Die Lautsprecher bleiben die Ausgabe.
+            if sys.platform == "darwin":
+                helper = Path(__file__).resolve().parent / "tools" / "ud-app-audio"
+                if not helper.is_file():
+                    self.last_error = "Die Aufnahmehilfe fehlt."
+                    return False
+                target = ["record", str(self._app_pid)] if self._app_pid else ["record", "system"]
+                if self._app_pid and not self._speakers:
+                    target.append("mute")
+                self._app_source = subprocess.Popen(
+                    [str(helper), *target],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                )
+                cmd = [
+                    "ffmpeg", "-f", "f32le", "-ar", "48000", "-ac", "2", "-i", "pipe:0",
+                    "-af", "silencedetect=noise=-35dB:d=1.2",
+                    "-acodec", "libmp3lame", "-ab", "320k", "-y", str(self.output_path),
+                ]
+                feed = self._app_source.stdout
+                audio_device = "system"
+                device_info = getattr(self, "capture_label", "") or "Systemton"
+            else:
+                feed = None
+                audio_device = None
+                device_info = "Standard-Device"
             
-            if force_device:
+            if force_device and sys.platform != "darwin":
                 audio_device, device_info = force_device, force_device
-            elif DEVICE_DETECTOR_AVAILABLE:
+            elif sys.platform != "darwin" and DEVICE_DETECTOR_AVAILABLE:
                 try:
                     audio_device, device_info = AudioDeviceDetector.detect_audio_device()
                     if audio_device:
@@ -101,8 +127,8 @@ class AudioRecorder:
                     print(f"⚠️ Fehler bei Device-Erkennung: {e}, verwende Standard")
             
             # Für Linux: PulseAudio
-            if self._app_pid and sys.platform == "darwin":
-                cmd = ["ffmpeg", "-f", "f32le", "-i", "pipe:0", "-y", str(self.output_path)]
+            if sys.platform == "darwin":
+                pass
             elif sys.platform.startswith("linux"):
                 if not audio_device or not str(audio_device).startswith("pulse:"):
                     print(f"❌ {device_info}")
@@ -112,25 +138,6 @@ class AudioRecorder:
                 cmd = [
                     "ffmpeg",
                     "-f", "pulse",
-                    "-i", device_input,
-                    "-ar", str(self.sample_rate),
-                    "-ac", str(self.channels),
-                    "-acodec", "libmp3lame",
-                    "-ab", "320k",
-                    "-y",
-                    str(self.output_path)
-                ]
-            
-            # Für macOS: Verwende BlackHole oder ähnliches für System-Audio-Aufnahme
-            elif sys.platform == "darwin":
-                if not audio_device or not str(audio_device).startswith(":"):
-                    print(f"❌ {device_info}")
-                    return False
-                device_input = audio_device
-                
-                cmd = [
-                    "ffmpeg",
-                    "-f", "avfoundation",
                     "-i", device_input,
                     "-ar", str(self.sample_rate),
                     "-ac", str(self.channels),
@@ -173,24 +180,7 @@ class AudioRecorder:
             # Debug: Zeige Kommando
             print(f"[DEBUG] ffmpeg-Kommando: {' '.join(cmd)}")
             
-            feed = None
-            if self._app_pid and sys.platform == "darwin":
-                helper = Path(__file__).resolve().parent / "tools" / "ud-app-audio"
-                if not helper.is_file():
-                    print("❌ App-Aufnahme fehlt")
-                    return False
-                self._app_source = subprocess.Popen(
-                    [str(helper), "record", str(self._app_pid)],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.DEVNULL,
-                )
-                feed = self._app_source.stdout
-                cmd = [
-                    "ffmpeg", "-f", "f32le", "-ar", "48000", "-ac", "2", "-i", "pipe:0",
-                    "-af", "silencedetect=noise=-35dB:d=1.2",
-                    "-acodec", "libmp3lame", "-ab", "320k", "-y", str(self.output_path),
-                ]
-            elif "-af" not in cmd:
+            if sys.platform != "darwin" and "-af" not in cmd:
                 insert_at = cmd.index("-ar") if "-ar" in cmd else len(cmd) - 1
                 cmd[insert_at:insert_at] = ["-af", "silencedetect=noise=-35dB:d=1.2"]
             self._track_start = 0.0
@@ -208,6 +198,17 @@ class AudioRecorder:
                 
                 # Warte kurz und prüfe ob Prozess noch läuft
                 time.sleep(0.5)
+                if self._app_source is not None and self._app_source.poll() is not None:
+                    helper_error = ""
+                    if self._app_source.stderr:
+                        helper_error = self._app_source.stderr.read().decode("utf-8", errors="ignore")
+                    if "declined" in helper_error.lower() or "permission" in helper_error.lower() or "not authorized" in helper_error.lower():
+                        self.last_error = "macOS fragt einmal nach der Erlaubnis für die Bildschirmaufnahme. Danach die Aufnahme erneut starten."
+                    else:
+                        self.last_error = "Die Systemaufnahme konnte nicht starten."
+                    self.recording_process.terminate()
+                    self._app_source = None
+                    return False
                 if self.recording_process.poll() is not None:
                     # Prozess ist bereits beendet - Fehler!
                     stderr_output = self.recording_process.stderr.read().decode('utf-8', errors='ignore') if self.recording_process.stderr else ""
@@ -374,6 +375,11 @@ class AudioRecorder:
                         time.sleep(0.5)
             
             self.is_recording = False
+            if self.on_stopped:
+                try:
+                    self.on_stopped()
+                except Exception:
+                    pass
             print(f"✓ Audio-Aufnahme beendet: {self.output_path}")
             
             # Warte kurz damit Datei geschrieben wird
