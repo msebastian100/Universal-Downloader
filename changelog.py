@@ -11,6 +11,14 @@ from typing import List, Optional, Dict, Any
 # Neueste Version zuerst – wird für „Erster Start“ und Upgrade-Anzeige genutzt
 RELEASE_NOTES: List[Dict[str, Any]] = [
     {
+        "version": "2.1.72",
+        "date": "2026-09-25",
+        "items": [
+            "Ansehen und Anhören funktionieren unter Windows und Linux Mint, nicht nur auf dem Mac.",
+            "Beim Abspielen öffnet sich kein schwarzes Konsolenfenster mit dem Programmpfad.",
+        ],
+    },
+    {
         "version": "2.1.71",
         "date": "2026-09-25",
         "items": [

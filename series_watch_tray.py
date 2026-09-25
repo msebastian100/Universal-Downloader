@@ -2638,6 +2638,11 @@ class TrayApp:
             self._owns_tk = False
             return existing
         self._tk_root = tk.Tk()
+        try:
+            self._tk_root.title("Serien-Wächter")
+            self._tk_root.attributes("-alpha", 0.0)
+        except Exception:
+            pass
         self._tk_root.withdraw()
         self._owns_tk = True
         return self._tk_root

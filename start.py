@@ -160,6 +160,28 @@ def _hide_windows_console() -> None:
         kernel32.FreeConsole()
     except Exception:
         pass
+    _silence_child_consoles()
+
+
+def _silence_child_consoles() -> None:
+    """Kindprozesse (yt-dlp, ffmpeg, Player) ohne eigenes CMD-Fenster."""
+    if sys.platform != "win32":
+        return
+    import subprocess
+
+    flag = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+    if getattr(subprocess.Popen, "_ud_no_console", False):
+        return
+    original = subprocess.Popen
+
+    class _NoConsolePopen(original):
+        _ud_no_console = True
+
+        def __init__(self, *args, **kwargs):
+            kwargs["creationflags"] = (kwargs.get("creationflags") or 0) | flag
+            super().__init__(*args, **kwargs)
+
+    subprocess.Popen = _NoConsolePopen
 
 
 if __name__ == "__main__":

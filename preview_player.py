@@ -3,8 +3,12 @@
 
 import json
 import os
+import shutil
 import subprocess
+import sys
+import tempfile
 import threading
+import time
 
 _OPEN = []
 _CloseStop = None
@@ -285,6 +289,7 @@ def _resolve_stream(page_url: str) -> str:
         capture_output=True,
         text=True,
         timeout=45,
+        **_tool_kwargs(),
     )
     lines = [line.strip() for line in (result.stdout or "").splitlines() if line.strip().startswith("http")]
     if not lines:
@@ -308,6 +313,7 @@ def _cover_bytes(image_url: str) -> bytes:
                 [curl, "-fsS", "-A", "Mozilla/5.0", "--max-time", "12", image_url],
                 capture_output=True,
                 timeout=15,
+                **_tool_kwargs(),
             )
             if proc.returncode == 0 and proc.stdout:
                 return proc.stdout
@@ -519,7 +525,351 @@ def open_preview_list(entries, schedule, report_error, ask_resume=None, on_start
     threading.Thread(target=work, daemon=True).start()
 
 
+def _tool_kwargs() -> dict:
+    """Hilfsprogramme ohne Konsolenfenster."""
+    try:
+        from path_helper import win_hidden_kwargs
+        return win_hidden_kwargs()
+    except Exception:
+        if sys.platform != "win32":
+            return {}
+        return {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)}
+
+
+def _player_kwargs() -> dict:
+    """Videofenster zeigen, die zugehörige Konsole nicht."""
+    if sys.platform != "win32":
+        return {}
+    return {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)}
+
+
+def _sibling(ffmpeg_name: str, tool_name: str) -> str:
+    found = shutil.which(ffmpeg_name)
+    folder = os.path.dirname(found) if found else ""
+    candidates = []
+    if folder:
+        candidates.append(os.path.join(folder, tool_name))
+    if sys.platform == "win32":
+        try:
+            from auto_install_dependencies import get_app_dir
+            candidates.append(str(get_app_dir() / "ffmpeg" / "bin" / tool_name))
+        except Exception:
+            pass
+    for path in candidates:
+        if os.path.isfile(path):
+            return path
+    return ""
+
+
+def _find_playback_tool():
+    """mpv, sonst VLC, sonst ffplay neben ffmpeg."""
+    exe = ".exe" if sys.platform == "win32" else ""
+    mpv = shutil.which("mpv") or _sibling("ffmpeg", "mpv" + exe)
+    if mpv:
+        return "mpv", mpv
+    vlc = shutil.which("vlc") or ""
+    if sys.platform == "win32" and not vlc:
+        for base in (
+            os.environ.get("ProgramFiles") or r"C:\Program Files",
+            os.environ.get("ProgramFiles(x86)") or r"C:\Program Files (x86)",
+        ):
+            cand = os.path.join(base, "VideoLAN", "VLC", "vlc.exe")
+            if os.path.isfile(cand):
+                vlc = cand
+                break
+    if vlc:
+        return "vlc", vlc
+    ffplay = shutil.which("ffplay") or _sibling("ffmpeg", "ffplay" + exe)
+    if ffplay:
+        return "ffplay", ffplay
+    return "", ""
+
+
+def _player_command(kind: str, binary: str, stream: str, title: str, start_at: float, ipc: str):
+    title = (title or "Vorschau")[:110]
+    if kind == "mpv":
+        cmd = [
+            binary,
+            "--no-terminal",
+            "--force-window=immediate",
+            "--keep-open=no",
+            f"--title={title}",
+            f"--input-ipc-server={ipc}",
+            stream,
+        ]
+        if start_at >= 8:
+            cmd.insert(-1, f"--start={start_at:.1f}")
+        return cmd
+    if kind == "vlc":
+        cmd = [binary, "--play-and-exit", "--no-video-title-show"]
+        if start_at >= 8:
+            cmd.append(f"--start-time={int(start_at)}")
+        cmd.append(stream)
+        return cmd
+    cmd = [binary, "-hide_banner", "-loglevel", "error", "-autoexit", "-window_title", title]
+    if start_at >= 8:
+        cmd.extend(["-ss", f"{start_at:.1f}"])
+    cmd.append(stream)
+    return cmd
+
+
+def _ipc_path(holder) -> str:
+    if sys.platform == "win32":
+        return r"\\.\pipe\ud-preview-%s" % id(holder)
+    return os.path.join(tempfile.gettempdir(), "ud-preview-%s.sock" % id(holder))
+
+
+def _remember_external(holder) -> None:
+    seconds = float(holder.get("seconds") or 0)
+    if seconds < 8:
+        began = holder.get("began")
+        if began:
+            seconds = float(holder.get("start_at") or 0) + max(0.0, time.time() - began)
+    if holder.get("ended"):
+        _save_position(holder.get("page_url") or "", 0)
+        return
+    if seconds >= 8:
+        _save_position(holder.get("page_url") or "", seconds)
+
+
+def _stop_external(holder) -> None:
+    holder["closed"] = True
+    proc = holder.get("proc")
+    holder["proc"] = None
+    if proc is not None and proc.poll() is None:
+        _remember_external(holder)
+        try:
+            proc.terminate()
+        except Exception:
+            pass
+    ipc = holder.get("ipc") or ""
+    if ipc and sys.platform != "win32":
+        try:
+            os.remove(ipc)
+        except Exception:
+            pass
+
+
+def _connect_mpv(ipc: str):
+    deadline = time.time() + 6
+    while time.time() < deadline:
+        try:
+            if sys.platform == "win32":
+                return open(ipc, "r+b", buffering=0)
+            import socket
+            sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            sock.connect(ipc)
+            sock.settimeout(1.0)
+            return sock
+        except Exception:
+            time.sleep(0.15)
+    return None
+
+
+def _mpv_listen(holder, ipc: str) -> None:
+    conn = _connect_mpv(ipc)
+    if conn is None:
+        return
+    buf = b""
+    next_poll = time.time() + 4
+
+    def _send(payload: dict) -> None:
+        raw = (json.dumps(payload) + "\n").encode()
+        if hasattr(conn, "sendall"):
+            conn.sendall(raw)
+        else:
+            conn.write(raw)
+
+    def _pull() -> bytes:
+        if hasattr(conn, "recv"):
+            return conn.recv(4096)
+        return conn.read(4096)
+
+    try:
+        while not holder.get("closed") and holder.get("proc") is not None:
+            if time.time() >= next_poll:
+                try:
+                    _send({"command": ["get_property", "time-pos"], "request_id": 1})
+                except Exception:
+                    break
+                next_poll = time.time() + 5
+            try:
+                chunk = _pull()
+            except Exception:
+                break
+            if not chunk:
+                break
+            buf += chunk
+            while b"\n" in buf:
+                line, buf = buf.split(b"\n", 1)
+                try:
+                    msg = json.loads(line.decode("utf-8", "replace"))
+                except Exception:
+                    continue
+                if msg.get("event") == "end-file" and msg.get("reason") == "eof":
+                    holder["ended"] = True
+                if msg.get("request_id") == 1 and isinstance(msg.get("data"), (int, float)):
+                    holder["seconds"] = float(msg["data"])
+                    _save_position(holder.get("page_url") or "", holder["seconds"])
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+def _launch_external(holder, stream: str, title: str, start_at: float) -> None:
+    kind = holder["kind"]
+    binary = holder["binary"]
+    ipc = holder.get("ipc") or ""
+    if ipc and sys.platform != "win32":
+        try:
+            os.remove(ipc)
+        except Exception:
+            pass
+    cmd = _player_command(kind, binary, stream, title, start_at, ipc)
+    holder["start_at"] = start_at
+    holder["began"] = time.time()
+    holder["seconds"] = start_at
+    holder["ended"] = False
+    holder["proc"] = subprocess.Popen(
+        cmd,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        **_player_kwargs(),
+    )
+    if kind == "mpv":
+        threading.Thread(target=_mpv_listen, args=(holder, ipc), daemon=True).start()
+    threading.Thread(target=_watch_external, args=(holder, title), daemon=True).start()
+
+
+def _watch_external(holder, title: str) -> None:
+    proc = holder.get("proc")
+    if proc is None:
+        return
+    try:
+        proc.wait()
+    except Exception:
+        return
+    if holder.get("closed") or holder.get("proc") is not proc:
+        return
+    ended = bool(holder.get("ended"))
+    if not ended and holder.get("kind") != "mpv":
+        # ffplay/VLC: nur weiterschalten, wenn die Folge nahezu zu Ende lief.
+        began = holder.get("began") or time.time()
+        played = float(holder.get("start_at") or 0) + max(0.0, time.time() - began)
+        duration = float(holder.get("duration") or 0)
+        ended = duration > 30 and played >= duration - 15
+    holder["ended"] = ended
+    _remember_external(holder)
+    if not ended:
+        holder["closed"] = True
+        return
+    playlist = list(holder.get("playlist") or [])
+    index = int(holder.get("playlist_index") or 0) + 1
+    if index >= len(playlist):
+        holder["closed"] = True
+        return
+    nxt = playlist[index]
+
+    def work():
+        try:
+            stream = _stream_source(nxt.get("stream_url") or "", nxt.get("url") or "")
+        except Exception as exc:
+            report = holder.get("report_error")
+            schedule = holder.get("schedule")
+            if schedule and report:
+                _report_later(schedule, report, f"Nächste Folge nicht möglich:\n{exc}")
+            return
+
+        def go():
+            if holder.get("closed"):
+                return
+            holder["playlist_index"] = index
+            holder["page_url"] = nxt.get("url") or ""
+            start = _choose_start(holder["page_url"], nxt.get("title") or title, holder.get("ask_resume"))
+            _launch_external(holder, stream, nxt.get("title") or title, start)
+
+        schedule = holder.get("schedule")
+        if schedule:
+            schedule(0, go)
+        else:
+            go()
+
+    threading.Thread(target=work, daemon=True).start()
+
+
+def _probe_duration(holder, stream: str) -> None:
+    probe = shutil.which("ffprobe") or _sibling("ffmpeg", "ffprobe.exe" if sys.platform == "win32" else "ffprobe")
+    if not probe:
+        return
+    try:
+        result = subprocess.run(
+            [probe, "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", stream],
+            capture_output=True,
+            text=True,
+            timeout=20,
+            **_tool_kwargs(),
+        )
+        holder["duration"] = float((result.stdout or "").strip() or 0)
+    except Exception:
+        holder["duration"] = 0
+
+
+def _show_external(stream_url: str, title: str, schedule=None, report_error=None, page_url: str = "", start_at: float = 0, ask_resume=None, cover: bytes = b"", playlist=None, playlist_index: int = 0) -> None:
+    kind, binary = _find_playback_tool()
+    if not binary:
+        raise RuntimeError(
+            "Auf diesem System fehlt ein Abspielprogramm.\n"
+            "ffmpeg (mit ffplay), mpv oder VLC wird benötigt."
+        )
+    rows = [row for row in (playlist or []) if isinstance(row, dict)]
+    if not rows:
+        rows = [{"title": title or "Vorschau", "url": page_url, "stream_url": stream_url}]
+    for old in list(_OPEN):
+        if old.get("proc") is not None:
+            _stop_external(old)
+    holder = {
+        "kind": kind,
+        "binary": binary,
+        "proc": None,
+        "ipc": "",
+        "playlist": rows,
+        "playlist_index": playlist_index,
+        "schedule": schedule,
+        "report_error": report_error,
+        "ask_resume": ask_resume,
+        "page_url": page_url,
+        "closed": False,
+        "ended": False,
+        "seconds": start_at,
+        "duration": 0,
+        "cover": cover,
+    }
+    if kind == "mpv":
+        holder["ipc"] = _ipc_path(holder)
+    _OPEN.append(holder)
+    _launch_external(holder, stream_url, title, start_at)
+    if kind != "mpv":
+        threading.Thread(target=_probe_duration, args=(holder, stream_url), daemon=True).start()
+
+
 def _show(stream_url: str, title: str, schedule=None, report_error=None, page_url: str = "", start_at: float = 0, ask_resume=None, cover: bytes = b"", playlist=None, playlist_index: int = 0) -> None:
+    if sys.platform != "darwin":
+        _show_external(
+            stream_url,
+            title,
+            schedule,
+            report_error,
+            page_url,
+            start_at,
+            ask_resume,
+            cover,
+            playlist,
+            playlist_index,
+        )
+        return
     try:
         import objc
         from AppKit import NSImageView, NSMakeRect, NSView, NSWindow
