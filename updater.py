@@ -209,10 +209,8 @@ class UpdateChecker:
                         else:
                             if "x86_64" in name or "intel" in name:
                                 rank = 0
-                            elif "arm64" in name or "aarch64" in name:
-                                rank = 2
                             else:
-                                rank = 1
+                                continue
                         ranked.append((rank, asset))
                     ranked.sort(key=lambda x: x[0])
                     if ranked:

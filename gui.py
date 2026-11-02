@@ -265,6 +265,17 @@ def _is_music_mediathek_url(url):
     return any(domain in ul for domain in MUSIC_MEDIATHEK_DOMAINS)
 
 
+def _is_video_sender_url(url):
+    """Prüft, ob die URL ein im Video-Tab unterstützter Sender ist, aber keine Musik-Seite."""
+    if not url or not isinstance(url, str) or _is_music_mediathek_url(url):
+        return False
+    ul = url.lower()
+    for domains in (SUPPORTED_SENDERS or {}).values():
+        if any(domain in ul for domain in domains):
+            return True
+    return False
+
+
 def _normalize_ard_sounds_url(url: str) -> str:
     """Normalisiert ARD Sounds URLs für yt-dlp (entfernt /embed/, behält ardsounds.de bei)."""
     if not url or 'ardsounds.de' not in url.lower():
@@ -5141,6 +5152,26 @@ class DeezerDownloaderGUI:
         threading.Thread(target=work, daemon=True).start()
         return True
 
+    def _reject_video_url_in_music(self, url: str) -> bool:
+        """Video-Adressen gehören in den Video-Tab, analog zur Audiothek im Video-Downloader."""
+        if not _is_video_sender_url(url):
+            return False
+        messagebox.showinfo(
+            "Video – Video-Tab",
+            "Diese URL ist ein Video und wird im Tab „Video Downloader“ unterstützt.\n\n"
+            "Bitte wechseln Sie zum Tab „🎬 Video Downloader“ und starten Sie den Download dort.",
+        )
+        try:
+            if hasattr(self, "video_url_var"):
+                self.video_url_var.set(url)
+            for tab_id in self.notebook.tabs():
+                if "Video" in self.notebook.tab(tab_id, "text"):
+                    self.notebook.select(tab_id)
+                    break
+        except Exception:
+            pass
+        return True
+
     def start_music_download(self):
         """Startet den Musik-Download (Deezer oder Spotify)"""
         url = self.music_url_var.get().strip()
@@ -5168,6 +5199,8 @@ class DeezerDownloaderGUI:
         is_mediathek_audio = _is_music_mediathek_url(url)
         if _is_store_blocked_music_url(url):
             messagebox.showinfo("Store-Version", "Deezer, Spotify und Audible sind in der Store-Version nicht enthalten.")
+            return
+        if self._reject_video_url_in_music(url):
             return
         
         if not (is_spotify or is_deezer or is_mediathek_audio):
@@ -5212,6 +5245,8 @@ class DeezerDownloaderGUI:
         is_mediathek_audio = _is_music_mediathek_url(url)
         if _is_store_blocked_music_url(url):
             messagebox.showinfo("Store-Version", "Deezer, Spotify und Audible sind in der Store-Version nicht enthalten.")
+            return
+        if self._reject_video_url_in_music(url):
             return
         
         if not (is_spotify or is_deezer or is_mediathek_audio):
@@ -7268,10 +7303,17 @@ class DeezerDownloaderGUI:
         result = [None]
         
         def confirm():
+            quality = quality_var.get()
             result[0] = {
                 'as_chapters': download_mode.get() == "chapters",
-                'quality': quality_var.get()
+                'quality': quality
             }
+            # Format an AAX-Plugin weitergeben (für automatische Konvertierung)
+            try:
+                from plugins.audible_activation import set_selected_format
+                set_selected_format(quality)
+            except Exception:
+                pass  # Plugin noch nicht geladen, wird später gesetzt
             options_window.destroy()
         
         def cancel():

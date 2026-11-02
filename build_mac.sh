@@ -40,6 +40,12 @@ resolve_python_for_arch() {
             return 0
         fi
     fi
+    if [ "$arch" = "x86_64" ] && [ -x /usr/local/bin/python3 ]; then
+        if arch -x86_64 /usr/local/bin/python3 -c "import sys; raise SystemExit(0 if sys.platform=='darwin' else 1)" 2>/dev/null; then
+            echo "arch -x86_64 /usr/local/bin/python3"
+            return 0
+        fi
+    fi
     if [ "$arch" = "$HOST_ARCH" ]; then
         if [ "$arch" = "arm64" ] && [ -x /opt/homebrew/bin/python3 ]; then
             echo "arch -arm64 /opt/homebrew/bin/python3"
@@ -160,11 +166,6 @@ build_one_arch() {
     if [ ! -f "$DMG_FILE" ]; then
         echo "[FEHLER] .dmg wurde nicht erstellt."
         exit 1
-    fi
-
-    # Ohne Arch-Suffix: Host-Build (Updater-Fallback)
-    if [ "$ARCH" = "$HOST_ARCH" ]; then
-        cp -f "$DMG_FILE" "dist/${DMG_NAME}_${VERSION}.dmg"
     fi
 
     echo ""
