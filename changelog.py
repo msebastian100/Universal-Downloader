@@ -11,6 +11,17 @@ from typing import List, Optional, Dict, Any
 # Neueste Version zuerst – wird für „Erster Start“ und Upgrade-Anzeige genutzt
 RELEASE_NOTES: List[Dict[str, Any]] = [
     {
+        "version": "2.1.77",
+        "date": "2026-11-08",
+        "items": [
+            "YouTube-Musik zeigt den Interpreten. Ein laufender Livestream auf dem Kanal wird erkannt.",
+            "Weitere Videoseiten lassen sich laden und stehen in der Senderliste. Der Download liegt im Ordner der Seite.",
+            "Eigene VOE-Dateien laden, auch wenn sich die Adresse ändert.",
+            "YouTube nutzt die aktuelle yt-dlp-Fassung, damit Downloads nicht mit 403 abbrechen.",
+            "Bei einem Titel steht „1 Lied ausgewählt“, bei mehreren „Lieder“.",
+        ],
+    },
+    {
         "version": "2.1.74",
         "date": "2026-09-25",
         "items": [

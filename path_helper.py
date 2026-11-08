@@ -6,8 +6,44 @@ Erkennt den Standard-Download-Ordner des Systems
 """
 
 import os
+import subprocess
 import sys
 from pathlib import Path
+
+
+def macho_archs(path: str) -> list:
+    """CPU-Architekturen einer Mach-O-Datei, z. B. ['arm64'] oder ['x86_64']."""
+    try:
+        out = subprocess.check_output(
+            ["lipo", "-archs", path],
+            text=True,
+            stderr=subprocess.DEVNULL,
+            timeout=3,
+        )
+        return out.split()
+    except (OSError, subprocess.SubprocessError):
+        return []
+
+
+def darwin_native_app_executable() -> str:
+    """Auf Apple Silicon die installierte arm64-App, wenn die laufende Datei nur Intel enthält."""
+    exe = sys.executable
+    if sys.platform != "darwin":
+        return exe
+    try:
+        import platform
+
+        if platform.machine() != "arm64":
+            return exe
+    except Exception:
+        return exe
+    archs = macho_archs(exe)
+    if not archs or "arm64" in archs:
+        return exe
+    installed = Path("/Applications/Universal Downloader.app/Contents/MacOS/Universal Downloader")
+    if installed.is_file() and "arm64" in macho_archs(str(installed)):
+        return str(installed)
+    return exe
 
 
 def user_home():

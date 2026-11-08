@@ -113,7 +113,17 @@ def ensure_python_embed(root: Path) -> bool:
         # Prüfen ob yt-dlp vorhanden (Lib/site-packages/yt_dlp)
         site_packages = embed_dir / "Lib" / "site-packages"
         if (site_packages / "yt_dlp").exists() or (site_packages / "yt_dlp").with_suffix(".py").exists():
-            print("[OK] Gebündeltes Python (mit yt-dlp) für Installer bereits vorhanden.")
+            print("[INFO] Aktualisiere yt-dlp im gebündelten Python auf die neueste Fassung...")
+            try:
+                subprocess.run(
+                    [str(python_exe), "-m", "pip", "install", "--upgrade", "yt-dlp", "--no-warn-script-location", "--quiet", "--disable-pip-version-check"],
+                    cwd=str(embed_dir),
+                    timeout=180,
+                    check=True,
+                )
+            except Exception as e:
+                print(f"[WARNING] yt-dlp-Update im Embed-Python fehlgeschlagen: {e}")
+            print("[OK] Gebündeltes Python (mit yt-dlp) für Installer bereit.")
             return True
         print("[INFO] Gebündeltes Python vorhanden, aber yt-dlp fehlt – installiere nach...")
 
@@ -266,21 +276,18 @@ def main():
         # yt-dlp.exe in dist/ für Installer (Standalone-EXE, kein System-Python nötig – z. B. Sandbox)
         dist_dir = root / "dist"
         ytdlp_exe = dist_dir / "yt-dlp.exe"
-        if not ytdlp_exe.exists():
-            print("Lade yt-dlp.exe für Installer-Bundle (damit Download auch ohne Python funktioniert)...")
-            try:
-                import urllib.request
-                url = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"
-                req = urllib.request.Request(url, headers={"User-Agent": "UniversalDownloader-Build/1.0"})
-                with urllib.request.urlopen(req, timeout=60) as resp:
-                    data = resp.read()
-                dist_dir.mkdir(parents=True, exist_ok=True)
-                ytdlp_exe.write_bytes(data)
-                print("[OK] yt-dlp.exe für Installer bereit.")
-            except Exception as e:
-                print(f"[WARNING] yt-dlp.exe-Download fehlgeschlagen: {e} – Installer wird ohne yt-dlp.exe erstellt (App nutzt dann eingebettetes Modul).")
-        else:
-            print("[OK] yt-dlp.exe für Installer bereits vorhanden.")
+        print("Lade die neueste yt-dlp.exe für das Installer-Bundle...")
+        try:
+            import urllib.request
+            url = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"
+            req = urllib.request.Request(url, headers={"User-Agent": "UniversalDownloader-Build/1.0"})
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                data = resp.read()
+            dist_dir.mkdir(parents=True, exist_ok=True)
+            ytdlp_exe.write_bytes(data)
+            print("[OK] yt-dlp.exe für Installer bereit.")
+        except Exception as e:
+            print(f"[WARNING] yt-dlp.exe-Download fehlgeschlagen: {e} – Installer wird ohne neue yt-dlp.exe erstellt.")
 
         # Optional: Gebündeltes Python (Embeddable + yt-dlp) für Installer – läuft auch ohne System-Python
         if not ensure_python_embed(root):

@@ -110,24 +110,97 @@ def get_latest_ytdlp_version():
         return None
 
 
-# Mindestversion für ZDF/ARD/ORF (apt/System liefert oft 2024.x)
-YTDLP_MIN_VERSION = "2026"
+# Mindeststand. Darüber wird immer die neueste Fassung von PyPI bzw. GitHub geholt.
+YTDLP_MIN_VERSION = "2026.08.19"
+
+
+def _ytdlp_version_parts(text):
+    parts = []
+    for piece in (text or "").strip().split("."):
+        number = ""
+        for char in piece:
+            if char.isdigit():
+                number += char
+            else:
+                break
+        if not number:
+            break
+        parts.append(int(number))
+    return tuple(parts)
+
+
+def _ytdlp_state_dir():
+    """Beschreibbarer Ordner auf jedem System, auch in .app, Setup und Snap."""
+    try:
+        from path_helper import get_app_base_path
+        return get_app_base_path()
+    except Exception:
+        return get_app_dir()
+
+
+def _ytdlp_binary_asset():
+    machine = (platform.machine() or "").lower()
+    system = platform.system()
+    if system == "Windows":
+        return "yt-dlp.exe"
+    if system == "Darwin":
+        return "yt-dlp_macos"
+    if machine in ("aarch64", "arm64"):
+        return "yt-dlp_linux_aarch64"
+    return "yt-dlp_linux"
+
+
+def _ytdlp_user_binary():
+    name = "yt-dlp.exe" if platform.system() == "Windows" else "yt-dlp"
+    return _ytdlp_state_dir() / "bin" / name
+
+
+def _can_pip_install():
+    return not is_frozen() and not is_bundled_linux()
 
 
 def update_ytdlp():
-    """Aktualisiert yt-dlp auf mindestens Version 2026 (für ZDF/ARD/ORF)."""
+    """Holt die neueste yt-dlp-Fassung. Pakete per pip, gebündelte Apps als Programmdatei."""
+    if _can_pip_install():
+        try:
+            print("[INFO] Aktualisiere yt-dlp auf die neueste Fassung...")
+            subprocess.run(
+                [sys.executable, "-m", "pip", "install", "--upgrade", "yt-dlp"],
+                check=True,
+                capture_output=True,
+                timeout=180,
+            )
+            print("[OK] yt-dlp erfolgreich aktualisiert")
+            return True
+        except Exception as e:
+            print(f"[WARNING] Fehler bei yt-dlp Update: {e}")
+            return False
+    return _download_latest_ytdlp_binary()
+
+
+def _download_latest_ytdlp_binary():
+    """Lädt die passende yt-dlp-Datei von GitHub nach Downloads/Universal Downloader/bin."""
+    asset = _ytdlp_binary_asset()
+    dest = _ytdlp_user_binary()
+    url = f"https://github.com/yt-dlp/yt-dlp/releases/latest/download/{asset}"
     try:
-        print("[INFO] Aktualisiere yt-dlp auf mindestens Version 2026...")
-        subprocess.run(
-            [sys.executable, '-m', 'pip', 'install', '--upgrade', f'yt-dlp>={YTDLP_MIN_VERSION}'],
-            check=True,
-            capture_output=True,
-            timeout=180
-        )
-        print("[OK] yt-dlp erfolgreich aktualisiert")
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        print(f"[INFO] Lade aktuelle yt-dlp-Datei ({asset})...")
+        req = urllib.request.Request(url, headers={"User-Agent": "UniversalDownloader"})
+        with urllib.request.urlopen(req, timeout=120) as response:
+            data = response.read()
+        if len(data) < 100000:
+            print("[WARNING] yt-dlp-Download war zu klein")
+            return False
+        tmp = dest.with_suffix(dest.suffix + ".tmp")
+        tmp.write_bytes(data)
+        tmp.replace(dest)
+        if platform.system() != "Windows":
+            os.chmod(dest, 0o755)
+        print(f"[OK] yt-dlp liegt unter {dest}")
         return True
     except Exception as e:
-        print(f"[WARNING] Fehler bei yt-dlp Update: {e}")
+        print(f"[WARNING] yt-dlp-Download fehlgeschlagen: {e}")
         return False
 
 
@@ -151,32 +224,43 @@ def check_and_update_ytdlp():
         import json
         from datetime import datetime, timedelta
         
-        app_dir = get_app_dir()
-        update_check_file = app_dir / ".ytdlp_update_check.json"
+        update_check_file = _ytdlp_state_dir() / ".ytdlp_update_check.json"
+        effective = current_version
+        version_note = _ytdlp_state_dir() / "bin" / "yt-dlp.version"
+        if version_note.exists():
+            noted = version_note.read_text(encoding="utf-8").strip()
+            if _ytdlp_version_parts(noted) > _ytdlp_version_parts(effective):
+                effective = noted
         
-        # Prüfe wann zuletzt geprüft wurde
+        # Dieselbe Fassung höchstens einmal am Tag erneut abfragen.
         should_check = True
         if update_check_file.exists():
             try:
                 with open(update_check_file, 'r') as f:
                     data = json.load(f)
                     last_check = datetime.fromisoformat(data.get('last_check', '2000-01-01'))
-                    # Prüfe nur alle 7 Tage
-                    if datetime.now() - last_check < timedelta(days=7):
+                    recorded = data.get('current_version') or data.get('updated_to') or ""
+                    if recorded == effective and datetime.now() - last_check < timedelta(days=1):
                         should_check = False
-            except:
+            except Exception:
                 pass
         
         if should_check:
             print("[INFO] Prüfe auf yt-dlp Updates...")
             latest_version = get_latest_ytdlp_version()
             
-            if latest_version and latest_version != current_version:
+            if latest_version and _ytdlp_version_parts(latest_version) > _ytdlp_version_parts(effective):
                 print(f"[INFO] Neue yt-dlp Version verfügbar: {latest_version} (aktuell: {current_version})")
                 update_message = f"Update verfügbar: {current_version} → {latest_version}"
                 if update_ytdlp():
                     was_updated = True
                     update_message = f"Erfolgreich aktualisiert: {current_version} → {latest_version}"
+                    try:
+                        note = _ytdlp_state_dir() / "bin" / "yt-dlp.version"
+                        note.parent.mkdir(parents=True, exist_ok=True)
+                        note.write_text(latest_version, encoding="utf-8")
+                    except OSError:
+                        pass
                     # Speichere Check-Datum
                     with open(update_check_file, 'w') as f:
                         json.dump({
@@ -190,7 +274,7 @@ def check_and_update_ytdlp():
                 with open(update_check_file, 'w') as f:
                     json.dump({
                         'last_check': datetime.now().isoformat(),
-                        'current_version': current_version
+                        'current_version': latest_version or effective
                     }, f)
     except Exception as e:
         # Fehler bei Update-Check sind nicht kritisch
@@ -202,9 +286,9 @@ def check_and_update_ytdlp():
 def install_ytdlp():
     """Installiert yt-dlp >= 2026 über pip (für ZDF/ARD/ORF)."""
     try:
-        print("[INFO] Installiere yt-dlp (mind. Version 2026)...")
+        print("[INFO] Installiere die neueste yt-dlp...")
         subprocess.run(
-            [sys.executable, '-m', 'pip', 'install', f'yt-dlp>={YTDLP_MIN_VERSION}'],
+            [sys.executable, '-m', 'pip', 'install', '--upgrade', 'yt-dlp'],
             check=True,
             capture_output=True,
             timeout=120

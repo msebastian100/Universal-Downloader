@@ -2187,7 +2187,7 @@ class DeezerDownloaderGUI:
             command=config_window.destroy
         ).pack(side=tk.RIGHT)
     
-    def _show_supported_sources_dialog(self, title: str, sources_list: list):
+    def _show_supported_sources_dialog(self, title: str, sources_list: list, note: str = ""):
         """Zeigt einen Dialog mit unterstützten Sendern/Seiten; jede Zeile 'Name : URL' ist anklickbar (öffnet URL im Browser)."""
         win = tk.Toplevel(self.root)
         win.title(title)
@@ -2196,6 +2196,8 @@ class DeezerDownloaderGUI:
         f = ttk.Frame(win, padding=10)
         f.pack(fill=tk.BOTH, expand=True)
         ttk.Label(f, text="Klicken Sie auf eine URL, um die Seite im Browser zu öffnen.", font=("Arial", 9)).pack(anchor=tk.W)
+        if note:
+            ttk.Label(f, text=note, font=("Arial", 9), wraplength=640).pack(anchor=tk.W, pady=(6, 0))
         text_frame = ttk.Frame(f)
         text_frame.pack(fill=tk.BOTH, expand=True, pady=(5, 10))
         text = tk.Text(text_frame, wrap=tk.WORD, font=("TkDefaultFont", 10), cursor="hand2", height=18, width=62)
@@ -2207,9 +2209,12 @@ class DeezerDownloaderGUI:
         for i, (name, url) in enumerate(sources_list):
             tag = f"link_{i}"
             text.insert(tk.END, f"{name} : ", "default")
-            text.insert(tk.END, f"{url}\n", tag)
-            text.tag_config(tag, foreground="#0066cc", underline=True)
-            text.tag_bind(tag, "<Button-1>", lambda e, u=url: webbrowser.open(u))
+            if url:
+                text.insert(tk.END, f"{url}\n", tag)
+                text.tag_config(tag, foreground="#0066cc", underline=True)
+                text.tag_bind(tag, "<Button-1>", lambda e, u=url: webbrowser.open(u))
+            else:
+                text.insert(tk.END, "\n")
         text.bind("<Key>", lambda e: "break")  # Nur lesen, Klicks auf URLs funktionieren
         ttk.Button(win, text="Schließen", command=win.destroy).pack(pady=(0, 10))
 
@@ -2220,7 +2225,16 @@ class DeezerDownloaderGUI:
             name = VIDEO_SENDER_DISPLAY_NAMES.get(key, key.replace("_", " ").title())
             url = "https://www." + domains[0] if domains else "#"
             sources.append((name, url))
-        self._show_supported_sources_dialog("Unterstützte Sender (Video)", sources)
+        try:
+            from video_downloader import list_additional_video_sites
+            sources.extend(list_additional_video_sites())
+        except Exception:
+            pass
+        self._show_supported_sources_dialog(
+            "Unterstützte Sender (Video)",
+            sources,
+            note="Die weiteren Seiten kommen von yt-dlp. Eine noch unbekannte Seite wird nach einem erfolgreichen Download in diese Liste aufgenommen. Der Download liegt in einem Ordner mit dem Namen der Seite.",
+        )
 
     def _hoerspielprojekt_sanitize_folder(self, name: str) -> str:
         """Bereinigt einen Ordner-/Dateinamen für Hoerspielprojekt."""
@@ -5888,6 +5902,15 @@ class DeezerDownloaderGUI:
                             "Solche dynamischen Playlists werden von YouTube nicht wie normale Playlists angeboten. Auch mit Browser-Cookies ist ein Download oft nicht möglich.\n\n"
                             "Bitte verwenden Sie eine normale Playlist oder laden Sie einzelne Titel über die jeweilige Video-URL."
                         ))
+                    elif "gespeicherte youtube-anmeldung gilt nicht mehr" in err_lower or "no longer valid" in err_lower or "been rotated" in err_lower:
+                        self.root.after(0, lambda: messagebox.showwarning(
+                            "YouTube Music – Anmeldung abgelaufen",
+                            "Die gespeicherte YouTube-Anmeldung gilt nicht mehr. YouTube hat die Cookies verworfen.\n\n"
+                            "Ohne gültige Anmeldung ist diese Playlist nicht sichtbar, deshalb erscheint „Die Playlist existiert nicht“.\n\n"
+                            "Bitte in den Einstellungen bei YouTube Music die Cookies neu exportieren "
+                            "(music.youtube.com, eingeloggt, „Get cookies.txt LOCALLY“, „Nur diese Seite“) "
+                            "und den Browser schließen, bevor der Download startet.",
+                        ))
                     elif "music.youtube" in url_lower and ("failed to resolve album" in err_lower or "resolve album to playlist" in err_lower):
                         self.root.after(0, lambda: messagebox.showwarning(
                             "YouTube Music – Album-URL",
@@ -6201,8 +6224,12 @@ class DeezerDownloaderGUI:
                 self.root.after(0, lambda: self.music_download_button.config(state=tk.NORMAL))
                 self.music_log("Keine Einträge ausgewählt.")
                 return
-            label = "Lieder" if kind == "music" else "Folgen"
-            self.music_log(f"{len(selected)} {label} ausgewählt.")
+            count = len(selected)
+            if kind == "music":
+                label = "Lied" if count == 1 else "Lieder"
+            else:
+                label = "Folge" if count == 1 else "Folgen"
+            self.music_log(f"{count} {label} ausgewählt.")
             self.music_status_var.set("Verbindung wird aufgebaut…")
             self.music_progress_bar.config(mode='indeterminate')
             self.music_progress_bar.start()
@@ -7558,9 +7585,9 @@ class DeezerDownloaderGUI:
         # Prüfe ob URL unterstützt wird
         if not self.video_downloader.is_supported_url(url):
             response = messagebox.askyesno(
-                "URL möglicherweise nicht unterstützt",
-                f"Die URL scheint nicht von einem bekannten Sender zu stammen.\n\n"
-                f"Trotzdem versuchen? (yt-dlp unterstützt viele weitere Quellen)"
+                "Neue Video-Seite",
+                "Diese Video-Seite ist noch nicht in der Liste.\n\n"
+                "Trotzdem laden? Wenn der Download klappt, wird die Seite aufgenommen."
             )
             if not response:
                 return
@@ -7579,7 +7606,25 @@ class DeezerDownloaderGUI:
             
             # Prüfe ob es eine YouTube-URL ist
             is_youtube = 'youtube.com' in url.lower() or 'youtu.be' in url.lower()
+            listing = self.video_downloader.youtube_listing(url) if is_youtube else None
+            if listing and listing[0] == 'short':
+                url = listing[1]
+                self.video_url_var.set(url)
+                self.video_log(f"YouTube-Short erkannt: {url}")
+                listing = None
             is_youtube_playlist = is_youtube and ('list=' in url.lower() or '/playlist' in url.lower())
+            channel_modes = None
+            channel_data = None
+            if listing and listing[0] == 'channel' and not is_youtube_playlist:
+                channel_modes = self._ask_youtube_channel_mode(listing[2])
+                if not channel_modes:
+                    self.video_log("Kanal-Abfrage abgebrochen")
+                    return
+                channel_data = self._gather_youtube_channel(listing[1], channel_modes)
+                if not channel_data:
+                    messagebox.showinfo("YouTube-Kanal", "Dazu wurde nichts gefunden. Shorts, Playlists und Livestreams lassen sich in der Abfrage einzeln oder zusammen wählen.")
+                    return
+                is_youtube_playlist = True
             
             # Prüfe ob es eine Serie/Staffel oder YouTube-Playlist ist
             is_series_or_playlist = False
@@ -7595,8 +7640,7 @@ class DeezerDownloaderGUI:
             if is_series_or_playlist:
                 # Zeige Dialog zur Auswahl
                 self.video_log("Rufe Episoden/Playlist-Daten ab...")
-                series_data = self.video_downloader.get_series_episodes(url)
-                
+                series_data = channel_data if channel_data is not None else self.video_downloader.get_series_episodes(url)
                 if series_data:
                     if is_youtube_playlist:
                         self.video_log(f"✓ Playlist-Daten erhalten: {series_data.get('series_name', 'Unbekannt')}")
@@ -7614,6 +7658,16 @@ class DeezerDownloaderGUI:
                             if not selected_episodes:
                                 self.video_log("Benutzer hat abgebrochen")
                                 return  # Benutzer hat abgebrochen
+                            if any('list=' in (ep.get('url') or '') or '/playlist' in (ep.get('url') or '') for ep in selected_episodes):
+                                self.video_log("Lese die gewählten Playlists…")
+                                expanded = self.video_downloader.expand_youtube_playlists(selected_episodes)
+                                if not expanded or not expanded.get("seasons"):
+                                    messagebox.showinfo("YouTube-Kanal", "In den gewählten Playlists wurden keine Videos gefunden.")
+                                    return
+                                selected_episodes = self.show_series_selection_dialog(expanded, is_youtube_playlist=True)
+                                if not selected_episodes:
+                                    self.video_log("Benutzer hat abgebrochen")
+                                    return
                             
                             self.video_log(f"✓ {len(selected_episodes)} Folgen ausgewählt")
                             
@@ -7647,6 +7701,8 @@ class DeezerDownloaderGUI:
                         self.video_log("⚠ Keine Playlist-Daten erhalten")
                     else:
                         self.video_log("⚠ Keine Serien-Daten erhalten")
+                if channel_modes is not None:
+                    return
         
         # Normales einzelnes Video
         # UI deaktivieren
@@ -8284,6 +8340,103 @@ class DeezerDownloaderGUI:
             self.video_status_var.set("Download abgebrochen")
             self.video_progress_var.set(0)
     
+    def _ask_youtube_channel_mode(self, tab: str = "") -> Optional[List[str]]:
+        """Fragt bei einem YouTube-Kanal, was geladen werden soll. Mehrere Angaben sind möglich."""
+        choice = {"modes": None}
+        win = tk.Toplevel(self.root)
+        win.title("YouTube-Kanal")
+        win.transient(self.root)
+        win.grab_set()
+        self._fit_dialog(win, 560, 460, 480, 400)
+        frame = ttk.Frame(win, padding="16")
+        frame.pack(fill=tk.BOTH, expand=True)
+        ttk.Label(frame, text="Was soll von diesem Kanal geladen werden?", font=("Arial", 13, "bold")).pack(anchor=tk.W, pady=(0, 8))
+        ttk.Label(
+            frame,
+            text="Shorts, Playlists und Livestreams lassen sich zusammen auswählen. Ein laufender Livestream wird mit aufgenommen, bis er endet.",
+            wraplength=500,
+        ).pack(anchor=tk.W, pady=(0, 12))
+
+        suggested = {
+            "playlists": "playlists",
+            "shorts": "shorts",
+            "live": "streams_live",
+        }.get(tab)
+        options = [
+            ("shorts", "Shorts"),
+            ("playlists", "Playlists"),
+            ("streams_past", "Livestreams, die schon gelaufen sind"),
+            ("streams_live", "Livestream, der gerade läuft"),
+        ]
+        variables = {}
+        for mode, label in options:
+            variables[mode] = tk.BooleanVar(value=suggested == mode)
+            text = label + ("  (aus der Adresse)" if suggested == mode else "")
+            ttk.Checkbutton(frame, text=text, variable=variables[mode]).pack(anchor=tk.W, pady=4)
+
+        def confirm() -> None:
+            picked = [mode for mode, var in variables.items() if var.get()]
+            if not picked:
+                messagebox.showwarning("YouTube-Kanal", "Bitte mindestens eine Angabe wählen, zum Beispiel Shorts.", parent=win)
+                return
+            choice["modes"] = picked
+            win.destroy()
+
+        buttons = ttk.Frame(frame)
+        buttons.pack(fill=tk.X, pady=(16, 0))
+        ttk.Button(buttons, text="Weiter", command=confirm).pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(buttons, text="Abbrechen", command=win.destroy).pack(side=tk.LEFT)
+        win.wait_window()
+        return choice["modes"]
+
+    def _gather_youtube_channel(self, base: str, modes: List[str]) -> Optional[Dict]:
+        """Lädt die gewählten Kanal-Bereiche, Shorts eingeschlossen, in eine Auswahlliste."""
+        labels = {
+            "shorts": "Shorts",
+            "playlists": "Playlists",
+            "streams_past": "Beendete Livestreams",
+            "streams_live": "Laufende Livestreams",
+        }
+        seasons = {}
+        number = 1
+        for mode in modes:
+            if mode == "streams_live":
+                self.video_log(f"YouTube-Kanal: {labels.get(mode, mode)} → {base.rstrip('/')}/live")
+                episodes = self.video_downloader.running_youtube_streams(base)
+                if not episodes:
+                    continue
+                for episode in episodes:
+                    episode["section_title"] = labels.get(mode, mode)
+                seasons[number] = episodes
+                number += 1
+                continue
+            tab_url = self.video_downloader.youtube_tab_url(base, mode)
+            self.video_log(f"YouTube-Kanal: {labels.get(mode, mode)} → {tab_url}")
+            data = self.video_downloader.get_series_episodes(tab_url)
+            data = self.video_downloader.filter_youtube_listing(data, mode)
+            if not data:
+                continue
+            for episodes in data.get("seasons", {}).values():
+                for episode in episodes:
+                    episode["section_title"] = labels.get(mode, mode)
+                seasons[number] = episodes
+                number += 1
+        if not seasons:
+            return None
+        kind = {
+            "shorts": "shorts",
+            "playlists": "channel_playlists",
+            "streams_past": "streams_past",
+            "streams_live": "streams_live",
+        }.get(modes[0] if len(modes) == 1 else "", "channel_mix")
+        total = sum(len(items) for items in seasons.values())
+        return {
+            "series_name": base.rstrip("/").rsplit("/", 1)[-1].lstrip("@") or "YouTube-Kanal",
+            "seasons": seasons,
+            "total_episodes": total,
+            "playlist_kind": kind,
+        }
+
     def show_series_selection_dialog(self, series_data: Dict, is_youtube_playlist: bool = False) -> Optional[List[Dict]]:
         """
         Zeigt Dialog zur Auswahl von Staffeln/Playlisten und Folgen
@@ -8327,7 +8480,22 @@ class DeezerDownloaderGUI:
         playlist_kind = series_data.get("playlist_kind")
         if playlist_kind == "music":
             title_text = f"Playlist: {series_name}"
-            info_text = f"{total_episodes} Lieder. Einzelne anhaken oder oben alle auswählen."
+            info_text = f"{total_episodes} {'Lied' if total_episodes == 1 else 'Lieder'}. Einzelne anhaken oder oben alle auswählen."
+        elif playlist_kind == "shorts":
+            title_text = f"Shorts: {series_name}"
+            info_text = f"{total_episodes} Shorts. Einzelne anhaken oder oben alle auswählen."
+        elif playlist_kind == "streams_live":
+            title_text = f"Laufende Livestreams: {series_name}"
+            info_text = "Diese Streams laufen gerade. Die Aufnahme läuft mit, bis der Stream endet."
+        elif playlist_kind == "streams_past":
+            title_text = f"Beendete Livestreams: {series_name}"
+            info_text = f"{total_episodes} Livestreams, die schon gelaufen sind."
+        elif playlist_kind == "channel_mix":
+            title_text = f"Kanal: {series_name}"
+            info_text = f"{total_episodes} Einträge aus Shorts, Playlists oder Livestreams."
+        elif playlist_kind == "channel_playlists":
+            title_text = f"Playlists: {series_name}"
+            info_text = f"{total_episodes} Playlists. Danach lassen sich die Videos daraus auswählen."
         elif is_youtube_playlist:
             title_text = f"📺 Playlist: {series_name}"
             info_text = f"{len(seasons)} Playlist(en) mit insgesamt {total_episodes} Video(s) gefunden."
@@ -8378,14 +8546,33 @@ class DeezerDownloaderGUI:
             
             # Staffel/Playlist-Frame mit verbessertem Design
             if playlist_kind == "music":
-                frame_text = f"Playlist ({len(season_episodes)} Lieder)"
+                frame_text = f"Playlist ({len(season_episodes)} {'Lied' if len(season_episodes) == 1 else 'Lieder'})"
                 checkbox_text = "Alle Lieder auswählen"
+            elif playlist_kind == "shorts":
+                frame_text = f"Shorts ({len(season_episodes)})"
+                checkbox_text = "Alle Shorts auswählen"
+            elif playlist_kind == "streams_live":
+                frame_text = f"Laufende Livestreams ({len(season_episodes)})"
+                checkbox_text = "Alle laufenden Livestreams auswählen"
+            elif playlist_kind == "streams_past":
+                frame_text = f"Beendete Livestreams ({len(season_episodes)})"
+                checkbox_text = "Alle beendeten Livestreams auswählen"
+            elif playlist_kind == "channel_playlists":
+                frame_text = f"Playlists ({len(season_episodes)})"
+                checkbox_text = "Alle Playlists auswählen"
             elif is_youtube_playlist:
                 frame_text = f"📋 Playlist {season_num} ({len(season_episodes)} Videos)"
                 checkbox_text = f"Alle Videos aus Playlist {season_num} auswählen"
             else:
                 frame_text = f"📺 Staffel {season_num} ({len(season_episodes)} Folgen)"
                 checkbox_text = f"Alle Folgen aus Staffel {season_num} auswählen"
+            section_names = {ep.get('section_title') for ep in season_episodes if ep.get('section_title')}
+            if len(section_names) == 1:
+                frame_text = f"{next(iter(section_names))} ({len(season_episodes)})"
+            shared_names = {ep.get('series') for ep in season_episodes if ep.get('series')}
+            if is_youtube_playlist and playlist_kind == "video" and len(shared_names) == 1:
+                frame_text = f"{next(iter(shared_names))} ({len(season_episodes)} Videos)"
+                checkbox_text = "Alle Videos dieser Playlist auswählen"
             
             season_frame = ttk.LabelFrame(
                 scrollable_frame,
@@ -8436,24 +8623,38 @@ class DeezerDownloaderGUI:
                     date_disp = str(date_iso)
                 
                 if ep_num is not None:
-                    if is_youtube_playlist:
+                    if is_youtube_playlist or playlist_kind in ("music", "shorts", "streams_live", "streams_past", "channel_playlists"):
                         label_text = f"▶ {ep_num:02d}. {title}"
                     else:
                         label_text = f"▶ E{ep_num:02d}: {title}"
                 else:
                     label_text = f"▶ {title}"
+                artist = (episode.get("artist") or "").strip()
+                if playlist_kind == "music" and artist and artist.lower() not in (title or "").lower():
+                    label_text += f" – {artist}"
+                live_status = episode.get("live_status") or ""
+                if live_status == "is_live":
+                    live_mark = " · läuft"
+                elif live_status == "is_upcoming":
+                    live_mark = " · startet noch"
+                else:
+                    live_mark = ""
                 
                 extras = []
-                if duration:
+                if duration and duration != "Unbekannt":
                     extras.append(duration)
                 if date_disp:
                     extras.append(date_disp)
                 if extras:
                     label_text += f" ({', '.join(extras)})"
                 
-                # Kürze Titel falls zu lang
-                if len(label_text) > 70:
-                    label_text = label_text[:67] + "..."
+                # Kürze den Titel. Interpret und „läuft“ bleiben am Ende stehen.
+                limit = 110 if playlist_kind == "music" else 90
+                tail = live_mark
+                if len(label_text) + len(tail) > limit:
+                    keep = max(12, limit - len(tail) - 3)
+                    label_text = label_text[:keep] + "..."
+                label_text += tail
                 
                 # Checkbox direkt ohne zusätzlichen Frame (für einheitliches Design)
                 checkbox = ttk.Checkbutton(
@@ -8534,7 +8735,7 @@ class DeezerDownloaderGUI:
         def update_button_text():
             count = sum(1 for var in episode_vars.values() if var.get())
             if playlist_kind == "music":
-                confirm_button.config(text=f"▶ Download ({count} Lieder)")
+                confirm_button.config(text=f"▶ Download ({count} {'Lied' if count == 1 else 'Lieder'})")
             elif is_youtube_playlist:
                 confirm_button.config(text=f"▶ Download ({count} Video(s))")
             else:

@@ -193,8 +193,8 @@ if [ -f "requirements.txt" ]; then
     "$PY" -m pip install --upgrade pip -q
     "$PY" -m pip install -r requirements.txt -q || true
 fi
-# yt-dlp mind. 2026 (ZDF/ARD/ORF) – immer aktuelle Version von PyPI
-"$PY" -m pip install --upgrade "yt-dlp>=2026" -q || true
+# Immer die neueste yt-dlp von PyPI (YouTube ändert die Auslieferung laufend)
+"$PY" -m pip install --upgrade yt-dlp -q || true
 
 # venv: System-PyGObject für Cinnamon/GNOME-Tray (XApp / AppIndicator)
 PYVER="$("$PY" -c 'import sys; print("%d.%d" % (sys.version_info.major, sys.version_info.minor))')"

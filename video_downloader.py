@@ -40,6 +40,183 @@ SUPPORTED_SENDERS = {
     'arte': ['arte.tv'],
 }
 
+_EXTRA_SITES_CACHE = None
+_LEARNED_SITES_CACHE = None
+_DOMAIN_RE = re.compile(r'(?:[a-z0-9-]+\\?\.)+[a-z]{2,}', re.I)
+
+
+def _known_sites_path():
+    from path_helper import get_app_base_path
+    return Path(get_app_base_path()) / "known_video_sites.json"
+
+
+def _host_of(url: str) -> str:
+    from urllib.parse import urlparse
+    host = (urlparse(url or "").hostname or "").lower()
+    if host.startswith("www."):
+        host = host[4:]
+    return host
+
+
+def _host_is_builtin(host: str) -> bool:
+    host = (host or "").lower()
+    if not host:
+        return False
+    for domains in SUPPORTED_SENDERS.values():
+        for domain in domains:
+            domain = domain.lower()
+            if host == domain or host.endswith("." + domain):
+                return True
+    return False
+
+
+def _load_learned_sites():
+    global _LEARNED_SITES_CACHE
+    if _LEARNED_SITES_CACHE is not None:
+        return _LEARNED_SITES_CACHE
+    sites = []
+    try:
+        path = _known_sites_path()
+        if path.is_file():
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(data, list):
+                for item in data:
+                    if not isinstance(item, dict):
+                        continue
+                    host = (item.get("host") or "").strip().lower()
+                    name = (item.get("name") or host).strip()
+                    url = (item.get("url") or "").strip()
+                    if host and name:
+                        sites.append({"name": name, "host": host, "url": url or f"https://{host}"})
+    except Exception:
+        sites = []
+    _LEARNED_SITES_CACHE = sites
+    return sites
+
+
+def host_is_learned(url: str) -> bool:
+    host = _host_of(url)
+    if not host:
+        return False
+    for item in _load_learned_sites():
+        known = item["host"]
+        if host == known or host.endswith("." + known):
+            return True
+    return False
+
+
+def remember_video_site(url: str, name: str = "") -> bool:
+    """Merkt eine Seite, die nicht zu den festen Sendern gehört. True, wenn sie neu ist."""
+    from voe import is_voe_url
+    if is_voe_url(url) or _host_is_builtin(_host_of(url)):
+        return False
+    host = _host_of(url)
+    if not host or host_is_learned(url):
+        return False
+    for _name, site_url in list_additional_video_sites():
+        known = _host_of(site_url)
+        if known and (host == known or host.endswith("." + known)):
+            return False
+    label = (name or host).strip() or host
+    sites = list(_load_learned_sites())
+    sites.append({"name": label, "host": host, "url": f"https://{host}"})
+    try:
+        path = _known_sites_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(sites, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:
+        return False
+    global _LEARNED_SITES_CACHE
+    _LEARNED_SITES_CACHE = sites
+    return True
+
+
+def _extractor_domains(ie) -> list:
+    raw = getattr(ie, "_DOMAINS", None) or getattr(ie, "_VALID_URL", "") or ""
+    if isinstance(raw, (list, tuple)):
+        raw = " ".join(str(part) for part in raw)
+    else:
+        raw = str(raw)
+    found = []
+
+    def add(domain: str):
+        domain = domain.replace("\\", "").lower().strip(".")
+        if domain.startswith("www."):
+            domain = domain[4:]
+        if len(domain) < 4 or domain.endswith((".swf", ".xml", ".jpg", ".png", ".gif", ".js", ".html", ".php")):
+            return
+        if domain not in found:
+            found.append(domain)
+
+    for item in _DOMAIN_RE.findall(raw):
+        add(item)
+    for left, right in re.findall(r"([a-z0-9-]+)\\+\.([a-z]{2,})", raw, re.I):
+        add(f"{left}.{right}")
+    for host, tlds in re.findall(r"([a-z0-9-]+)\\+\.\(\?:([a-z0-9|]+)\)", raw, re.I):
+        for tld in tlds.split("|"):
+            if tld.isalpha():
+                add(f"{host}.{tld}")
+    return found
+
+
+def _best_site_domain(name: str, domains: list) -> str:
+    key = re.sub(r"[^a-z0-9]", "", (name or "").lower())
+    if key:
+        named = [domain for domain in domains if key in domain.replace("-", "").replace(".", "")]
+        if named:
+            return sorted(named, key=len)[0]
+    return domains[0] if domains else ""
+
+
+def list_additional_video_sites():
+    """Videoseiten aus yt-dlp und selbst aufgenommene Seiten, ohne die festen Sender."""
+    global _EXTRA_SITES_CACHE
+    if _EXTRA_SITES_CACHE is None:
+        catalog_by_key = {}
+        try:
+            from yt_dlp.extractor import gen_extractors
+            extractors = gen_extractors()
+        except Exception:
+            extractors = []
+        for ie in extractors:
+            raw_name = (getattr(ie, "IE_NAME", "") or "").split(":", 1)[0].strip()
+            if not raw_name or raw_name.lower() == "generic":
+                continue
+            domains = [domain for domain in _extractor_domains(ie) if not _host_is_builtin(domain)]
+            if not domains and any(_host_is_builtin(domain) for domain in _extractor_domains(ie)):
+                continue
+            domain = _best_site_domain(raw_name, domains)
+            if domain and _host_is_builtin(domain):
+                continue
+            label = raw_name[:1].upper() + raw_name[1:] if raw_name.islower() else raw_name
+            key = domain or label.lower()
+            current = catalog_by_key.get(key)
+            if current is None or len(label) < len(current[0]):
+                catalog_by_key[key] = (label, f"https://{domain}" if domain else "")
+        catalog = sorted(catalog_by_key.values(), key=lambda item: item[0].lower())
+        _EXTRA_SITES_CACHE = catalog
+    merged = []
+    seen_hosts = set()
+    seen_names = set()
+    for name, url in [("VOE", "https://voe.sx")] + list(_EXTRA_SITES_CACHE):
+        host = _host_of(url)
+        if host and host in seen_hosts:
+            continue
+        if name.lower() in seen_names:
+            continue
+        if host:
+            seen_hosts.add(host)
+        seen_names.add(name.lower())
+        merged.append((name, url))
+    for item in _load_learned_sites():
+        if item["host"] in seen_hosts or item["name"].lower() in seen_names:
+            continue
+        seen_hosts.add(item["host"])
+        seen_names.add(item["name"].lower())
+        merged.append((item["name"], item["url"]))
+    merged.sort(key=lambda item: item[0].lower())
+    return merged
+
 
 class VideoDownloader:
     """Klasse für Video-Downloads von öffentlich-rechtlichen Sendern"""
@@ -118,6 +295,15 @@ class VideoDownloader:
         
         self.log("WARNUNG: yt-dlp nicht gefunden! Bitte installieren Sie yt-dlp.", "ERROR")
         return False
+
+    def _youtube_runtime_args(self) -> List[str]:
+        """Node löst die YouTube-Aufgabe. Ohne Laufzeit bricht der Abruf mit HTTP 403 ab."""
+        import shutil
+        candidates = [shutil.which("node"), "/usr/local/bin/node", "/opt/homebrew/bin/node"]
+        node = next((path for path in candidates if path and os.path.isfile(path)), "")
+        if not node:
+            return []
+        return ["--js-runtimes", f"node:{node}"]
     
     def _check_ffmpeg(self):
         """Prüft ob ffmpeg installiert ist (benötigt für MP3-Konvertierung)"""
@@ -159,6 +345,171 @@ class VideoDownloader:
         if level in ["ERROR", "WARNING"]:
             print(log_entry)
     
+    def youtube_listing(self, url: str):
+        """Erkennt einen einzelnen Short oder einen Kanal-Tab.
+
+        Rückgabe:
+            ('short', watch_url) oder ('channel', basis_url, tab) oder None.
+            tab ist '', 'videos', 'shorts', 'streams', 'playlists' oder 'live'.
+        """
+        from urllib.parse import urlparse
+        parsed = urlparse((url or '').strip())
+        host = (parsed.netloc or '').lower()
+        if 'youtube.com' not in host:
+            return None
+        path = parsed.path or ''
+        short = re.match(r'/shorts/([A-Za-z0-9_-]{11})/?$', path)
+        if short:
+            return ('short', f"https://www.youtube.com/watch?v={short.group(1)}")
+        channel = re.match(
+            r'(/(?:@[^/]+|channel/[^/]+|c/[^/]+|user/[^/]+))'
+            r'(?:/(videos|shorts|streams|playlists|live|featured))?/?$',
+            path,
+        )
+        if not channel:
+            return None
+        return ('channel', f"https://www.youtube.com{channel.group(1)}", channel.group(2) or '')
+
+    def youtube_tab_url(self, base: str, mode: str) -> str:
+        suffix = {
+            'playlists': 'playlists',
+            'shorts': 'shorts',
+            'streams_past': 'streams',
+            'streams_live': 'live',
+        }.get(mode, 'videos')
+        return base.rstrip('/') + '/' + suffix
+
+    def running_youtube_streams(self, base: str) -> List[Dict]:
+        """Laufende und angekündigte Livestreams eines Kanals.
+
+        Die Streams-Liste liefert den laufenden Stream ohne live_status.
+        /live nennt den aktuellen Stream mit Status. Beide Quellen werden zusammengeführt.
+        """
+        found = []
+        seen = set()
+        for suffix in ('live', 'streams'):
+            data = self.get_series_episodes(base.rstrip('/') + '/' + suffix)
+            data = self.filter_youtube_listing(data, 'streams_live')
+            for episodes in (data or {}).get('seasons', {}).values():
+                for episode in episodes:
+                    key = episode.get('id') or episode.get('url')
+                    if not key or key in seen:
+                        continue
+                    seen.add(key)
+                    found.append(episode)
+        return found
+
+    def _youtube_artist_name(self, info: Dict) -> str:
+        artists = info.get('artists')
+        names = []
+        if isinstance(artists, list):
+            for item in artists:
+                if isinstance(item, str) and item.strip():
+                    names.append(item.strip())
+                elif isinstance(item, dict):
+                    name = item.get('name') or item.get('artist') or ''
+                    if str(name).strip():
+                        names.append(str(name).strip())
+        if names:
+            return ', '.join(names)
+        for key in ('artist', 'album_artist', 'creator'):
+            value = info.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        channel = (info.get('channel') or info.get('uploader') or '').strip()
+        if channel.lower().endswith(' - topic'):
+            channel = channel[: -len(' - topic')].strip()
+        return channel
+
+    def _youtube_entry_url(self, info: Dict) -> str:
+        vid = str(info.get('id') or '')
+        webpage = info.get('webpage_url') or ''
+        raw_url = info.get('url') or ''
+        ie = info.get('ie_key') or ''
+        playlist_id = vid.startswith(('PL', 'UU', 'OL', 'RD', 'LL', 'WL', 'FL')) or ie in ('YoutubeTab', 'YoutubePlaylist')
+        if playlist_id or '/playlist' in webpage or 'list=' in webpage:
+            if webpage.startswith('http') and 'watch?' not in webpage:
+                return webpage
+            if raw_url.startswith('http') and 'list=' in raw_url:
+                return raw_url
+            if vid:
+                return f"https://www.youtube.com/playlist?list={vid}"
+        if len(vid) == 11:
+            return f"https://www.youtube.com/watch?v={vid}"
+        if webpage.startswith('http'):
+            return webpage
+        if raw_url.startswith('http'):
+            return raw_url
+        return ''
+
+    def filter_youtube_listing(self, data: Optional[Dict], mode: str) -> Optional[Dict]:
+        """Behält je nach Kanal-Abfrage Shorts, Playlists oder Live/beendete Streams."""
+        if not data:
+            return None
+        seasons = data.get('seasons') or {}
+        kept = {}
+        for num, episodes in seasons.items():
+            chosen = []
+            for episode in episodes:
+                status = episode.get('live_status') or ''
+                if mode == 'streams_live' and status not in ('is_live', 'is_upcoming', 'post_live'):
+                    continue
+                if mode == 'streams_past' and status in ('is_live', 'is_upcoming'):
+                    continue
+                chosen.append(episode)
+            if chosen:
+                kept[num] = chosen
+        if not kept:
+            return None
+        kind = {
+            'shorts': 'shorts',
+            'streams_live': 'streams_live',
+            'streams_past': 'streams_past',
+            'playlists': 'channel_playlists',
+        }.get(mode)
+        return {
+            **data,
+            'seasons': kept,
+            'total_episodes': sum(len(items) for items in kept.values()),
+            'playlist_kind': kind or data.get('playlist_kind'),
+        }
+
+    def expand_youtube_playlists(self, playlists: List[Dict]) -> Optional[Dict]:
+        """Lädt die Videos der gewählten Kanal-Playlists. Shorts und Livestreams bleiben erhalten."""
+        seasons = {}
+        total = 0
+        index = 1
+        direct = [item for item in playlists if 'list=' not in (item.get('url') or '') and '/playlist' not in (item.get('url') or '')]
+        if direct:
+            seasons[index] = direct
+            total += len(direct)
+            index += 1
+        for playlist in playlists:
+            url = playlist.get('url') or ''
+            if 'list=' not in url and '/playlist' not in url:
+                continue
+            data = self.get_series_episodes(url)
+            episodes = []
+            for group in (data or {}).get('seasons', {}).values():
+                episodes.extend(group)
+            if not episodes:
+                continue
+            name = playlist.get('title') or (data or {}).get('series_name') or f"Playlist {index}"
+            for episode in episodes:
+                episode['series'] = name
+                episode['section_title'] = name
+            seasons[index] = episodes
+            total += len(episodes)
+            index += 1
+        if not seasons:
+            return None
+        return {
+            'series_name': 'YouTube-Kanal',
+            'seasons': seasons,
+            'total_episodes': total,
+            'playlist_kind': 'video',
+        }
+
     def is_supported_url(self, url: str) -> bool:
         """
         Prüft ob die URL von einem unterstützten Sender stammt
@@ -169,12 +520,66 @@ class VideoDownloader:
         Returns:
             True wenn unterstützt, sonst False
         """
+        from voe import is_voe_url
+        if is_voe_url(url):
+            return True
         url_lower = url.lower()
         for sender, domains in SUPPORTED_SENDERS.items():
             for domain in domains:
                 if domain in url_lower:
                     return True
-        return False
+        if self._matching_extractor(url) is not None:
+            return True
+        return host_is_learned(url)
+
+    def _matching_extractor(self, url: str):
+        """Liefert den yt-dlp-Extractor, wenn die Seite eine eigene Unterstützung hat."""
+        if not url or not str(url).lower().startswith(('http://', 'https://')):
+            return None
+        if getattr(VideoDownloader, '_ytdlp_extractors', None) is None:
+            try:
+                from yt_dlp.extractor import gen_extractors
+                VideoDownloader._ytdlp_extractors = [
+                    ie for ie in gen_extractors()
+                    if (getattr(ie, 'IE_NAME', '') or '').lower() != 'generic'
+                ]
+            except Exception:
+                VideoDownloader._ytdlp_extractors = []
+        for ie in VideoDownloader._ytdlp_extractors:
+            try:
+                if ie.suitable(url):
+                    return ie
+            except Exception:
+                continue
+        return None
+
+    def _site_folder_name(self, url: str) -> str:
+        """Ordnername der Seite, zum Beispiel XHamster oder Vimeo."""
+        from voe import is_voe_url
+        if is_voe_url(url):
+            return "VOE"
+        ie = self._matching_extractor(url)
+        if ie is not None:
+            name = (getattr(ie, 'IE_NAME', '') or '').strip()
+            if name:
+                if name.islower():
+                    name = name[:1].upper() + name[1:]
+                return self.sanitize_filename(name)
+        from urllib.parse import urlparse
+        host = (urlparse(url or '').hostname or '').lower()
+        if host.startswith('www.'):
+            host = host[4:]
+        labels = [part for part in host.split('.') if part]
+        if len(labels) >= 3 and (
+            labels[0] in {'m', 'mobile'}
+            or (len(labels[0]) == 2 and labels[0].isalpha())
+        ):
+            labels = labels[1:]
+        brand = labels[-2] if len(labels) >= 2 else (labels[0] if labels else '')
+        brand = re.sub(r'\d+$', '', brand)
+        if not brand:
+            return ''
+        return self.sanitize_filename(brand[:1].upper() + brand[1:])
     
     def _detect_service_from_url(self, url: str) -> Optional[str]:
         """
@@ -246,6 +651,20 @@ class VideoDownloader:
         
         return None
     
+    def _explain_youtube_cookie_failure(self, text: str) -> str:
+        """YouTube verwirft gedrehte Cookies und meldet private Playlists dann als nicht vorhanden."""
+        low = (text or "").lower()
+        if "no longer valid" not in low and "been rotated" not in low:
+            return text
+        return (
+            "Die gespeicherte YouTube-Anmeldung gilt nicht mehr. "
+            "YouTube hat die Cookies verworfen. Ohne gültige Anmeldung ist diese Playlist nicht sichtbar, "
+            "deshalb erscheint „Die Playlist existiert nicht“.\n\n"
+            "In den Einstellungen bei YouTube Music die Cookies neu exportieren: "
+            "auf music.youtube.com eingeloggt „Get cookies.txt LOCALLY“ → „Nur diese Seite“. "
+            "Den Browser schließen, bevor der Download startet, sonst verwirft YouTube die Cookies wieder."
+        )
+
     def _get_cookies_file(self, account: Dict) -> Optional[str]:
         """
         Erstellt eine temporäre Cookies-Datei für yt-dlp
@@ -346,6 +765,12 @@ class VideoDownloader:
             Dictionary mit Video-Informationen oder None bei Fehler
         """
         try:
+            from voe import is_voe_url, resolve_voe
+            if is_voe_url(url):
+                info = resolve_voe(url)
+                if info:
+                    self.log(f"VOE: {info.get('title')}")
+                return info
             # Normalisiere ARD Sounds URLs zuerst (konvertiert zu ARD Audiothek-Format)
             original_url = url
             url = self._normalize_ard_sounds_url(url)
@@ -396,6 +821,8 @@ class VideoDownloader:
             # Füge Cookies hinzu falls vorhanden
             if cookies_file:
                 args.extend(['--cookies', cookies_file])
+                if service in ("YouTube", "YouTube Music"):
+                    args = [arg for arg in args if arg != "--no-warnings"]
                 # Spezielle Optionen für ARD Plus
                 if service == 'ARD Plus':
                     args.extend(['--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'])
@@ -419,6 +846,7 @@ class VideoDownloader:
             # YouTube: IPv4 erzwingen
             if service == 'youtube' or 'youtube.com' in url.lower() or 'youtu.be' in url.lower():
                 args.append('-4')
+                args.extend(self._youtube_runtime_args())
             
             # URL hinzufügen
             args.append(url)
@@ -467,7 +895,7 @@ class VideoDownloader:
                     self.log("✗ Keine Daten von yt-dlp erhalten", "ERROR")
                     return None
             else:
-                error_output = result.stderr or result.stdout
+                error_output = self._explain_youtube_cookie_failure(result.stderr or result.stdout or "")
                 self.log(f"✗ Fehler beim Abrufen der Video-Info: {error_output}", "ERROR")
                 
                 # Fallback für ARD Sounds: Parse die Webseite direkt
@@ -1195,6 +1623,9 @@ class VideoDownloader:
             True wenn es eine Serie/Staffel ist, sonst False
         """
         try:
+            from voe import is_voe_url
+            if is_voe_url(url):
+                return False
             # Normalisiere ARD Sounds URLs zuerst
             original_url = url
             url = self._normalize_ard_sounds_url(url)
@@ -1481,7 +1912,9 @@ class VideoDownloader:
             if is_youtube:
                 series_url = url
                 url_lower = url.lower()
-                if '/channel/' in url_lower:
+                if '/channel/' in url_lower and not any(
+                    part in url_lower for part in ('/shorts', '/streams', '/playlists', '/live')
+                ):
                     from urllib.parse import urlparse
                     parsed = urlparse(url)
                     path_parts = [p for p in parsed.path.split('/') if p]
@@ -1623,6 +2056,8 @@ class VideoDownloader:
             # Konvertiere cmd zu args (ohne 'yt-dlp')
             args = cmd[1:] if cmd[0] == 'yt-dlp' else cmd
             # YouTube: Cookies aus Account-Verwaltung für Kanal/Playlist-Abruf (Serien-Dialog)
+            if is_youtube:
+                args.extend(self._youtube_runtime_args())
             if is_youtube and getattr(self, 'gui_instance', None):
                 service = 'YouTube Music' if 'music.youtube.com' in series_url.lower() else 'YouTube'
                 account = self._get_account_for_service(service)
@@ -1630,6 +2065,7 @@ class VideoDownloader:
                     cookies_file = self._get_cookies_file(account)
                     if cookies_file:
                         args.extend(['--cookies', cookies_file])
+                        args = [arg for arg in args if arg != "--no-warnings"]
             # ZDF / ARD Audiothek / ARD Sounds: SSL umgehen bei Serien/Playlist-Abruf
             if 'zdf.de' in series_url.lower() or 'zdfmediathek' in series_url.lower():
                 args = ['--legacy-server-connect', '--no-check-certificate'] + args
@@ -1987,10 +2423,10 @@ class VideoDownloader:
                                     # Normalisiere ARD Sounds URLs (können von yt-dlp als ardsounds.de/embed/episode/... zurückkommen)
                                     if episode_url:
                                         episode_url = self._normalize_ard_sounds_url(episode_url)
-                                elif is_youtube and info.get('id'):
-                                    # YouTube: Immer kanonische Watch-URL verwenden (nicht googlevideo.com-Stream-URL),
-                                    # sonst gleicher Dateiname "videoplayback" und Überschreiben mehrerer Videos
-                                    episode_url = f"https://www.youtube.com/watch?v={info.get('id')}"
+                                elif is_youtube and (info.get('id') or info.get('webpage_url') or info.get('url')):
+                                    # Watch-URL für Videos, Playlist-URL für Kanal-Playlists.
+                                    # Eine Playlist-ID darf nicht als watch?v= landen.
+                                    episode_url = self._youtube_entry_url(info)
                                 else:
                                     episode_url = info.get('url') or info.get('webpage_url') or info.get('webpage_url_basename')
                                     # Normalisiere ARD Sounds URLs auch für andere Sender (falls vorhanden)
@@ -2080,6 +2516,17 @@ class VideoDownloader:
                                     if not series and series_name:
                                         series = series_name
                                 
+                                live_status = info.get('live_status') or ''
+                                if info.get('is_live') and not live_status:
+                                    live_status = 'is_live'
+                                # Die Streams-Liste setzt beim laufenden Stream keine Dauer und keinen Status.
+                                if (
+                                    is_youtube
+                                    and '/streams' in (series_url or '')
+                                    and not live_status
+                                    and not info.get('duration')
+                                ):
+                                    live_status = 'is_live'
                                 episode_info = {
                                     'title': title,
                                     'url': episode_url,
@@ -2090,6 +2537,8 @@ class VideoDownloader:
                                     'duration_string': self._format_duration(info.get('duration') or 0),
                                     'thumbnail': info.get('thumbnail'),
                                     'id': info.get('id'),
+                                    'artist': self._youtube_artist_name(info) if is_youtube else '',
+                                    'live_status': live_status,
                                 }
                                 date_iso = self._broadcast_date_from_info(info)
                                 if date_iso:
@@ -2200,7 +2649,11 @@ class VideoDownloader:
                     self.log("⚠ Keine Folgen gefunden", "WARNING")
                     return None
             else:
-                self.log(f"✗ Fehler beim Abrufen der Serien-Info: {result.stderr}", "ERROR")
+                series_err = self._explain_youtube_cookie_failure(result.stderr or "")
+                if is_youtube and series_url.rstrip('/').endswith('/live') and 'not currently live' in series_err.lower():
+                    self.log("Auf diesem Kanal läuft gerade kein Livestream")
+                    return None
+                self.log(f"✗ Fehler beim Abrufen der Serien-Info: {series_err}", "ERROR")
                 return None
                 
         except subprocess.TimeoutExpired:
@@ -2210,9 +2663,13 @@ class VideoDownloader:
             self.log(f"✗ Fehler: {e}", "ERROR")
             return None
     
-    def _format_duration(self, seconds: int) -> str:
+    def _format_duration(self, seconds) -> str:
         """Formatiert Dauer in MM:SS oder HH:MM:SS"""
-        if not seconds:
+        try:
+            seconds = int(float(seconds))
+        except (TypeError, ValueError):
+            return "Unbekannt"
+        if seconds <= 0:
             return "Unbekannt"
         hours = seconds // 3600
         minutes = (seconds % 3600) // 60
@@ -2559,6 +3016,10 @@ class VideoDownloader:
         # Fallback: Queue-Eintrag mit direkter googlevideo.com-URL (sollte nicht mehr vorkommen – wir speichern jetzt youtube.com/watch?v=ID)
         elif is_series and series_name and ('googlevideo.com' in (_check_url or '').lower() or 'source=youtube' in (_check_url or '').lower()):
             top_folder = "YouTube"
+        if not top_folder:
+            site_folder = self._site_folder_name(url or _check_url)
+            if site_folder:
+                top_folder = site_folder
         
         # Audiothek-Serie: wenn is_series und Serien-Infos, aber top_folder noch nicht gesetzt (z. B. relative URL oder URN)
         if not top_folder and is_series and (series_name or (video_info and video_info.get('series'))):
@@ -2841,6 +3302,10 @@ class VideoDownloader:
         """
         # Normalisiere ARD Sounds URLs zuerst (konvertiert zu ARD Audiothek-Format für bessere yt-dlp-Unterstützung)
         original_url = url
+        short = self.youtube_listing(url)
+        if short and short[0] == 'short':
+            url = short[1]
+            self.log(f"YouTube-Short wird als Video geladen: {url}")
         url = self._normalize_ard_sounds_url(url)
         if url != original_url:
             self.log(f"URL normalisiert in download_video: {original_url} → {url}")
@@ -3209,7 +3674,11 @@ class VideoDownloader:
             # YouTube: IPv4 erzwingen (oft stabiler; --impersonate chrome braucht Zusatz-Dependencies)
             if service == 'youtube' or 'youtube.com' in url_lower or 'youtu.be' in url_lower:
                 yt_args.append('-4')
+                runtime_args = self._youtube_runtime_args()
+                yt_args.extend(runtime_args)
                 self.log("YouTube: IPv4 erzwungen (-4)")
+                if runtime_args:
+                    self.log("YouTube: Node löst die Signatur, sonst antwortet YouTube mit 403")
             
             # Ausgabeverzeichnis erzwingen (wichtig für ZDF/Linux: Ordner wird angelegt, Datei muss hier landen)
             # -P home:... setzt das Basis-Verzeichnis; -o dann relativ dazu → zuverlässiger als nur -o mit Pfad
@@ -3225,11 +3694,23 @@ class VideoDownloader:
                 out_template = f'{job_prefix} {playlist_index:02d} - %(title)s.%(ext)s'
             else:
                 out_template = f'{job_prefix} %(title)s.%(ext)s'
+            voe_file = (video_info or {}).get('extractor') == 'VOE'
+            if voe_file:
+                raw_title = re.sub(
+                    r'\.(mp4|mkv|webm|m4v)$',
+                    '',
+                    str(video_info.get('title') or 'VOE'),
+                    flags=re.I,
+                )
+                out_template = f"{job_prefix} {self.sanitize_filename(raw_title)}.%(ext)s"
             if output_format == 'mp3':
                 yt_args.extend(['-o', out_template])
                 yt_args.extend(['-x', '--audio-format', 'mp3', '--audio-quality', '0'])  # Beste Audio-Qualität
             else:
-                if defer_recode:
+                if voe_file and (output_format or '').lower() == 'mp4':
+                    yt_args.extend(['-o', out_template])
+                    self.log("VOE-Datei ist bereits MP4, keine erneute Umwandlung.")
+                elif defer_recode:
                     # Nur laden und zusammenführen. Die MP4-Umwandlung macht die Queue
                     # danach einzeln, damit die GPU nicht mehrere Jobs gleichzeitig kodiert.
                     yt_args.extend(['-o', out_template])
@@ -3239,7 +3720,7 @@ class VideoDownloader:
                     yt_args.extend(['-o', out_template])
                     yt_args.extend(['--recode-video', output_format])
                 # GPU für Konvertierung (nur bei Video-Formaten, nicht bei aufgeschobener Umwandlung)
-                if (not defer_recode) and gpu_enabled and gpu_vendor != 'none':
+                if (not voe_file) and (not defer_recode) and gpu_enabled and gpu_vendor != 'none':
                     vendor = gpu_vendor if gpu_vendor != 'auto' else (
                         'apple' if sys.platform == 'darwin' else 'nvidia'  # auto: Apple auf Mac, sonst NVIDIA als häufigster Fall
                     )
@@ -3274,11 +3755,9 @@ class VideoDownloader:
                     except Exception:
                         pass
             
-            # Qualität/Format
-            # Versuche, Audiodeskription (Audio Description) zu vermeiden, wenn möglich.
-            # Wir filtern Formate, deren format_note typische AD-Begriffe enthält.
-            # Falls dadurch keine Formate mehr übrig bleiben, fällt yt-dlp automatisch
-            # auf den nachfolgenden Selector (ohne Filter) zurück.
+            # Qualität/Format. Eine VOE-Datei ist schon die fertige MP4.
+            if voe_file:
+                self.log("VOE: fertige Datei, keine zusätzliche Formatauswahl")
             ad_filter = (
                 '[format_note!*="audio description"]'
                 '[format_note!*="Audio Description"]'
@@ -3318,6 +3797,18 @@ class VideoDownloader:
                 # Fallback zu best, bevorzugt ohne Audiodeskription
                 yt_args.extend(['-f', f'bestvideo{ad_filter}+bestaudio{ad_filter}/bestvideo+bestaudio/best'])
                 self.log("Formatwahl: Fallback bestvideo+bestaudio (ohne AD bevorzugt)")
+            if voe_file:
+                cleaned = []
+                skip_value = False
+                for arg in yt_args:
+                    if skip_value:
+                        skip_value = False
+                        continue
+                    if arg == '-f':
+                        skip_value = True
+                        continue
+                    cleaned.append(arg)
+                yt_args[:] = cleaned
             
             # Playlist-Option
             # WICHTIG: Bei Serien/Staffeln immer --yes-playlist verwenden, wenn download_playlist=True
@@ -3376,6 +3867,16 @@ class VideoDownloader:
             # YouTube: Pause zwischen Anfragen, um Rate-Limit (403 / "rate-limited for up to an hour") zu vermeiden
             if url and ('youtube.com' in url.lower() or 'youtu.be' in url.lower()):
                 yt_args.extend(['--sleep-interval', '2', '--max-sleep-interval', '5'])
+                if cookies_file:
+                    yt_args = [arg for arg in yt_args if arg != "--no-warnings"]
+                live_status = ((video_info or {}).get('live_status') or '')
+                if (video_info or {}).get('is_live') and not live_status:
+                    live_status = 'is_live'
+                if live_status in ('is_live', 'is_upcoming', 'post_live'):
+                    yt_args.append('--live-from-start')
+                    self.log("Laufender Livestream: Aufnahme vom vorhandenen Puffer bis der Stream endet.")
+                    if live_status == 'is_upcoming':
+                        yt_args.extend(['--wait-for-video', '30'])
             
             # Prüfe ob video_info eine direkte Media-URL enthält (z.B. von HTML-Parsing)
             # Wenn ja, verwende diese statt der Webseiten-URL (yt-dlp scheitert sonst an ardsounds.de/embed/…)
@@ -3384,7 +3885,12 @@ class VideoDownloader:
                 media_url = video_info.get('url')
                 if media_url and str(media_url).startswith('http'):
                     m = str(media_url).lower()
-                    if media_url.endswith(('.mp3', '.m4a')) or '/clips/' in m or 'akamaihd' in m:
+                    if video_info.get('extractor') == 'VOE':
+                        download_url = str(media_url)
+                        referer = video_info.get('referer') or 'https://voe.sx/'
+                        yt_args.extend(['--referer', referer])
+                        self.log("VOE: lade die eigene Datei")
+                    elif media_url.endswith(('.mp3', '.m4a')) or '/clips/' in m or 'akamaihd' in m:
                         download_url = str(media_url)
                         self.log(f"Verwende direkte Media-URL: {download_url[:100]}...")
             
@@ -3430,7 +3936,9 @@ class VideoDownloader:
                     self.log("WARNING: Prozessüberwachung nicht verfügbar in .exe Build", "WARNING")
                     result = process
                     if hasattr(result, 'returncode') and result.returncode != 0:
-                        error_msg = f"Download fehlgeschlagen: {result.stderr}"
+                        error_msg = self._explain_youtube_cookie_failure(
+                            f"Download fehlgeschlagen: {result.stderr}"
+                        )
                         self.log(error_msg, "ERROR")
                         return (False, None, error_msg)
                     # Download war erfolgreich – Datei aus stdout oder Verzeichnis ermitteln
@@ -4064,6 +4572,11 @@ class VideoDownloader:
                             self.log("✓ Cover-Datei(en) entfernt (nur in MP3)")
                     
                     self.log(f"✓ Download erfolgreich: {downloaded_file.name}")
+                    try:
+                        if remember_video_site(url, self._site_folder_name(url)):
+                            self.log(f"Seite aufgenommen: {self._site_folder_name(url)}")
+                    except Exception:
+                        pass
                     return True, downloaded_file, ""
                 else:
                     self.log("⚠ Download scheint erfolgreich, aber Datei nicht gefunden", "WARNING")
@@ -4096,7 +4609,9 @@ class VideoDownloader:
                             pass
                     return True, None, "Datei nicht gefunden"
             else:
-                error_msg = '\n'.join(output_lines[-5:])  # Letzte 5 Zeilen
+                error_msg = self._explain_youtube_cookie_failure(
+                    '\n'.join(output_lines[-8:])
+                )
                 self.log(f"✗ Download fehlgeschlagen: {error_msg}", "ERROR")
                 # Prüfe auf Abbruch und räume auf
                 if progress_callback and hasattr(progress_callback, '__self__'):

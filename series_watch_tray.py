@@ -130,6 +130,65 @@ def _icon_with_badge(base_img, *, mode: str = "idle", percent: float = 0.0):
     return img
 
 
+def _process_command(pid: int) -> str:
+    if sys.platform == "win32":
+        return ""
+    try:
+        return subprocess.check_output(
+            ["ps", "-p", str(int(pid)), "-o", "command="],
+            text=True,
+            timeout=2,
+            stderr=subprocess.DEVNULL,
+        )
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return ""
+
+
+def _windows_image_path(pid: int) -> str:
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.OpenProcess(0x1000, False, int(pid))
+        if not handle:
+            return ""
+        try:
+            size = wintypes.DWORD(32768)
+            buf = ctypes.create_unicode_buffer(size.value)
+            if not kernel32.QueryFullProcessImageNameW(handle, 0, buf, ctypes.byref(size)):
+                return ""
+            return buf.value
+        finally:
+            kernel32.CloseHandle(handle)
+    except Exception:
+        return ""
+
+
+def _pid_is_tray(pid: int) -> bool:
+    """True nur, wenn diese PID wirklich der Serien-Wächter ist.
+
+    Eine nackte PID reicht nicht: das System vergibt Nummern neu, und dann
+    blockiert ein fremdes Programm den Start des Menüleisten-Icons.
+    """
+    if not _pid_running(pid):
+        return False
+    if sys.platform == "darwin":
+        cmd = _process_command(pid)
+        return "--series-watch-tray" in cmd and "Universal Downloader" in cmd
+    if sys.platform.startswith("linux"):
+        try:
+            raw = Path(f"/proc/{int(pid)}/cmdline").read_bytes()
+        except OSError:
+            return False
+        cmd = raw.replace(b"\x00", b" ").decode("utf-8", errors="ignore")
+        return "--series-watch-tray" in cmd or "series_watch_tray" in cmd
+    if sys.platform == "win32":
+        name = _windows_image_path(pid).lower()
+        return "universal" in name and name.endswith(".exe")
+    return False
+
+
 def _pid_running(pid: int) -> bool:
     if pid <= 0:
         return False
@@ -189,7 +248,7 @@ def try_become_tray_instance(base: Path) -> bool:
             old = int(raw[0]) if raw else 0
         except (ValueError, OSError):
             old = 0
-        if old and old != os.getpid() and _pid_running(old):
+        if old and old != os.getpid() and _pid_is_tray(old):
             os.close(fd)
             _log(f"Tray läuft bereits (PID {old}).")
             return False
@@ -244,7 +303,7 @@ def tray_instance_running(base: Path) -> bool:
         old = int((path.read_text(encoding="utf-8") or "0").strip().split()[0])
     except (ValueError, OSError):
         return False
-    return bool(old and old != os.getpid() and _pid_running(old))
+    return bool(old and old != os.getpid() and _pid_is_tray(old))
 
 
 def steal_tray_instance(base: Path) -> None:
@@ -257,7 +316,7 @@ def steal_tray_instance(base: Path) -> None:
                 old = int((path.read_text(encoding="utf-8") or "0").strip().split()[0])
             except (ValueError, OSError):
                 old = 0
-            if old and old != os.getpid() and _pid_running(old):
+            if old and old != os.getpid() and _pid_is_tray(old):
                 _log(f"Beende alte Tray-Instanz PID {old}")
                 try:
                     if sys.platform == "win32":
@@ -486,7 +545,9 @@ def _windows_unique_pythonw() -> str:
 def get_tray_launch_argv() -> List[str]:
     """Kommandozeile, mit der der Wächter nach dem Login startet."""
     if getattr(sys, "frozen", False):
-        return [sys.executable, "--series-watch-tray"]
+        from path_helper import darwin_native_app_executable
+
+        return [darwin_native_app_executable(), "--series-watch-tray"]
     if sys.platform == "win32":
         return [_windows_unique_pythonw(), str(_ROOT / "series_watch_tray.py")]
     wrapper = Path("/usr/bin/universal-downloader")

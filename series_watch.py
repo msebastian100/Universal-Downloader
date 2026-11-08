@@ -2136,7 +2136,9 @@ def open_main_app() -> bool:
                 return True
         # Nicht „open -a“: das aktiviert den Tray derselben .app.
         if getattr(sys, "frozen", False):
-            cmd = [sys.executable]
+            from path_helper import darwin_native_app_executable
+
+            cmd = [darwin_native_app_executable()]
         else:
             start_py = Path(__file__).resolve().parent / "start.py"
             if start_py.exists():

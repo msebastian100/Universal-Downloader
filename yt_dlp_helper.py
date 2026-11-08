@@ -93,6 +93,33 @@ def _find_ytdlp_binary():
     return None
 
 
+def _user_ytdlp_binary():
+    """Vom Start nachgeladene yt-dlp, neuer als die mitgelieferte Fassung."""
+    try:
+        from path_helper import get_app_base_path
+        name = "yt-dlp.exe" if platform.system() == "Windows" else "yt-dlp"
+        path = os.path.join(str(get_app_base_path()), "bin", name)
+    except Exception:
+        return None
+    if not (os.path.isfile(path) and os.access(path, os.X_OK)):
+        return None
+    version = _command_version([path])
+    if not _ytdlp_is_current(version):
+        return None
+    bundled = ""
+    try:
+        import yt_dlp
+        bundled = getattr(yt_dlp.version, "__version__", "") or ""
+    except Exception:
+        bundled = ""
+    if bundled and _version_parts(version) < _version_parts(bundled):
+        return None
+    # In einer beschreibbaren Python-Umgebung bleibt das Modul, wenn es gleich aktuell ist.
+    if bundled and not is_frozen() and _version_parts(version) <= _version_parts(bundled):
+        return None
+    return [path]
+
+
 def get_ytdlp_command():
     """
     Gibt den richtigen yt-dlp Befehl zurück
@@ -101,6 +128,9 @@ def get_ytdlp_command():
         Liste mit Befehl und Argumenten für subprocess.run
         Oder None wenn yt_dlp direkt als Modul verwendet werden sollte
     """
+    user_binary = _user_ytdlp_binary()
+    if user_binary:
+        return user_binary
     if is_frozen():
         # Windows: 1) yt-dlp.exe neben der App, 2) gebündeltes Python (python/python.exe) aus Installer
         if platform.system() == 'Windows':
@@ -204,9 +234,20 @@ def run_ytdlp(args, **kwargs):
     # In .exe Builds: Synchrone Aufrufe (get_video_info, get_series_episodes) immer mit eingebetteter API.
     # Für Download (Popen): gebündeltes yt-dlp.exe oder System-Python nutzen, sonst eingebettete API.
     if is_frozen():
+        cmd = get_ytdlp_command()
+        external = bool(cmd) and os.path.isfile(cmd[0]) and "python" not in os.path.basename(cmd[0]).lower()
+        if external:
+            import subprocess as sp
+            kwargs_with_flags = kwargs.copy()
+            if creation_flags:
+                kwargs_with_flags['creationflags'] = creation_flags
+            if platform.system() != 'Windows':
+                kwargs_with_flags['start_new_session'] = True
+            if use_popen:
+                return sp.Popen(cmd + args, **kwargs_with_flags)
+            return sp.run(cmd + args, **kwargs_with_flags)
         if not use_popen:
             return run_ytdlp_direct(args, **kwargs)
-        cmd = get_ytdlp_command()
         if cmd is not None:
             # Gebündeltes yt-dlp.exe oder gefundenes Python mit yt_dlp
             import subprocess as sp

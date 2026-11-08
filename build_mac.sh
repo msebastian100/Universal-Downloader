@@ -105,8 +105,9 @@ build_one_arch() {
     fi
 
     if [ -f "requirements.txt" ]; then
-        echo "[INFO] Installiere/aktualisiere Abhängigkeiten (inkl. yt-dlp>=2026)..."
+        echo "[INFO] Installiere/aktualisiere Abhängigkeiten und die neueste yt-dlp..."
         arch -"$ARCH" "$PIP" install -r requirements.txt -q
+        arch -"$ARCH" "$PIP" install --upgrade yt-dlp -q
     fi
 
     if ! arch -"$ARCH" "$PY" -c "import PyInstaller" 2>/dev/null; then
@@ -166,6 +167,18 @@ build_one_arch() {
     if [ ! -f "$DMG_FILE" ]; then
         echo "[FEHLER] .dmg wurde nicht erstellt."
         exit 1
+    fi
+
+    # Die gebaute .app bleibt zum Prüfen, soll aber nicht als zweites Programm in der Suche stehen.
+    HIDDEN_DIR="dist/build.noindex"
+    mkdir -p "$HIDDEN_DIR"
+    rm -rf "$HIDDEN_DIR/$APP_NAME.app"
+    mv "$APP_PATH" "$HIDDEN_DIR/"
+    touch "dist/.metadata_never_index"
+    LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+    if [ -x "$LSREGISTER" ]; then
+        "$LSREGISTER" -u "$SCRIPT_DIR/dist/$APP_NAME.app" 2>/dev/null || true
+        "$LSREGISTER" -u "$SCRIPT_DIR/$HIDDEN_DIR/$APP_NAME.app" 2>/dev/null || true
     fi
 
     echo ""

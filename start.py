@@ -186,6 +186,16 @@ def _silence_child_consoles() -> None:
 
 if __name__ == "__main__":
     _hide_windows_console()
+    # Apple Silicon: eine reine Intel-Fassung startet die installierte ARM-App.
+    if sys.platform == "darwin":
+        try:
+            from path_helper import darwin_native_app_executable
+
+            _native = darwin_native_app_executable()
+            if _native and os.path.realpath(_native) != os.path.realpath(sys.executable):
+                os.execv(_native, [_native, *sys.argv[1:]])
+        except Exception:
+            pass
     # Eigenständiger Serien-Wächter (System-Tray / Menüleiste), auch aus der gepackten .exe
     if "--series-watch-tray" in sys.argv:
         # LSUIElement setzen, BEVOR irgendwer NSApplication.startet – sonst Dock-Icon.
@@ -537,6 +547,17 @@ if __name__ == "__main__":
         debug_log("Prüfe yt-dlp...")
         ytdlp_ok, ytdlp_version = check_ytdlp()
         debug_log(f"yt-dlp Status: {'OK' if ytdlp_ok else 'FEHLT'} (Version: {ytdlp_version or 'N/A'})")
+
+        def _refresh_ytdlp():
+            try:
+                from auto_install_dependencies import check_and_update_ytdlp
+                _ok, _updated, message = check_and_update_ytdlp()
+                debug_log(f"yt-dlp: {message or 'neueste Fassung'}")
+            except Exception as update_error:
+                debug_log(f"yt-dlp-Update übersprungen: {update_error}", "WARNING")
+
+        import threading
+        threading.Thread(target=_refresh_ytdlp, daemon=True).start()
         
         debug_log("Prüfe ffmpeg...")
         ffmpeg_ok, ffmpeg_version = check_ffmpeg()
