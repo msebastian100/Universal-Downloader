@@ -99,11 +99,23 @@ parts:
         audiobook_providers.py audiobook_search.py stream_automation.py \
         audio_recorder.py audio_device_detector.py setup_audio_recording.py \
         series_watch.py series_watch_tray.py mac_platform.py \
+        voe.py plugin_loader.py preview_player.py mediathek_search.py \
+        audio_identify.py audio_split.py \
         requirements.txt icon.png
       do
         if [ -f "$f" ]; then
           cp "$f" "$CRAFT_PART_INSTALL/share/universal-downloader/"
         fi
       done
+      if [ -d plugins ]; then
+        install -d "$CRAFT_PART_INSTALL/share/universal-downloader/plugins"
+        for plugin in plugins/*.py; do
+          [ -f "$plugin" ] || continue
+          case "$(basename "$plugin")" in
+            audible_player_plugin.py) continue ;;
+          esac
+          cp "$plugin" "$CRAFT_PART_INSTALL/share/universal-downloader/plugins/"
+        done
+      fi
       install -Dm755 "$CRAFT_PROJECT_DIR/snap/local/launcher.sh" \
         "$CRAFT_PART_INSTALL/bin/universal-downloader"

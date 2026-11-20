@@ -47,6 +47,12 @@
   <content_rating type="oars-1.1"/>
   <!-- Release-Historie für GNOME/Cinnamon „Software“ (neueste zuerst, aus changelog.py) -->
   <releases>
+    <release version="2.1.81" date="2026-11-20">
+      <description>
+        <p xml:lang="de">Aktuelle Fassung 2.1.81. Im Video-Tab kann das Wasserzeichen bei TikTok entfernt werden. Serien-Wächter und Folgenauswahl sind mit dem Stand von GitHub gleich.</p>
+        <p>Current release 2.1.81. The video tab can drop the watermark on TikTok. The series watcher and episode picker match the GitHub release.</p>
+      </description>
+    </release>
     <release version="2.1.76" date="2026-10-31">
       <description>
         <p xml:lang="de">Aktuelle Fassung 2.1.76. Das Snap enthält die inzwischen veröffentlichten Sicherheitsupdates der Ubuntu-Bibliotheken.</p>
