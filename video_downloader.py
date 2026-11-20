@@ -3292,7 +3292,8 @@ class VideoDownloader:
                       gpu_vendor: str = 'auto',
                       force_redownload: bool = False,
                       defer_recode: bool = False,
-                      cookies_from_browser: Optional[str] = None) -> Tuple[bool, Optional[Path], str]:
+                      cookies_from_browser: Optional[str] = None,
+                      remove_watermark: bool = False) -> Tuple[bool, Optional[Path], str]:
         """
         Lädt ein Video herunter
         
@@ -3770,16 +3771,19 @@ class VideoDownloader:
                 '[format_note!*="Audiodeskription"]'
                 '[format_note!*="audiodeskription"]'
             )
+            wm_filter = '[format_note!*="watermark"]' if remove_watermark else ''
+            if remove_watermark:
+                self.log("Wasserzeichen: Fassung ohne Zeichen wird bevorzugt.")
             if output_format == 'mp3':
                 # Für MP3: Beste Audio-Qualität, bevorzugt ohne Audiodeskription
                 yt_args.extend(['-f', f'bestaudio{ad_filter}/bestaudio/best'])
                 self.log("Formatwahl: bevorzuge Audio ohne Audiodeskription (MP3)")
             elif quality == "best":
                 # Beste Qualität, bevorzugt ohne Audiodeskription
-                yt_args.extend(['-f', f'bestvideo{ad_filter}+bestaudio{ad_filter}/bestvideo+bestaudio/best'])
+                yt_args.extend(['-f', f'bestvideo{ad_filter}{wm_filter}+bestaudio{ad_filter}/bestvideo+bestaudio/best'])
                 self.log("Formatwahl: bevorzuge bestvideo+bestaudio ohne Audiodeskription")
             elif quality == "niedrigste" or quality == "worst":  # Unterstütze beide für Kompatibilität
-                yt_args.extend(['-f', f'worstvideo{ad_filter}+worstaudio{ad_filter}/worstvideo+worstaudio/worst'])
+                yt_args.extend(['-f', f'worstvideo{ad_filter}{wm_filter}+worstaudio{ad_filter}/worstvideo+worstaudio/worst'])
                 self.log("Formatwahl: niedrigste Qualität, möglichst ohne Audiodeskription")
             elif quality.endswith('p'):
                 # Spezifische Auflösung (z.B. "720p", "1080p")
@@ -3789,19 +3793,19 @@ class VideoDownloader:
                     resolution_int = int(resolution)
                     if resolution_int > 0:
                         # Bevorzuge Audio ohne Audiodeskription bei gegebener Auflösung
-                        yt_args.extend(['-f', f'bestvideo[height<={resolution_int}]{ad_filter}+bestaudio{ad_filter}/bestvideo[height<={resolution_int}]+bestaudio/best[height<={resolution_int}]'])
+                        yt_args.extend(['-f', f'bestvideo[height<={resolution_int}]{ad_filter}{wm_filter}+bestaudio{ad_filter}/bestvideo[height<={resolution_int}]+bestaudio/best[height<={resolution_int}]'])
                         self.log(f"Formatwahl: max. {resolution_int}p, bevorzugt ohne Audiodeskription")
                     else:
                         # Fallback zu best bei ungültiger Auflösung
-                        yt_args.extend(['-f', f'bestvideo{ad_filter}+bestaudio{ad_filter}/bestvideo+bestaudio/best'])
+                        yt_args.extend(['-f', f'bestvideo{ad_filter}{wm_filter}+bestaudio{ad_filter}/bestvideo+bestaudio/best'])
                         self.log("Formatwahl: ungültige Auflösung, Fallback bestvideo+bestaudio (ohne AD bevorzugt)")
                 except ValueError:
                     # Fallback zu best bei ungültiger Auflösung
-                    yt_args.extend(['-f', f'bestvideo{ad_filter}+bestaudio{ad_filter}/bestvideo+bestaudio/best'])
+                    yt_args.extend(['-f', f'bestvideo{ad_filter}{wm_filter}+bestaudio{ad_filter}/bestvideo+bestaudio/best'])
                     self.log("Formatwahl: ungültige Auflösung (ValueError), Fallback bestvideo+bestaudio (ohne AD bevorzugt)")
             else:
                 # Fallback zu best, bevorzugt ohne Audiodeskription
-                yt_args.extend(['-f', f'bestvideo{ad_filter}+bestaudio{ad_filter}/bestvideo+bestaudio/best'])
+                yt_args.extend(['-f', f'bestvideo{ad_filter}{wm_filter}+bestaudio{ad_filter}/bestvideo+bestaudio/best'])
                 self.log("Formatwahl: Fallback bestvideo+bestaudio (ohne AD bevorzugt)")
             if voe_file:
                 cleaned = []

@@ -1886,6 +1886,15 @@ class DeezerDownloaderGUI:
         
         self.video_thumbnail_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(advanced_frame, text="Thumbnail/Cover (cover.jpg)", variable=self.video_thumbnail_var, style="Download.TCheckbutton").pack(anchor=tk.W, pady=2)
+
+        self.video_no_watermark_var = tk.BooleanVar(value=bool(self.settings.get('remove_watermark', False)))
+        ttk.Checkbutton(
+            advanced_frame,
+            text="Wasserzeichen entfernen (TikTok und ähnliche Seiten)",
+            variable=self.video_no_watermark_var,
+            command=self._save_remove_watermark,
+            style="Download.TCheckbutton",
+        ).pack(anchor=tk.W, pady=2)
         
         self.video_shutdown_after_queue_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(advanced_frame, text="Herunterfahren nach Abschluss von Download(s)", variable=self.video_shutdown_after_queue_var, style="Download.TCheckbutton").pack(anchor=tk.W, pady=2)
@@ -8320,6 +8329,7 @@ class DeezerDownloaderGUI:
                 gpu_vendor=self.settings.get('gpu_vendor', 'auto'),
                 force_redownload=(file_exists_choice == "redownload"),
                 defer_recode=defer_recode,
+                remove_watermark=bool(Qo('remove_watermark', self.video_no_watermark_var.get)),
             )
                 if success and defer_recode and file_path and Path(file_path).suffix.lower() != f'.{target_fmt}':
                     self.video_log(f"{job_tag}Download fertig. Konvertierung nach {target_fmt.upper()} wartet, bis die GPU frei ist.")
@@ -9897,6 +9907,7 @@ class DeezerDownloaderGUI:
                         resume_download=self.video_resume_var.get(),
                         speed_limit=speed_limit,
                         embed_metadata=True,  # Immer aktiviert
+                        remove_watermark=bool(self.video_no_watermark_var.get()),
                         gui_instance=self,
                         gpu_enabled=self.settings.get('gpu_enabled', False),
                         gpu_vendor=self.settings.get('gpu_vendor', 'auto')
@@ -10603,6 +10614,7 @@ class DeezerDownloaderGUI:
             'description': self.video_description_var.get(),
             'thumbnail': self.video_thumbnail_var.get(),
             'resume': self.video_resume_var.get(),
+            'remove_watermark': bool(self.video_no_watermark_var.get()),
             'added': datetime.now(),
             'status': 'Wartend',
             'display_title': (display_title or "").strip(),
@@ -11510,6 +11522,7 @@ class DeezerDownloaderGUI:
             'description': self.video_description_var.get(),
             'thumbnail': self.video_thumbnail_var.get(),
             'resume': self.video_resume_var.get(),
+            'remove_watermark': bool(self.video_no_watermark_var.get()),
         }
         for item in self.video_download_queue:
             if isinstance(item, dict) and item.get('from_file_batch'):
@@ -11722,6 +11735,14 @@ class DeezerDownloaderGUI:
         except Exception as e:
             self.video_log(f"✗ Fehler beim Starten des geplanten Downloads: {e}")
     
+    def _save_remove_watermark(self):
+        """Merkt die Wasserzeichen-Option für den nächsten Start."""
+        try:
+            self.settings['remove_watermark'] = bool(self.video_no_watermark_var.get())
+            self._save_settings()
+        except Exception:
+            pass
+
     def _restore_settings(self, quality, format_val, subtitle, subtitle_lang, description, thumbnail, resume):
         """Stellt die ursprünglichen Einstellungen wieder her"""
         self.video_quality_var.set(quality)
@@ -13206,7 +13227,20 @@ class DeezerDownloaderGUI:
     
     def _download_update(self, update_info, parent_window=None):
         """Lädt ein Update herunter und installiert es automatisch"""
-        if not update_info.get('download_url'):
+        download_url = str(update_info.get('download_url') or '')
+        if download_url.startswith('store:'):
+            messagebox.showinfo(
+                "Microsoft Store",
+                "Diese Installation kommt aus dem Microsoft Store.\n\n"
+                "Die neue Version liegt dort. GitHub-Dateien werden dafür nicht geladen.",
+            )
+            if sys.platform == "win32":
+                try:
+                    os.startfile("ms-windows-store://search/?query=Universal%20Downloader")
+                except Exception:
+                    pass
+            return
+        if not download_url:
             if platform.system().lower() == 'linux':
                 messagebox.showinfo(
                     "Update",
@@ -13232,10 +13266,17 @@ class DeezerDownloaderGUI:
             )
             return
         
-        # Automatischer Speicherort (Temp-Ordner)
+        # Dateiname aus der gewählten Release-Datei, nicht immer .deb.
         temp_dir = Path(tempfile.gettempdir())
-        extension = ".exe" if sys.platform == "win32" else ".deb"
-        save_path = temp_dir / f"UniversalDownloader_Update_{update_info['version']}{extension}"
+        asset_name = Path(download_url.split("?", 1)[0]).name
+        if not asset_name.lower().endswith((".dmg", ".pkg", ".exe", ".deb", ".msix", ".zip")):
+            if sys.platform == "darwin":
+                asset_name = f"UniversalDownloader_Update_{update_info['version']}.dmg"
+            elif sys.platform == "win32":
+                asset_name = f"UniversalDownloader_Update_{update_info['version']}.exe"
+            else:
+                asset_name = f"UniversalDownloader_Update_{update_info['version']}.deb"
+        save_path = temp_dir / asset_name
         
         # Download-Dialog
         download_window = tk.Toplevel(parent_window or self.root)
@@ -13318,6 +13359,17 @@ class DeezerDownloaderGUI:
                             status_label.config(text="")
                             self.root.update()
                             self.root.after(2500, self._exit_for_windows_update)
+                        elif install_success and install_msg == "dmg-open":
+                            status_label.config(text="Die passende Mac-Datei ist geöffnet.")
+                            self.root.update()
+                            messagebox.showinfo(
+                                "Update",
+                                "Die Datei für diesen Mac ist geladen und geöffnet.\n\n"
+                                "Im Fenster „Universal Downloader“ nach „Programme“ ziehen und ersetzen.",
+                            )
+                            download_window.destroy()
+                            if parent_window:
+                                parent_window.destroy()
                         elif install_success:
                             status_label.config(text="✓ Update installiert! Starte Programm neu...")
                             self.root.update()
@@ -13372,9 +13424,16 @@ class DeezerDownloaderGUI:
                     return False, "Updater nicht verfügbar."
                 ok, msg = UpdateChecker().install_linux_update(update_file)
                 return ok, msg
+            elif sys.platform == "darwin":
+                path = Path(update_file) if update_file else None
+                if path is None or not path.is_file():
+                    return False, "Die Mac-Datei fehlt."
+                if path.suffix.lower() not in (".dmg", ".pkg"):
+                    return False, f"Das ist keine Mac-Datei: {path.name}"
+                subprocess.Popen(["open", str(path)])
+                return True, "dmg-open"
             else:
-                # macOS: Kann nicht automatisch installieren
-                return False, "macOS: bitte manuell neu installieren."
+                return False, "Für dieses System gibt es keine passende Update-Datei."
                 
         except Exception as e:
             print(f"[ERROR] Fehler bei Update-Installation: {e}")
@@ -13804,6 +13863,7 @@ Copyright (c) 2025 Universal Downloader Contributors
             'default_spotify_path': str(self.base_download_path / "Spotify"),  # Legacy
             'default_video_quality': 'best',
             'default_video_format': 'mp4',
+            'remove_watermark': False,
             # Dateinamen-Templates
             # Platzhalter (werden bereinigt zu gültigen Dateinamen):
             # {series}  = Serienname

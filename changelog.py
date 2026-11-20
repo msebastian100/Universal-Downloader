@@ -11,6 +11,14 @@ from typing import List, Optional, Dict, Any
 # Neueste Version zuerst – wird für „Erster Start“ und Upgrade-Anzeige genutzt
 RELEASE_NOTES: List[Dict[str, Any]] = [
     {
+        "version": "2.1.81",
+        "date": "2026-11-20",
+        "items": [
+            "Im Video-Tab lässt sich das Wasserzeichen bei TikTok und ähnlichen Seiten entfernen.",
+            "Ein Update lädt die passende Datei: auf dem Mac die richtige Disk-Image, unter Linux über die Paketquelle, die Store-Version verweist auf den Store.",
+        ],
+    },
+    {
         "version": "2.1.80",
         "date": "2026-11-20",
         "items": [

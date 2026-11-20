@@ -158,8 +158,15 @@ class UpdateChecker:
                 system = platform.system().lower()
                 
                 if system == 'windows':
+                    try:
+                        from path_helper import is_microsoft_store
+                        if is_microsoft_store():
+                            download_url = 'store:'
+                            assets = []
+                    except Exception:
+                        pass
                     # Zuerst den Installer, danach eine Programm-.exe.
-                    download_url = None
+                    download_url = None if download_url != 'store:' else download_url
                     plain_exe = None
                     any_exe = None
                     for asset in assets:
