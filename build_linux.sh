@@ -89,7 +89,13 @@ done
 cp requirements.txt "$BUILD_DIR$INSTALL_DIR/" || exit 1
 if [ -d plugins ]; then
     mkdir -p "$BUILD_DIR$INSTALL_DIR/plugins"
-    cp plugins/*.py "$BUILD_DIR$INSTALL_DIR/plugins/" 2>/dev/null || true
+    for plugin in plugins/*.py; do
+        [ -f "$plugin" ] || continue
+        case "$(basename "$plugin")" in
+            audible_player_plugin.py) continue ;;
+        esac
+        cp "$plugin" "$BUILD_DIR$INSTALL_DIR/plugins/"
+    done
 fi
 
 # Icon: Pixmap, App-Ordner und hicolor (GNOME/Ubuntu „Software“ + Startmenü)

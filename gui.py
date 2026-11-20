@@ -11064,6 +11064,26 @@ class DeezerDownloaderGUI:
                 self.root.after(delay_ms, self._process_download_queue)
             self.root.after(0, _worker_finished)
 
+    def _video_download_process_busy(self) -> bool:
+        """True, solange der zuletzt gemerkte yt-dlp-Lauf noch arbeitet.
+
+        Audiothek-Downloads merken sich den Prozess am Hauptfenster und setzen
+        ihn danach nicht zurück. Ein beendeter Lauf (auch der eingebaute mit
+        PID -1) darf die Queue nicht blockieren.
+        """
+        proc = getattr(self, "video_download_process", None)
+        if proc is None:
+            return False
+        try:
+            code = proc.poll()
+        except Exception:
+            self.video_download_process = None
+            return False
+        if code is None:
+            return True
+        self.video_download_process = None
+        return False
+
     def _process_download_queue(self):
         """Startet automatisch nächste Download(s) aus der Queue (1 oder mehr parallel)."""
         if getattr(self, 'video_download_episodes_total', 0) > 0:
@@ -11071,7 +11091,9 @@ class DeezerDownloaderGUI:
         with self._video_parallel_lock:
             workers = self._video_parallel_workers
         max_c = self._max_parallel_video_downloads()
-        if workers == 0 and self.video_download_process is not None:
+        if workers == 0 and self._video_download_process_busy():
+            if self.video_download_queue:
+                self.video_log("Queue wartet: ein Download läuft noch.")
             return
 
         if not self.video_download_queue:
