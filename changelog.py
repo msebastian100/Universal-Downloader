@@ -11,6 +11,13 @@ from typing import List, Optional, Dict, Any
 # Neueste Version zuerst – wird für „Erster Start“ und Upgrade-Anzeige genutzt
 RELEASE_NOTES: List[Dict[str, Any]] = [
     {
+        "version": "2.1.79",
+        "date": "2026-11-20",
+        "items": [
+            "Die Folgenauswahl wächst mit dem Fenster: Titel und Kästchen werden etwas größer, der graue Rand bleibt weg.",
+        ],
+    },
+    {
         "version": "2.1.78",
         "date": "2026-11-20",
         "items": [

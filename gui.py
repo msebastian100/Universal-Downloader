@@ -8848,8 +8848,9 @@ class DeezerDownloaderGUI:
         list_frame = ttk.Frame(main_frame)
         list_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
         
-        # Canvas mit einheitlichem Hintergrund (system default, kein weiß)
-        canvas = tk.Canvas(list_frame, highlightthickness=0)
+        # Canvas füllt die Fensterbreite. Sonst bleibt rechts ein grauer Streifen.
+        panel_bg = getattr(self, '_tk_bg_panel', '#383838')
+        canvas = tk.Canvas(list_frame, highlightthickness=0, bg=panel_bg)
         scrollbar = ttk.Scrollbar(list_frame, orient="vertical", command=canvas.yview)
         scrollable_frame = ttk.Frame(canvas)
         
@@ -8858,9 +8859,45 @@ class DeezerDownloaderGUI:
             lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
         )
         
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas_win_id = canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
         self._bind_scroll_wheel(canvas, scrollable_frame)
+        episode_title_labels = []
+        pick_style = ttk.Style(selection_window)
+        pick_style.configure("EpisodePick.TLabel", font=("Arial", 11))
+        pick_style.configure("EpisodePickBox.TLabel", font=("Arial", 15))
+        pick_style.configure("EpisodePickHead.TLabel", font=("Arial", 12, "bold"))
+        pick_style.configure("EpisodePick.TLabelframe.Label", font=("Arial", 12, "bold"))
+
+        def _fit_episode_list(width):
+            inner = max(1, int(width))
+            canvas.itemconfigure(canvas_win_id, width=inner)
+            title_wrap = max(240, inner - 24)
+            column_wrap = max(140, (inner - 120) // 2)
+            # Ab der normalen Breite wächst die Schrift ein wenig mit.
+            size = 11 + max(0, (inner - 860) // 200)
+            size = min(size, 18)
+            try:
+                pick_style.configure("EpisodePick.TLabel", font=("Arial", size))
+                pick_style.configure("EpisodePickBox.TLabel", font=("Arial", size + 5))
+                pick_style.configure("EpisodePickHead.TLabel", font=("Arial", size + 1, "bold"))
+                pick_style.configure("EpisodePick.TLabelframe.Label", font=("Arial", size + 1, "bold"))
+                title_label.configure(font=("Arial", min(size + 6, 24), "bold"), wraplength=title_wrap)
+                info_label.configure(font=("Arial", max(10, size - 1)), wraplength=title_wrap)
+            except tk.TclError:
+                pass
+            for lbl in episode_title_labels:
+                try:
+                    lbl.configure(wraplength=column_wrap)
+                except tk.TclError:
+                    pass
+
+        def _on_episode_canvas_configure(event):
+            if event.widget is not canvas:
+                return
+            _fit_episode_list(event.width)
+
+        canvas.bind("<Configure>", _on_episode_canvas_configure)
         
         # Variablen für Checkboxen
         season_vars = {}  # {season_num: BooleanVar}
@@ -8903,7 +8940,8 @@ class DeezerDownloaderGUI:
             season_frame = ttk.LabelFrame(
                 scrollable_frame,
                 text=frame_text,
-                padding="12"
+                padding="12",
+                style="EpisodePick.TLabelframe",
             )
             season_frame.pack(fill=tk.X, padx=8, pady=8)
             
@@ -8920,13 +8958,24 @@ class DeezerDownloaderGUI:
                             episode_vars[key].set(var.get())
                 return toggle
             
-            season_checkbox = ttk.Checkbutton(
-                season_frame,
-                text=checkbox_text,
-                variable=season_var,
-                command=make_season_toggle(season_num, season_var)
-            )
-            season_checkbox.pack(anchor=tk.W, pady=(0, 5))
+            season_row = ttk.Frame(season_frame)
+            season_row.pack(fill=tk.X, anchor=tk.W, pady=(0, 5))
+            season_box = ttk.Label(season_row, text="☐", style="EpisodePickBox.TLabel")
+            season_box.pack(side=tk.LEFT, anchor=tk.N, padx=(0, 6))
+            season_text = ttk.Label(season_row, text=checkbox_text, style="EpisodePickHead.TLabel")
+            season_text.pack(side=tk.LEFT, anchor=tk.W)
+            episode_title_labels.append(season_text)
+
+            def _paint_box(*_a, v=season_var, b=season_box):
+                b.configure(text="☑" if v.get() else "☐")
+
+            def _toggle_season(_e=None, v=season_var, fn=make_season_toggle(season_num, season_var)):
+                v.set(not v.get())
+                fn()
+
+            season_var.trace_add("write", _paint_box)
+            season_box.bind("<Button-1>", _toggle_season)
+            season_text.bind("<Button-1>", _toggle_season)
             
             # Episoden/Videos-Frame (mit Grid für bessere Darstellung)
             episodes_frame = ttk.Frame(season_frame)
@@ -8974,25 +9023,31 @@ class DeezerDownloaderGUI:
                 if extras:
                     label_text += f" ({', '.join(extras)})"
                 
-                # Kürze den Titel. Interpret und „läuft“ bleiben am Ende stehen.
-                limit = 110 if playlist_kind == "music" else 90
-                tail = live_mark
-                if len(label_text) + len(tail) > limit:
-                    keep = max(12, limit - len(tail) - 3)
-                    label_text = label_text[:keep] + "..."
-                label_text += tail
-                
-                # Checkbox direkt ohne zusätzlichen Frame (für einheitliches Design)
-                checkbox = ttk.Checkbutton(
-                    episodes_frame,
-                    text=label_text,
-                    variable=var
-                )
-                
-                # 2 Spalten Layout mit besserem Abstand
+                label_text += live_mark
+
+                # Zwei Spalten, die die Fensterbreite teilen. Der Titel bricht um.
                 row = i // 2
                 col = i % 2
-                checkbox.grid(row=row, column=col, sticky=tk.W, padx=8, pady=4)
+                cell = ttk.Frame(episodes_frame)
+                cell.grid(row=row, column=col, sticky=tk.EW, padx=8, pady=4)
+                box = ttk.Label(cell, text="☐", style="EpisodePickBox.TLabel")
+                box.pack(side=tk.LEFT, anchor=tk.N, padx=(0, 6))
+                title_lbl = ttk.Label(
+                    cell, text=label_text, style="EpisodePick.TLabel",
+                    justify=tk.LEFT, wraplength=280,
+                )
+                title_lbl.pack(side=tk.LEFT, fill=tk.X, expand=True, anchor=tk.W)
+
+                def _paint_episode(*_a, v=var, b=box):
+                    b.configure(text="☑" if v.get() else "☐")
+
+                def _toggle_episode(_e=None, v=var):
+                    v.set(not v.get())
+
+                var.trace_add("write", _paint_episode)
+                box.bind("<Button-1>", _toggle_episode)
+                title_lbl.bind("<Button-1>", _toggle_episode)
+                episode_title_labels.append(title_lbl)
             
             # Konfiguriere Spalten-Gewichtung für gleichmäßige Verteilung
             episodes_frame.columnconfigure(0, weight=1)
