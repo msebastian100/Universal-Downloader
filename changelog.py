@@ -11,6 +11,15 @@ from typing import List, Optional, Dict, Any
 # Neueste Version zuerst – wird für „Erster Start“ und Upgrade-Anzeige genutzt
 RELEASE_NOTES: List[Dict[str, Any]] = [
     {
+        "version": "2.1.78",
+        "date": "2026-11-20",
+        "items": [
+            "Linux: die Folgenübersicht von ARD Sounds und anderen Sendungen öffnet wieder.",
+            "Einstellungen zeigen die Plugins, den Status und das Log. Geänderte Plugin-Dateien lassen sich ohne Neustart neu laden.",
+            "Audible: ein Wiedergabe-Ort spielt eine normale Audiodatei oder einen Ordner ab, ohne einen neuen Download.",
+        ],
+    },
+    {
         "version": "2.1.77",
         "date": "2026-11-08",
         "items": [

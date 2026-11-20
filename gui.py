@@ -866,6 +866,173 @@ class DeezerDownloaderGUI:
             print(f"Plugins konnten nicht geladen werden: {exc}")
         self._ensure_audible_library()
         self.root.after(150, self._resize_download_panels)
+
+    def show_plugins_dialog(self, parent=None):
+        """Fenster mit Plugin-Status und Log. parent ist das Einstellungsfenster, das sonst die Klicks festhält."""
+        from plugin_loader import plugin_overview, reload_plugins
+
+        existing = getattr(self, "_plugins_window", None)
+        if existing is not None:
+            try:
+                if existing.winfo_exists():
+                    existing.lift()
+                    existing.focus_force()
+                    return
+            except tk.TclError:
+                pass
+
+        owner = parent if parent is not None else self.root
+        win = tk.Toplevel(owner)
+        self._plugins_window = win
+        win.title("Plugins")
+        win.transient(owner)
+        self._apply_dark_toplevel(win)
+        self._fit_dialog(win, 820, 620, 640, 460)
+        frame = ttk.Frame(win, padding=12, style="Download.TFrame")
+        frame.pack(fill=tk.BOTH, expand=True)
+        buttons = ttk.Frame(frame, style="Download.TFrame")
+        buttons.pack(side=tk.BOTTOM, fill=tk.X, pady=(8, 0))
+        hint = ttk.Label(frame, text="", style="Download.TLabel", wraplength=760)
+        hint.pack(side=tk.TOP, anchor=tk.W, pady=(0, 8))
+        columns = ("Name", "Status", "Datei", "Hinweis")
+        tree = ttk.Treeview(frame, columns=columns, show="headings", height=8)
+        widths = {"Name": 200, "Status": 100, "Datei": 180, "Hinweis": 300}
+        for col in columns:
+            tree.heading(col, text=col)
+            tree.column(col, width=widths[col], stretch=col == "Hinweis")
+        tree.pack(side=tk.TOP, fill=tk.X, pady=(0, 8))
+        log = tk.Text(frame, height=14, wrap=tk.WORD)
+        log.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        reports_by_id = {}
+
+        def close():
+            try:
+                win.grab_release()
+            except tk.TclError:
+                pass
+            try:
+                win.destroy()
+            except tk.TclError:
+                pass
+            self._plugins_window = None
+            if parent is not None:
+                try:
+                    if parent.winfo_exists():
+                        parent.grab_set()
+                        parent.lift()
+                except tk.TclError:
+                    pass
+
+        def selected_report():
+            chosen = tree.selection()
+            if not chosen:
+                return None
+            return reports_by_id.get(chosen[0])
+
+        def show_log(reports, lines):
+            report = selected_report()
+            enabled = self.settings.get("enabled_tabs") if isinstance(self.settings.get("enabled_tabs"), dict) else {}
+            chunks = []
+            if not enabled.get("audible") and not _store_edition():
+                chunks.append("Hinweis: Der Audible-Tab ist aus. Knöpfe an der Stelle audible sind dann nicht zu sehen.")
+            if report:
+                chunks.append(f"{report.get('name')}  ·  {report.get('anzeige') or report.get('status')}")
+                chunks.append(str(report.get("path") or ""))
+                if report.get("detail"):
+                    chunks.append(str(report["detail"]))
+                chunks.append("")
+                name = str(report.get("name") or "")
+                file_name = str(report.get("file") or "")
+                own = []
+                for line in lines:
+                    if isinstance(line, str):
+                        line = {"t": "", "plugin": "", "text": line}
+                    plugin_name = line.get("plugin") or ""
+                    text = line.get("text") or ""
+                    if plugin_name == name or (name and name in text) or (file_name and file_name in text):
+                        own.append(f"[{line.get('t')}] {text}")
+                chunks.append("\n".join(own) if own else "Keine eigene Meldung. Unten steht das gemeinsame Log.")
+                chunks.append("")
+            chunks.append("— gemeinsames Log —")
+            if lines:
+                for line in lines:
+                    if isinstance(line, str):
+                        chunks.append(line)
+                    else:
+                        chunks.append(f"[{line.get('t')}] {line.get('text')}")
+            else:
+                chunks.append("Noch keine Plugin-Meldung.")
+            log.config(state=tk.NORMAL)
+            log.delete("1.0", tk.END)
+            log.insert("1.0", "\n".join(chunks))
+            log.config(state=tk.DISABLED)
+
+        def refresh(keep_path=None):
+            reports, lines = plugin_overview()
+            if keep_path is None:
+                current = selected_report()
+                keep_path = current.get("path") if current else None
+            reports_by_id.clear()
+            tree.delete(*tree.get_children())
+            fresh = [item.get("anzeige") for item in reports]
+            pending = sum(1 for state in fresh if state in ("neu", "geändert", "entfernt"))
+            if pending:
+                hint.config(text="Es gibt neue oder geänderte Plugins. Neu laden übernimmt die Dateien, ohne die App neu zu starten.")
+            else:
+                hint.config(text="Aktiv heißt gestartet. Neu oder geändert heißt: die Datei ist noch nicht neu geladen. Eine Zeile anklicken zeigt ihr Log.")
+            select_id = None
+            if not reports:
+                tree.insert("", tk.END, values=("–", "keine", "–", "Keine Plugin-Datei gefunden"))
+            for index, report in enumerate(reports):
+                item_id = tree.insert("", tk.END, values=(
+                    report.get("name") or "–",
+                    report.get("anzeige") or report.get("status") or "–",
+                    report.get("file") or "–",
+                    report.get("detail") or "",
+                ))
+                reports_by_id[item_id] = report
+                if keep_path and report.get("path") == keep_path:
+                    select_id = item_id
+            if select_id:
+                tree.selection_set(select_id)
+                tree.focus(select_id)
+            show_log(reports, lines)
+            win._plugin_lines = lines
+            win._plugin_reports = reports
+
+        def reload_now():
+            reload_plugins(self)
+            refresh()
+
+        tree.bind("<<TreeviewSelect>>", lambda _event: show_log(
+            getattr(win, "_plugin_reports", []),
+            getattr(win, "_plugin_lines", []),
+        ))
+        ttk.Button(buttons, text="Neu laden", command=reload_now, style="Download.TButton").pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(buttons, text="Aktualisieren", command=lambda: refresh(), style="Download.TButton").pack(side=tk.LEFT)
+        ttk.Button(buttons, text="Schließen", command=close, style="Download.TButton").pack(side=tk.RIGHT)
+        win.protocol("WM_DELETE_WINDOW", close)
+        refresh()
+        if parent is not None:
+            try:
+                parent.grab_release()
+            except tk.TclError:
+                pass
+        win.update_idletasks()
+        win.grab_set()
+        win.lift()
+        win.focus_force()
+
+        def watch():
+            try:
+                if not win.winfo_exists():
+                    return
+            except tk.TclError:
+                return
+            refresh()
+            win.after(2000, watch)
+
+        win.after(2000, watch)
     
     def account_status(self, service: str) -> dict:
         """Für Plugins: ob ein Dienst angemeldet ist und ob die Audible-Bücher schon da sind."""
@@ -1562,7 +1729,10 @@ class DeezerDownloaderGUI:
         actions.grid(row=0, column=2, sticky=tk.NE, padx=(12, 0))
         self._register_plugin_area("audible_aktionen", actions)
         ttk.Button(actions, text="▶ Abspielen", command=self.play_selected_audible_book).pack(fill=tk.X, pady=(0, 6))
+        ttk.Button(actions, text="Wiedergabe-Ort…", command=self.choose_audible_playback_place).pack(fill=tk.X, pady=(0, 6))
         ttk.Button(actions, text="Herunterladen", command=self.download_selected_audible_books).pack(fill=tk.X)
+        self.audible_place_var = tk.StringVar(value="Noch kein Wiedergabe-Ort")
+        ttk.Label(actions, textvariable=self.audible_place_var, wraplength=180, justify=tk.LEFT).pack(fill=tk.X, pady=(8, 0))
         summary_bg = ttk.Style().lookup("TFrame", "background") or self.root.cget("background")
         summary_fg = ttk.Style().lookup("TLabel", "foreground") or "#1d1d1f"
         self.audible_summary = tk.Text(
@@ -1571,6 +1741,13 @@ class DeezerDownloaderGUI:
             relief=tk.FLAT, borderwidth=0, highlightthickness=0,
         )
         self.audible_summary.grid(row=1, column=1, columnspan=2, sticky=(tk.W, tk.E), pady=(8, 0))
+        place_row = ttk.Frame(detail)
+        place_row.grid(row=2, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(10, 0))
+        place_row.columnconfigure(1, weight=1)
+        ttk.Label(place_row, text="Player-Ordner").grid(row=0, column=0, sticky=tk.W, padx=(0, 8))
+        self.audible_player_folder_var = tk.StringVar(value=self._audible_player_folder_text())
+        ttk.Entry(place_row, textvariable=self.audible_player_folder_var).grid(row=0, column=1, sticky=(tk.W, tk.E))
+        ttk.Button(place_row, text="…", width=3, command=self.choose_audible_player_folder).grid(row=0, column=2, padx=(6, 0))
 
         library_frame = ttk.Frame(main_frame)
         library_frame.grid(row=2, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=5)
@@ -6962,6 +7139,9 @@ class DeezerDownloaderGUI:
         self.audible_summary.delete("1.0", tk.END)
         self.audible_summary.insert("1.0", book.get("summary") or "")
         self.audible_summary.config(state=tk.DISABLED)
+        if hasattr(self, "audible_place_var"):
+            place = self._audible_assigned_path(book) if book.get("asin") or book.get("title") else ""
+            self.audible_place_var.set(place or "Noch kein Wiedergabe-Ort")
         cover_url = book.get("cover_url") or ""
         if not cover_url:
             return
@@ -6991,17 +7171,160 @@ class DeezerDownloaderGUI:
 
         threading.Thread(target=load_cover, daemon=True).start()
 
-    def _audible_local_files(self, book):
-        title = (book or {}).get("title") or ""
-        if not title or not self.audible_library:
-            return []
-        folder = Path(self.audible_download_path) / self.audible_library._sanitize_filename(title)
-        if not folder.is_dir():
+    def _audible_playback_file(self):
+        from path_helper import get_app_base_path
+        return Path(get_app_base_path()) / "audible_playback.json"
+
+    def _audible_playback_data(self):
+        if getattr(self, "_audible_playback_cache", None) is None:
+            data = {"folder": "", "books": {}}
+            try:
+                raw = json.loads(self._audible_playback_file().read_text(encoding="utf-8"))
+                if isinstance(raw, dict):
+                    data["folder"] = str(raw.get("folder") or "")
+                    books = raw.get("books") or {}
+                    if isinstance(books, dict):
+                        data["books"] = {str(key): str(value) for key, value in books.items() if value}
+            except Exception:
+                pass
+            self._audible_playback_cache = data
+        return self._audible_playback_cache
+
+    def _audible_playback_save(self):
+        data = self._audible_playback_data()
+        path = self._audible_playback_file()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def _audible_player_folder_text(self):
+        return self._audible_playback_data().get("folder") or ""
+
+    def _audible_book_key(self, book):
+        book = book or {}
+        return (book.get("asin") or book.get("title") or "").strip()
+
+    def _audible_assigned_path(self, book):
+        key = self._audible_book_key(book)
+        if not key:
+            return ""
+        return self._audible_playback_data().get("books", {}).get(key) or ""
+
+    def _audible_collect_audio(self, place: Path):
+        suffixes = {".mp3", ".m4a", ".m4b", ".aac", ".flac"}
+        if place.is_file() and place.suffix.lower() in suffixes:
+            return [place]
+        if not place.is_dir():
             return []
         files = []
-        for pattern in ("*.mp3", "*.m4a", "*.m4b"):
-            files.extend(folder.glob(pattern))
+        for pattern in ("*.mp3", "*.m4a", "*.m4b", "*.aac", "*.flac"):
+            files.extend(place.glob(pattern))
         return sorted(files)
+
+    def _audible_title_folder(self, book):
+        title = (book or {}).get("title") or ""
+        if self.audible_library:
+            return self.audible_library._sanitize_filename(title)
+        cleaned = title
+        for char in '<>:"/\\|?*':
+            cleaned = cleaned.replace(char, "_")
+        return cleaned.strip(". ")
+
+    def _audible_local_files(self, book):
+        assigned = self._audible_assigned_path(book)
+        if assigned:
+            found = self._audible_collect_audio(Path(assigned))
+            if found:
+                return found
+        name = self._audible_title_folder(book)
+        if not name:
+            return []
+        bases = []
+        folder = self._audible_player_folder_text()
+        if folder:
+            bases.append(Path(folder))
+        if getattr(self, "audible_download_path", None):
+            bases.append(Path(self.audible_download_path))
+        for base in bases:
+            found = self._audible_collect_audio(base / name)
+            if found:
+                return found
+            if base.is_dir():
+                for path in base.iterdir():
+                    if path.stem.lower() == name.lower():
+                        found = self._audible_collect_audio(path)
+                        if found:
+                            return found
+        return []
+
+    def choose_audible_player_folder(self):
+        chosen = filedialog.askdirectory(
+            title="Ordner für den Audible-Player",
+            initialdir=self._audible_player_folder_text() or str(self.audible_download_path),
+        )
+        if not chosen:
+            return
+        self._audible_playback_data()["folder"] = chosen
+        self._audible_playback_save()
+        self.audible_player_folder_var.set(chosen)
+        self._audible_show_book(self._audible_selected_book())
+
+    def choose_audible_playback_place(self):
+        book = self._audible_selected_book()
+        if not book:
+            messagebox.showwarning("Audible", "Bitte zuerst ein Hörbuch auswählen.")
+            return
+        key = self._audible_book_key(book)
+        if not key:
+            return
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Wiedergabe-Ort")
+        dialog.transient(self.root)
+        dialog.grab_set()
+        frame = ttk.Frame(dialog, padding=16)
+        frame.pack(fill=tk.BOTH, expand=True)
+        ttk.Label(
+            frame,
+            text="Lege eine Audiodatei oder einen Ordner für dieses Hörbuch fest.\nDer Player spielt diese Datei, ohne sie neu herunterzuladen.",
+            wraplength=420,
+        ).pack(anchor=tk.W, pady=(0, 12))
+        choice = {"path": ""}
+
+        def pick_file():
+            path = filedialog.askopenfilename(
+                title="Audiodatei",
+                parent=dialog,
+                filetypes=[("Audio", "*.mp3 *.m4a *.m4b *.aac *.flac"), ("Alle", "*.*")],
+            )
+            if path:
+                choice["path"] = path
+                dialog.destroy()
+
+        def pick_dir():
+            path = filedialog.askdirectory(title="Ordner mit den Audiodateien", parent=dialog)
+            if path:
+                choice["path"] = path
+                dialog.destroy()
+
+        def clear_place():
+            choice["path"] = None
+            dialog.destroy()
+
+        buttons = ttk.Frame(frame)
+        buttons.pack(fill=tk.X)
+        ttk.Button(buttons, text="Datei", command=pick_file).pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(buttons, text="Ordner", command=pick_dir).pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(buttons, text="Eintrag entfernen", command=clear_place).pack(side=tk.LEFT)
+        ttk.Button(buttons, text="Abbrechen", command=dialog.destroy).pack(side=tk.RIGHT)
+        dialog.wait_window()
+        if choice["path"] == "":
+            return
+        books = self._audible_playback_data()["books"]
+        if choice["path"] is None:
+            books.pop(key, None)
+        else:
+            books[key] = choice["path"]
+        self._audible_playback_save()
+        self._audible_show_book(book)
 
     def play_selected_audible_book(self):
         book = self._audible_selected_book()
@@ -7012,7 +7335,10 @@ class DeezerDownloaderGUI:
         if not files:
             messagebox.showinfo(
                 "Audible",
-                "Dieses Hörbuch liegt noch nicht als Datei vor.\nZuerst herunterladen, danach kann der Player es abspielen.",
+                "Für dieses Hörbuch ist noch kein Wiedergabe-Ort eingetragen.\n\n"
+                "Lege über „Wiedergabe-Ort…“ eine Audiodatei oder einen Ordner fest, "
+                "oder wähle oben einen Player-Ordner für die Bibliothek.\n"
+                "Der Player spielt diese Datei dann direkt ab.",
             )
             return
         if len(files) == 1:
@@ -13660,6 +13986,19 @@ Copyright (c) 2025 Universal Downloader Contributors
 
         tabs_frame = ttk.LabelFrame(scrollable_frame, text="🗂️ Sichtbare Tabs", padding="10", style="Download.TLabelframe")
         tabs_frame.pack(fill=tk.X, pady=5, padx=5)
+        plugins_frame = ttk.LabelFrame(scrollable_frame, text="🔌 Plugins", padding="10", style="Download.TLabelframe")
+        plugins_frame.pack(fill=tk.X, pady=5, padx=5)
+        ttk.Label(
+            plugins_frame,
+            text="Zeigt, welche Plugins aktiv sind, welche neu oder geändert sind, und das Log. Neu laden übernimmt eine geänderte Datei ohne Neustart.",
+            style="Download.TLabel",
+        ).pack(anchor=tk.W, pady=(0, 6))
+        ttk.Button(
+            plugins_frame,
+            text="Plugins anzeigen",
+            command=lambda: self.show_plugins_dialog(settings_window),
+            style="Download.TButton",
+        ).pack(anchor=tk.W)
         tabs_hint = "Die Auswahl bleibt auf diesem Rechner gespeichert."
         if not _store_edition():
             tabs_hint = "Audible ist aus, bis du es hier einschaltest. " + tabs_hint

@@ -520,8 +520,11 @@ class VideoDownloader:
         Returns:
             True wenn unterstützt, sonst False
         """
-        from voe import is_voe_url
-        if is_voe_url(url):
+        try:
+            from voe import is_voe_url
+        except ImportError:
+            is_voe_url = None
+        if is_voe_url and is_voe_url(url):
             return True
         url_lower = url.lower()
         for sender, domains in SUPPORTED_SENDERS.items():
@@ -1623,8 +1626,11 @@ class VideoDownloader:
             True wenn es eine Serie/Staffel ist, sonst False
         """
         try:
-            from voe import is_voe_url
-            if is_voe_url(url):
+            try:
+                from voe import is_voe_url
+            except ImportError:
+                is_voe_url = None
+            if is_voe_url and is_voe_url(url):
                 return False
             # Normalisiere ARD Sounds URLs zuerst
             original_url = url
